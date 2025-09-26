@@ -87,7 +87,7 @@ export default function HomePage() {
       <div className="mx-auto max-w-7xl px-5 py-6">
         {/* Welcome / Context */}
         <section className="mb-6">
-          <h2 className="text-3xl font-semibold leading-tight">Good to go 👋</h2>
+          <h2 className="text-3xl font-semibold leading-tight">Let's Get To Work</h2>
           <p className="mt-1 text-gray-600">Quick actions and today’s status at a glance.</p>
         </section>
 

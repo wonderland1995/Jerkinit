@@ -1,103 +1,85 @@
-import Image from "next/image";
-
 export default function Home() {
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <main className="min-h-dvh bg-gray-50">
+      <header className="border-b bg-white">
+        <div className="mx-auto max-w-5xl px-4 py-4 flex items-center justify-between">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Manufacture</h1>
+          <nav className="flex gap-3 text-sm">
+            <a href="/recipe/new" className="px-3 py-2 rounded-md border hover:bg-gray-50">
+              Recipe Builder
+            </a>
+            <a href="/scan" className="px-3 py-2 rounded-md border hover:bg-gray-50">
+              Scan
+            </a>
+            <a href="/receive" className="px-3 py-2 rounded-md border hover:bg-gray-50">
+              Receive
+            </a>
+          </nav>
+        </div>
+      </header>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
+      <section className="mx-auto max-w-5xl px-4 py-10">
+        <div className="grid gap-6 sm:grid-cols-3">
           <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/recipe/new"
+            className="rounded-2xl border bg-white p-6 shadow-sm hover:shadow transition"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
+            <h2 className="text-lg font-semibold">Recipe Builder</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Create a batch, auto-scale ingredients, and record actuals with tolerances.
+            </p>
           </a>
+
           <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/receive"
+            className="rounded-2xl border bg-white p-6 shadow-sm hover:shadow transition"
           >
-            Read our docs
+            <h2 className="text-lg font-semibold">Meat Receiving</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Probe temp, supplier details, photos, and print the lot QR.
+            </p>
+          </a>
+
+          <a
+            href="/scan"
+            className="rounded-2xl border bg-white p-6 shadow-sm hover:shadow transition"
+          >
+            <h2 className="text-lg font-semibold">Scan</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Universal scanner for lot, batch, and pack-lot QR codes.
+            </p>
           </a>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+
+        <div className="mt-10 rounded-2xl border bg-white p-6 shadow-sm">
+          <h3 className="text-base font-semibold">Status</h3>
+          <ul className="mt-3 grid gap-3 sm:grid-cols-3 text-sm">
+            <li className="rounded-lg border p-3">
+              <div className="text-gray-500">Environment</div>
+              <div className="font-medium">Production</div>
+            </li>
+            <li className="rounded-lg border p-3">
+              <div className="text-gray-500">Domain</div>
+              <div className="font-medium">manufacture.jerkinit.com.au</div>
+            </li>
+            <li className="rounded-lg border p-3">
+              <div className="text-gray-500">Health</div>
+              <a
+                href="/api/health"
+                className="font-medium text-blue-600 underline underline-offset-2"
+              >
+                /api/health
+              </a>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <footer className="mt-10 border-t bg-white">
+        <div className="mx-auto max-w-5xl px-4 py-6 text-xs text-gray-500">
+          © {new Date().getFullYear()} Jerkin’ It — Manufacture
+        </div>
       </footer>
-    </div>
+    </main>
   );
 }

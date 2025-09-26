@@ -88,7 +88,7 @@ export default function HomePage() {
         {/* Welcome / Context */}
         <section className="mb-6">
           <h2 className="text-3xl font-semibold leading-tight">Let's Get To Work</h2>
-          <p className="mt-1 text-gray-600">Quick actions and today’s status at a glance.</p>
+          <p className="mt-1 text-gray-600">Quick actions and today's status at a glance.</p>
         </section>
 
         {/* Quick Stats — large, tappable cards */}

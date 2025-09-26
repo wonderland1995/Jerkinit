@@ -1,87 +1,356 @@
-"use client";
-import { useEffect, useMemo, useState } from "react";
+// src/app/recipe/new/page.tsx
 
-type Product = { id: string; sku: string; name: string };
-type RecipeLine = {
-  line_no: number;
-  ingredient_name: string;
-  target_amount: number;
-  uom: string;
-  tolerance_pct: number;
-  is_cure: boolean;
-};
-type CreateBatchResponse = {
-  batch_id: string | null;
-  lines: RecipeLine[];
-};
+'use client';
 
-export default function RecipeBuilder() {
+import { useState, useEffect, useRef } from 'react';
+import { RecipeForm } from '@/components/RecipeForm';
+import { RecipeTable } from '@/components/RecipeTable';
+import { PrintableRecipe } from '@/components/PrintableRecipe';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { AlertMessage } from '@/components/AlertMessage';
+import type { 
+  Product, 
+  CreateBatchResponse, 
+  RecipeLineItem,
+  RecipeFormState,
+  BatchRecipeState 
+} from '@/types/database';
+
+export default function NewRecipePage() {
   const [products, setProducts] = useState<Product[]>([]);
-  const [productId, setProductId] = useState<string>("");
-  const [beefKg, setBeefKg] = useState<number>(10);
-  const [batchId, setBatchId] = useState<string | null>(null);
-  const [lines, setLines] = useState<RecipeLine[]>([]);
-  const [actuals, setActuals] = useState<Record<number, number>>({});
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [productsError, setProductsError] = useState<string | null>(null);
+  
+  const [formState, setFormState] = useState<RecipeFormState>({
+    selectedProductId: '',
+    beefWeight: '',
+    operatorName: '',
+    isLoading: false,
+    error: null
+  });
+  
+  const [batchState, setBatchState] = useState<BatchRecipeState>({
+    batchId: null,
+    batchUuid: null,
+    productName: null,
+    ingredients: [],
+    isComplete: false,
+    beefWeightKg: null,
+  });
+  
+  const printRef = useRef<HTMLDivElement>(null);
+  
+  // Fetch products on mount
   useEffect(() => {
-    fetch("/api/products")
-      .then((r) => r.json() as Promise<{ data: Product[] }>)
-      .then(({ data }) => setProducts(data ?? []))
-      .catch(() => setProducts([]));
+    fetchProducts();
   }, []);
-
-  const anyFail = useMemo(() => {
-    return lines.some((l) => {
-      const a = actuals[l.line_no];
-      if (a == null || Number.isNaN(a)) return false;
-      const diff = Math.abs(a - l.target_amount);
-      return diff > l.target_amount * (l.tolerance_pct / 100);
-    });
-  }, [lines, actuals]);
-
-  async function createBatch() {
-    if (!productId || !beefKg) return;
-    setLoading(true);
-    setErr(null);
-    setBatchId(null);
-    setLines([]);
-    setActuals({});
+  
+  const fetchProducts = async () => {
     try {
-      const res = await fetch("/api/batches", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ product_id: productId, beef_kg: beefKg }),
-      });
-      const json: CreateBatchResponse | { error: string } = await res.json();
-      if (!res.ok) throw new Error((json as any).error || "Failed to create batch");
-      const ok = json as CreateBatchResponse;
-      setBatchId(ok.batch_id);
-      setLines(
-        (ok.lines || []).map((l) => ({
-          ...l,
-          target_amount: Number(l.target_amount),
-          tolerance_pct: Number(l.tolerance_pct),
-          is_cure: Boolean(l.is_cure),
-        }))
-      );
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Unknown error";
-      setErr(msg);
+      setProductsLoading(true);
+      setProductsError(null);
+      
+      const response = await fetch('/api/products');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}: Failed to fetch products`);
+      }
+      
+      const data = await response.json();
+      if (!data.products) {
+        throw new Error('Invalid response format');
+      }
+      setProducts(data.products || []);
+    } catch (error) {
+      console.error('Error fetching products:', error);
+      setProductsError(error instanceof Error ? error.message : 'Failed to load products');
+      setProducts([]); // Set empty array on error
     } finally {
-      setLoading(false);
+      setProductsLoading(false);
     }
-  }
+  };
+  
+  const handleCreateBatch = async () => {
+    if (!formState.selectedProductId || !formState.beefWeight) {
+      setFormState(prev => ({
+        ...prev,
+        error: 'Please select a product and enter beef weight'
+      }));
+      return;
+    }
+    
+    try {
+      setFormState(prev => ({ ...prev, isLoading: true, error: null }));
+      
+      const response = await fetch('/api/batches', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          product_id: formState.selectedProductId,
+          beef_weight_kg: parseFloat(formState.beefWeight),
+          created_by: formState.operatorName || null
+        })
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create batch');
+      }
+      
+      const data: CreateBatchResponse = await response.json();
+      const weightKg = parseFloat(formState.beefWeight);
 
-  function setActual(lineNo: number, value: string) {
-    const v = value === "" ? NaN : Number(value);
-    setActuals((prev) => ({ ...prev, [lineNo]: v }));
-  }
-
+      // Transform ingredients to RecipeLineItems
+      const recipeItems: RecipeLineItem[] = data.ingredients.map(ing => ({
+        ...ing,
+        actual_amount: null,
+        in_tolerance: null
+      }));
+      
+      setBatchState({
+        batchId: data.batch_id,
+        batchUuid: data.batch_uuid,
+        productName: data.product_name,
+        ingredients: recipeItems,
+        isComplete: false,
+        beefWeightKg: weightKg,
+      });
+      
+      // Reset form
+      setFormState({
+        selectedProductId: '',
+        beefWeight: '',
+        operatorName: '',
+        isLoading: false,
+        error: null
+      });
+      
+    } catch (error) {
+      setFormState(prev => ({
+        ...prev,
+        isLoading: false,
+        error: error instanceof Error ? error.message : 'An error occurred'
+      }));
+    }
+  };
+  
+  const handleUpdateIngredient = async (ingredientName: string, actualAmount: number) => {
+    if (!batchState.batchUuid) return;
+    
+    try {
+      const response = await fetch('/api/batches', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          batch_id: batchState.batchUuid,
+          ingredient_name: ingredientName,
+          actual_amount: actualAmount,
+          measured_by: formState.operatorName || null
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to update ingredient');
+      }
+      
+      const data = await response.json();
+      
+      // Update local state
+      setBatchState(prev => {
+        const updatedIngredients = prev.ingredients.map(ing => {
+          if (ing.ingredient_name === ingredientName) {
+            return {
+              ...ing,
+              actual_amount: actualAmount,
+              in_tolerance: data.in_tolerance
+            };
+          }
+          return ing;
+        });
+        
+        // Check if all ingredients have been measured
+        const isComplete = updatedIngredients.every(ing => ing.actual_amount !== null);
+        
+        return {
+          ...prev,
+          ingredients: updatedIngredients,
+          isComplete
+        };
+      });
+      
+    } catch (error) {
+      console.error('Failed to update ingredient:', error);
+    }
+  };
+  
+  const handlePrint = () => {
+    if (!printRef.current) return;
+    
+    const printWindow = window.open('', '', 'width=800,height=600');
+    if (!printWindow) return;
+    
+    const styles = `
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, -apple-system, sans-serif; padding: 20px; }
+        .print-content { max-width: 800px; margin: 0 auto; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #000; padding: 8px; text-align: left; }
+        th { background-color: #f0f0f0; font-weight: bold; }
+        .header { margin-bottom: 20px; }
+        .header h1 { font-size: 24px; margin-bottom: 10px; }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+        .info-item { font-size: 14px; }
+        .cure-warning { background-color: #ffeb3b; padding: 10px; margin-top: 20px; font-weight: bold; }
+        @media print {
+          body { padding: 0; }
+          .cure-warning { break-inside: avoid; }
+        }
+      </style>
+    `;
+    
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Recipe Card - ${batchState.batchId}</title>
+          ${styles}
+        </head>
+        <body>
+          ${printRef.current.innerHTML}
+        </body>
+      </html>
+    `);
+    
+    printWindow.document.close();
+    printWindow.focus();
+    
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 250);
+  };
+  
+  const handleReset = () => {
+    setBatchState({
+      batchId: null,
+      batchUuid: null,
+      productName: null,
+      ingredients: [],
+      isComplete: false,
+      beefWeightKg: null,
+    });
+    setFormState({
+      selectedProductId: '',
+      beefWeight: '',
+      operatorName: '',
+      isLoading: false,
+      error: null
+    });
+  };
+  
   return (
-    <main className="p-6 max-w-3xl">
-      {/* ...rest unchanged... */}
-    </main>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <header className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">Recipe Builder</h1>
+          <p className="mt-2 text-gray-600">
+            Beef Jerky Manufacturing Traceability System
+          </p>
+        </header>
+        
+        {productsLoading ? (
+          <LoadingSpinner />
+        ) : productsError ? (
+          <AlertMessage type="error" message={productsError} />
+        ) : (
+          <>
+            {!batchState.batchId ? (
+              <div className="bg-white rounded-lg shadow-sm p-6">
+                <h2 className="text-xl font-semibold mb-6">Create New Batch</h2>
+                <RecipeForm
+                  products={products}
+                  formState={formState}
+                  onFormChange={setFormState}
+                  onSubmit={handleCreateBatch}
+                />
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="bg-white rounded-lg shadow-sm p-6">
+                  <div className="flex justify-between items-start mb-6">
+                    <div>
+                      <h2 className="text-xl font-semibold">Batch Recipe</h2>
+                      <div className="mt-2 space-y-1">
+                        <p className="text-sm text-gray-600">
+                          <span className="font-medium">Batch ID:</span> {batchState.batchId}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          <span className="font-medium">Product:</span> {batchState.productName}
+                        </p>
+                        <p className="text-sm text-gray-600">
+  <span className="font-medium">Beef Weight:</span>{" "}
+  {batchState.beefWeightKg != null ? batchState.beefWeightKg : "N/A"} kg
+</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={handlePrint}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                        disabled={!batchState.isComplete}
+                        title={!batchState.isComplete ? 'Complete all measurements first' : ''}
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                        </svg>
+                        Print Recipe
+                      </button>
+                      <button
+                        onClick={handleReset}
+                        className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                      >
+                        New Batch
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <RecipeTable
+                    ingredients={batchState.ingredients}
+                    onUpdateAmount={handleUpdateIngredient}
+                  />
+                  
+                  {batchState.isComplete && (
+                    <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                      <p className="text-green-800 font-medium">
+                        ✓ All ingredients measured - Recipe card ready to print
+                      </p>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Hidden printable content */}
+                <div className="hidden">
+                  <div ref={printRef}>
+                    <PrintableRecipe
+                      batchId={batchState.batchId || ''}
+                      productName={batchState.productName || ''}
+                      beefWeight={parseFloat(formState.beefWeight) || 0}
+                      ingredients={batchState.ingredients}
+                      operatorName={formState.operatorName}
+                      createdAt={new Date().toISOString()}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   );
 }

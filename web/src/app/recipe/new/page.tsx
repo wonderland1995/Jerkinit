@@ -15,6 +15,8 @@ import type {
   RecipeFormState,
   BatchRecipeState 
 } from '@/types/database';
+import Link from 'next/link';
+
 
 export default function NewRecipePage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -256,12 +258,36 @@ export default function NewRecipePage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <header className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Recipe Builder</h1>
-          <p className="mt-2 text-gray-600">
-            Beef Jerky Manufacturing Traceability System
-          </p>
-        </header>
+ <header className="mb-8">
+  {/* Back button (touch-friendly) */}
+  <div className="mb-3">
+    <Link
+      href="/"
+      className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-gray-50 active:scale-[0.99]"
+    >
+      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+      </svg>
+      Dashboard
+    </Link>
+  </div>
+
+  {/* Breadcrumbs */}
+  <nav className="text-sm text-gray-500 mb-2">
+    <span className="inline-flex items-center gap-2">
+      <Link href="/" className="hover:text-gray-900">Home</Link>
+      <span>/</span>
+      <span className="hover:text-gray-900">Recipe</span>
+      <span>/</span>
+      <span className="text-gray-900 font-medium">New</span>
+    </span>
+  </nav>
+
+  <h1 className="text-3xl font-bold text-gray-900">Recipe Builder</h1>
+  <p className="mt-2 text-gray-600">
+    Beef Jerky Manufacturing Traceability System
+  </p>
+</header>
         
         {productsLoading ? (
           <LoadingSpinner />
@@ -339,7 +365,7 @@ export default function NewRecipePage() {
                     <PrintableRecipe
                       batchId={batchState.batchId || ''}
                       productName={batchState.productName || ''}
-                      beefWeight={parseFloat(formState.beefWeight) || 0}
+                      beefWeight={batchState.beefWeightKg ?? 0}
                       ingredients={batchState.ingredients}
                       operatorName={formState.operatorName}
                       createdAt={new Date().toISOString()}

@@ -1,22 +1,21 @@
+// src/app/api/qa/batch/[batchId]/complete/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin as supabase } from '@/lib/supabaseAdmin';
 
-
 export async function POST(
   request: NextRequest,
-  { params }: { params: { batchId: string } }
+  context: { params: Promise<{ batchId: string }> }   // ← Promise here
 ) {
   try {
-    const body = await request.json();
-    const { completed_by } = body;
-    
-    // Call the complete_batch_with_qa function
-    const { data, error } = await supabase
-      .rpc('complete_batch_with_qa', {
-        p_batch_id: params.batchId,
-        p_completed_by: completed_by || null
-      });
-    
+    const { batchId } = await context.params;         // ← and await it
+    const body = await request.json().catch(() => ({} as { completed_by?: string }));
+    const completed_by = body?.completed_by ?? null;
+
+    const { data, error } = await supabase.rpc('complete_batch_with_qa', {
+      p_batch_id: batchId,
+      p_completed_by: completed_by,
+    });
+
     if (error) {
       console.error('Error completing batch:', error);
       return NextResponse.json(
@@ -24,14 +23,11 @@ export async function POST(
         { status: 500 }
       );
     }
-    
-    return NextResponse.json(data[0]);
-    
-  } catch (error) {
-    console.error('Error:', error);
-    return NextResponse.json(
-      { error: 'Failed to complete batch' },
-      { status: 500 }
-    );
+
+    // RPCs often return an array or scalar; normalize to something predictable
+    return NextResponse.json({ ok: true, result: data ?? null });
+  } catch (err) {
+    console.error('Error:', err);
+    return NextResponse.json({ error: 'Failed to complete batch' }, { status: 500 });
   }
 }

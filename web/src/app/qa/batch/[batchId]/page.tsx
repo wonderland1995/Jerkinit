@@ -4,6 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import type { Route } from 'next';
 import type { 
   Batch,
   BatchIngredient,
@@ -122,7 +123,8 @@ export default function QAManagementPage() {
       const result = await response.json();
       if (result.success) {
         alert(result.message);
-        router.push('/batches');
+        router.push('/batches' as Route<'/batches'>);
+
       } else {
         alert(`Cannot complete: ${result.message}`);
       }
@@ -241,14 +243,18 @@ export default function QAManagementPage() {
         <div className="bg-white rounded-lg shadow-sm p-6">
           <div className="flex justify-between items-center">
             <button
-              onClick={() => router.push(`/recipe/print/${batchId}`)}
+              onClick={() => {
+  const printHref = (`/recipe/print/${batchId}`) as Route<`/recipe/print/${string}`>;
+  router.push(printHref);
+}}
+
               className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
             >
               Print Batch Record
             </button>
             <div className="flex gap-3">
               <button
-                onClick={() => router.push('/recipe/new')}
+                onClick={() => router.push('/recipe/new' as Route<'/recipe/new'>)}
                 className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
                 New Batch

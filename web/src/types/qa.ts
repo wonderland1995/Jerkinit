@@ -36,7 +36,7 @@ export interface QADocument {
   approved_at: string | null;
   rejection_reason: string | null;
   notes: string | null;
-  metadata: Record<string, any>;
+  metadata:Json;
   expires_at: string | null;
 }
 
@@ -66,15 +66,15 @@ export interface BatchQACheck {
   notes: string | null;
   corrective_action: string | null;
   recheck_required: boolean;
-  metadata: Record<string, any>;
+  metadata: Json;
 }
 
 export interface Supplier {
   id: string;
   code: string;
   name: string;
-  contact_info: Record<string, any>;
-  certification_info: Record<string, any>;
+  contact_info: Json;
+  certification_info: Json;
   approved: boolean;
   approved_date: string | null;
   next_audit_date: string | null;
@@ -94,7 +94,7 @@ export interface RawMaterialLot {
   expiry_date: string | null;
   quantity: number;
   unit: string;
-  certificate_of_analysis: Record<string, any>;
+  certificate_of_analysis: Json;
   passed_receiving_qa: boolean;
   storage_location: string | null;
   notes: string | null;
@@ -148,8 +148,8 @@ export interface AuditTrail {
   action: 'INSERT' | 'UPDATE' | 'DELETE';
   changed_by: string | null;
   changed_at: string;
-  old_values: Record<string, any> | null;
-  new_values: Record<string, any> | null;
+  old_values: Json | null;
+  new_values: Json | null;
   ip_address: string | null;
   user_agent: string | null;
 }

@@ -1,3 +1,5 @@
+// src/app/api/qa/batch/[batchId]/route.ts
+
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import type { BatchQADataResponse } from '@/types/qa';

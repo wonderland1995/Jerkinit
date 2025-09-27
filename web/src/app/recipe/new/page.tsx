@@ -3,26 +3,28 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { RecipeForm } from '@/components/RecipeForm';
 import { RecipeTable } from '@/components/RecipeTable';
 import { PrintableRecipe } from '@/components/PrintableRecipe';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { AlertMessage } from '@/components/AlertMessage';
-import type { 
-  Product, 
-  CreateBatchResponse, 
+import type {
+  Product,
+  CreateBatchResponse,
   RecipeLineItem,
   RecipeFormState,
-  BatchRecipeState 
+  BatchRecipeState
 } from '@/types/database';
-import Link from 'next/link';
-
 
 export default function NewRecipePage() {
+  const router = useRouter();
+
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [productsError, setProductsError] = useState<string | null>(null);
-  
+
   const [formState, setFormState] = useState<RecipeFormState>({
     selectedProductId: '',
     beefWeight: '',
@@ -30,7 +32,7 @@ export default function NewRecipePage() {
     isLoading: false,
     error: null
   });
-  
+
   const [batchState, setBatchState] = useState<BatchRecipeState>({
     batchId: null,
     batchUuid: null,
@@ -39,25 +41,25 @@ export default function NewRecipePage() {
     isComplete: false,
     beefWeightKg: null,
   });
-  
+
   const printRef = useRef<HTMLDivElement>(null);
-  
+
   // Fetch products on mount
   useEffect(() => {
     fetchProducts();
   }, []);
-  
+
   const fetchProducts = async () => {
     try {
       setProductsLoading(true);
       setProductsError(null);
-      
+
       const response = await fetch('/api/products');
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || `HTTP ${response.status}: Failed to fetch products`);
       }
-      
+
       const data = await response.json();
       if (!data.products) {
         throw new Error('Invalid response format');
@@ -71,7 +73,7 @@ export default function NewRecipePage() {
       setProductsLoading(false);
     }
   };
-  
+
   const handleCreateBatch = async () => {
     if (!formState.selectedProductId || !formState.beefWeight) {
       setFormState(prev => ({
@@ -80,10 +82,10 @@ export default function NewRecipePage() {
       }));
       return;
     }
-    
+
     try {
       setFormState(prev => ({ ...prev, isLoading: true, error: null }));
-      
+
       const response = await fetch('/api/batches', {
         method: 'POST',
         headers: {
@@ -95,12 +97,12 @@ export default function NewRecipePage() {
           created_by: formState.operatorName || null
         })
       });
-      
+
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || 'Failed to create batch');
       }
-      
+
       const data: CreateBatchResponse = await response.json();
       const weightKg = parseFloat(formState.beefWeight);
 
@@ -110,7 +112,7 @@ export default function NewRecipePage() {
         actual_amount: null,
         in_tolerance: null
       }));
-      
+
       setBatchState({
         batchId: data.batch_id,
         batchUuid: data.batch_uuid,
@@ -119,7 +121,7 @@ export default function NewRecipePage() {
         isComplete: false,
         beefWeightKg: weightKg,
       });
-      
+
       // Reset form
       setFormState({
         selectedProductId: '',
@@ -128,7 +130,7 @@ export default function NewRecipePage() {
         isLoading: false,
         error: null
       });
-      
+
     } catch (error) {
       setFormState(prev => ({
         ...prev,
@@ -137,10 +139,10 @@ export default function NewRecipePage() {
       }));
     }
   };
-  
+
   const handleUpdateIngredient = async (ingredientName: string, actualAmount: number) => {
     if (!batchState.batchUuid) return;
-    
+
     try {
       const response = await fetch('/api/batches', {
         method: 'PATCH',
@@ -154,13 +156,13 @@ export default function NewRecipePage() {
           measured_by: formState.operatorName || null
         })
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to update ingredient');
       }
-      
+
       const data = await response.json();
-      
+
       // Update local state
       setBatchState(prev => {
         const updatedIngredients = prev.ingredients.map(ing => {
@@ -173,28 +175,28 @@ export default function NewRecipePage() {
           }
           return ing;
         });
-        
+
         // Check if all ingredients have been measured
         const isComplete = updatedIngredients.every(ing => ing.actual_amount !== null);
-        
+
         return {
           ...prev,
           ingredients: updatedIngredients,
           isComplete
         };
       });
-      
+
     } catch (error) {
       console.error('Failed to update ingredient:', error);
     }
   };
-  
+
   const handlePrint = () => {
     if (!printRef.current) return;
-    
+
     const printWindow = window.open('', '', 'width=800,height=600');
     if (!printWindow) return;
-    
+
     const styles = `
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -214,7 +216,7 @@ export default function NewRecipePage() {
         }
       </style>
     `;
-    
+
     printWindow.document.write(`
       <!DOCTYPE html>
       <html>
@@ -227,16 +229,16 @@ export default function NewRecipePage() {
         </body>
       </html>
     `);
-    
+
     printWindow.document.close();
     printWindow.focus();
-    
+
     setTimeout(() => {
       printWindow.print();
       printWindow.close();
     }, 250);
   };
-  
+
   const handleReset = () => {
     setBatchState({
       batchId: null,
@@ -254,41 +256,41 @@ export default function NewRecipePage() {
       error: null
     });
   };
-  
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
- <header className="mb-8">
-  {/* Back button (touch-friendly) */}
-  <div className="mb-3">
-    <Link
-      href="/"
-      className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-gray-50 active:scale-[0.99]"
-    >
-      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-        <path strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-      </svg>
-      Dashboard
-    </Link>
-  </div>
+        <header className="mb-8">
+          {/* Back button (touch-friendly) */}
+          <div className="mb-3">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-gray-50 active:scale-[0.99]"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+              Dashboard
+            </Link>
+          </div>
 
-  {/* Breadcrumbs */}
-  <nav className="text-sm text-gray-500 mb-2">
-    <span className="inline-flex items-center gap-2">
-      <Link href="/" className="hover:text-gray-900">Home</Link>
-      <span>/</span>
-      <span className="hover:text-gray-900">Recipe</span>
-      <span>/</span>
-      <span className="text-gray-900 font-medium">New</span>
-    </span>
-  </nav>
+          {/* Breadcrumbs */}
+          <nav className="text-sm text-gray-500 mb-2">
+            <span className="inline-flex items-center gap-2">
+              <Link href="/" className="hover:text-gray-900">Home</Link>
+              <span>/</span>
+              <span className="hover:text-gray-900">Recipe</span>
+              <span>/</span>
+              <span className="text-gray-900 font-medium">New</span>
+            </span>
+          </nav>
 
-  <h1 className="text-3xl font-bold text-gray-900">Recipe Builder</h1>
-  <p className="mt-2 text-gray-600">
-    Beef Jerky Manufacturing Traceability System
-  </p>
-</header>
-        
+          <h1 className="text-3xl font-bold text-gray-900">Recipe Builder</h1>
+          <p className="mt-2 text-gray-600">
+            Beef Jerky Manufacturing Traceability System
+          </p>
+        </header>
+
         {productsLoading ? (
           <LoadingSpinner />
         ) : productsError ? (
@@ -319,12 +321,23 @@ export default function NewRecipePage() {
                           <span className="font-medium">Product:</span> {batchState.productName}
                         </p>
                         <p className="text-sm text-gray-600">
-  <span className="font-medium">Beef Weight:</span>{" "}
-  {batchState.beefWeightKg != null ? batchState.beefWeightKg : "N/A"} kg
-</p>
+                          <span className="font-medium">Beef Weight:</span>{' '}
+                          {batchState.beefWeightKg != null ? batchState.beefWeightKg : 'N/A'} kg
+                        </p>
                       </div>
                     </div>
                     <div className="flex gap-3">
+                      {/* QA Management */}
+                      <button
+                        onClick={() => router.push(`/qa/batch/${batchState.batchUuid}`)}
+                        className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        QA Management
+                      </button>
+
                       <button
                         onClick={handlePrint}
                         className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
@@ -336,6 +349,7 @@ export default function NewRecipePage() {
                         </svg>
                         Print Recipe
                       </button>
+
                       <button
                         onClick={handleReset}
                         className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
@@ -344,21 +358,40 @@ export default function NewRecipePage() {
                       </button>
                     </div>
                   </div>
-                  
+
                   <RecipeTable
                     ingredients={batchState.ingredients}
                     onUpdateAmount={handleUpdateIngredient}
                   />
-                  
+
                   {batchState.isComplete && (
-                    <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-                      <p className="text-green-800 font-medium">
-                        ✓ All ingredients measured - Recipe card ready to print
-                      </p>
+                    <div className="mt-6 space-y-4">
+                      <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                        <p className="text-green-800 font-medium">
+                          ✓ All ingredients measured — Recipe card ready to print
+                        </p>
+                      </div>
+
+                      {/* Next Steps / QA prompt */}
+                      <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                        <h3 className="text-sm font-semibold text-blue-900 mb-2">Next Steps:</h3>
+                        <ol className="text-sm text-blue-700 space-y-1 ml-4 list-decimal">
+                          <li>Complete QA checkpoints during production</li>
+                          <li>Upload required documentation</li>
+                          <li>Perform final quality checks</li>
+                          <li>Submit for batch release approval</li>
+                        </ol>
+                        <button
+                          onClick={() => router.push(`/qa/batch/${batchState.batchUuid}`)}
+                          className="mt-3 text-sm font-medium text-blue-600 hover:text-blue-800"
+                        >
+                          Go to QA Management →
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
-                
+
                 {/* Hidden printable content */}
                 <div className="hidden">
                   <div ref={printRef}>

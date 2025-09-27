@@ -1,9 +1,14 @@
 // src/types/qa.ts
 
-// src/app/qa/batch/[batchId]/page.tsx
 import type { Batch, BatchIngredient } from '@/types/database';
 export type { Batch, BatchIngredient } from './database';
-
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json }
+  | Json[];
 
 export interface QADocumentType {
   id: string;

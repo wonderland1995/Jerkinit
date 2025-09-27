@@ -1,4 +1,8 @@
 import Link from "next/link";
+import type { Route } from 'next';
+import type { ReactNode } from 'react';
+
+
 
 export default function HomePage() {
   const quickStats = [
@@ -8,52 +12,58 @@ export default function HomePage() {
     { label: "Compliance Rate", value: "98.5%", help: "Within tolerance" },
   ];
 
-  const mainActions = [
-    {
-      title: "Create New Batch",
-      desc: "Start a batch with auto ID & scaled recipe",
-      href: "/recipe/new",
-      color: "bg-green-600 hover:bg-green-700",
-      icon: (
-        <svg className="size-7" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-        </svg>
-      ),
-    },
-    {
-      title: "Batch History",
-      desc: "Review batches, print, and verify",
-      href: "/batches",
-      color: "bg-blue-600 hover:bg-blue-700",
-      icon: (
-        <svg className="size-7" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9V19a2 2 0 01-2 2z" />
-        </svg>
-      ),
-    },
-    {
-      title: "Products & Recipes",
-      desc: "Update ingredients & tolerances",
-      href: "/products",
-      color: "bg-purple-600 hover:bg-purple-700",
-      icon: (
-        <svg className="size-7" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-        </svg>
-      ),
-    },
-    {
-      title: "Reports",
-      desc: "Compliance & trends, export CSV/PDF",
-      href: "/reports",
-      color: "bg-amber-600 hover:bg-amber-700",
-      icon: (
-        <svg className="size-7" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2m0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-        </svg>
-      ),
-    },
-  ];
+const mainActions = [
+  {
+    title: 'Create New Batch',
+    desc: 'Start a new beef jerky batch with auto-generated ID and scaled recipe',
+    href: '/recipe/new',
+    icon: (
+      <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+      </svg>
+    ),
+    color: 'bg-green-500 hover:bg-green-600',
+  },
+  {
+    title: 'Batch History',
+    desc: 'View and manage previous batches, check compliance and print reports',
+    href: '/batches',
+    icon: (
+      <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    ),
+    color: 'bg-blue-500 hover:bg-blue-600',
+  },
+  {
+    title: 'Product Management',
+    desc: 'Manage products and recipes, update ingredients and tolerances',
+    href: '/products',
+    icon: (
+      <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+      </svg>
+    ),
+    color: 'bg-purple-500 hover:bg-purple-600',
+  },
+  {
+    title: 'Reports & Analytics',
+    desc: 'Generate compliance reports, analyze trends and export data',
+    href: '/reports',
+    icon: (
+      <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+      </svg>
+    ),
+    color: 'bg-orange-500 hover:bg-orange-600',
+  },
+] as const satisfies ReadonlyArray<{
+  title: string;
+  desc: string;
+  href: Route;       
+  icon: ReactNode;
+  color: string;
+}>;
 
   const recentBatches = [
     { id: "JI-20241201-003", product: "Lucky 88", status: "completed", compliance: 100 },

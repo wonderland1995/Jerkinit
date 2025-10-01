@@ -1,5 +1,3 @@
-import Link from 'next/link';
-
 interface BreadcrumbItem {
   label: string;
   href: string;
@@ -34,7 +32,8 @@ export default function Breadcrumbs({ items }: BreadcrumbsProps) {
                 {item.label}
               </span>
             ) : (
-              <a href={item.href}
+              <a
+                href={item.href}
                 className="inline-flex items-center text-sm font-medium text-gray-700 hover:text-blue-600"
               >
                 {item.label}

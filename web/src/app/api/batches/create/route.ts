@@ -96,7 +96,8 @@ export async function POST(request: Request) {
 
     // 4. Create batch_ingredients records (for your existing system)
     if (recipeIngredients.length > 0) {
-      const ingredientRecords = recipeIngredients.map((ing: any) => ({
+      interface RecipeIngredientForBatch { material_id: string; quantity: number; unit: string; tolerance_percentage: number | null; is_cure: boolean | null; material: { name: string }; }
+      const ingredientRecords = recipeIngredients.map((ing: RecipeIngredientForBatch) => ({
         batch_id: batch.id,
         material_id: ing.material_id,
         ingredient_name: ing.material.name,
@@ -119,6 +120,7 @@ target_amount: ing.quantity * (scaling_factor || 1),
     const allocationResults = [];
     
     if (recipeIngredients.length > 0) {
+      interface RecipeIngredientForBatch { material_id: string; quantity: number; unit: string; tolerance_percentage: number | null; is_cure: boolean | null; material: { name: string }; }
       for (const ingredient of recipeIngredients) {
 const scaled_quantity = ingredient.quantity * (scaling_factor || 1);
 

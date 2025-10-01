@@ -15,7 +15,7 @@ interface Recipe {
   recipe_code: string;
   product_id: string;
   base_beef_weight: number;
-  ingredients?: any[];
+  ingredients?: { name: string; unit: string; quantityPerKg: number }[];
 }
 
 export default function NewBatchPage() {

@@ -21,7 +21,7 @@ completed: batches?.filter((b: { status: string }) => b.status === 'completed').
     const { data: inventorySummary } = await supabase
       .rpc('get_material_inventory_summary');
 
-    const low_stock_count = inventorySummary?.filter((item: any) => item.is_low_stock).length || 0;
+    const low_stock_count = inventorySummary?.filter((item: { is_low_stock: boolean }) => item.is_low_stock).length || 0;
     
     // Expiring soon (within 30 days)
     const thirtyDaysFromNow = new Date();

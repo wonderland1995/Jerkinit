@@ -45,7 +45,7 @@ useEffect(() => {
     });
   };
 
-  const updateIngredient = (index: number, field: string, value: any) => {
+  const updateIngredient = (index: number, field: string, value: string | number) => {
     const updated = [...formData.ingredients];
     updated[index] = { ...updated[index], [field]: value };
     setFormData({ ...formData, ingredients: updated });

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ClipboardCheck, Search, Filter, Calendar, TrendingUp, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
+import type { Route } from 'next';
 
 interface Batch {
   id: string;
@@ -242,7 +243,7 @@ function BatchCard({ batch }: BatchCardProps) {
 
   return (
     <Link
-      href={`/qa/${batch.id}` as any}
+      href={`/qa/${batch.id}` as Route}
       className="block group"
     >
       <div className="bg-white rounded-2xl border-2 border-gray-200 shadow-sm hover:shadow-lg hover:border-blue-300 transition-all p-6">

@@ -28,7 +28,7 @@ export async function POST(
 
   const scaling_factor = beef_input_weight / recipe.base_beef_weight;
 
-  const scaled_ingredients = recipe.ingredients.map((ing: any) => ({
+  const scaled_ingredients = recipe.ingredients.map((ing: { material: { id: string; name: string; material_code: string | null }; quantity: number; unit: string; is_critical: boolean | null; }) => ({
     material_id: ing.material_id,
     material_name: ing.material.name,
     material_code: ing.material.material_code,

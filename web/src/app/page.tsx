@@ -13,6 +13,8 @@ import {
   Archive,
   Calendar
 } from 'lucide-react';
+
+import type { Route } from 'next';
 import { 
   AreaChart, 
   Area, 
@@ -394,13 +396,13 @@ export default function HomePage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
                       <Link
-                        href={`/qa/${batch.id}` as any}
+                        href={`/qa/${batch.id}` as Route}
                         className="text-blue-600 hover:text-blue-700 font-medium mr-3"
                       >
                         QA
                       </Link>
                       <Link
-                        href={`/batches/${batch.id}` as any}
+                        href={`/batches/${batch.id}` as Route}
                         className="text-gray-600 hover:text-gray-900 font-medium"
                       >
                         View

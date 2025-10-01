@@ -257,7 +257,7 @@ export interface RawMaterialLot {
   expiry_date: string | null;
   quantity: number | null;
   unit: string | null;
-  certificate_of_analysis: any;
+  certificate_of_analysis: string | Record<string, unknown> | null;
   passed_receiving_qa: boolean;
   storage_location: string | null;
   notes: string | null;

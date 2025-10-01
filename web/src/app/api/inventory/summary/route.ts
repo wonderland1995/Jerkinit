@@ -16,20 +16,20 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const inventory = materials.map((material: any) => {
-    const availableLots = material.lots.filter((l: any) => l.status === 'available');
-    const total_on_hand = availableLots.reduce((sum: number, lot: any) => sum + lot.current_balance, 0);
+  const inventory = materials.map((material: { lots: { id: string; current_balance: number; received_date: string | null; expiry_date: string | null; status: string }[]; id: string; name: string; material_code: string | null; category: string | null; unit: string; reorder_point: number | null; }) => {
+    const availableLots = material.lots.filter((l: { id: string; current_balance: number; received_date: string | null; expiry_date: string | null; status: string }) => l.status === 'available');
+    const total_on_hand = availableLots.reduce((sum: number, lot: { id: string; current_balance: number; received_date: string | null; expiry_date: string | null; status: string }) => sum + lot.current_balance, 0);
     
     const dates = availableLots
-      .filter((l: any) => l.expiry_date)
-      .map((l: any) => new Date(l.expiry_date).getTime());
+      .filter((l: { id: string; current_balance: number; received_date: string | null; expiry_date: string | null; status: string }) => l.expiry_date)
+      .map((l: { id: string; current_balance: number; received_date: string | null; expiry_date: string | null; status: string }) => new Date(l.expiry_date).getTime());
     
     const nearest_expiry_date = dates.length > 0 
       ? new Date(Math.min(...dates)).toISOString().split('T')[0]
       : null;
 
     const oldest_lot_date = availableLots.length > 0
-      ? availableLots.reduce((oldest: string, lot: any) => 
+      ? availableLots.reduce((oldest: string, lot: { id: string; current_balance: number; received_date: string | null; expiry_date: string | null; status: string }) => 
           lot.received_date < oldest ? lot.received_date : oldest,
           availableLots[0].received_date
         )

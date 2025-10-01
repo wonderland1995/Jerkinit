@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 export default function Navbar() {
@@ -24,13 +23,13 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex">
-            <Link href="/" className="flex items-center px-2 text-xl font-bold text-gray-900">
+            <a href="/" className="flex items-center px-2 text-xl font-bold text-gray-900">
               🥩 Jerky Production
-            </Link>
+            </a>
             
             <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
               {navItems.map((item) => (
-                <Link
+                <a
                   key={item.path}
                   href={item.path as any}
                   className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
@@ -40,7 +39,7 @@ export default function Navbar() {
                   }`}
                 >
                   {item.name}
-                </Link>
+                </a>
               ))}
             </div>
           </div>
@@ -55,7 +54,7 @@ export default function Navbar() {
       <div className="sm:hidden">
         <div className="pt-2 pb-3 space-y-1">
           {navItems.map((item) => (
-            <Link
+            <a
               key={item.path}
               href={item.path as any}
               className={`block pl-3 pr-4 py-2 border-l-4 text-base font-medium ${
@@ -65,7 +64,7 @@ export default function Navbar() {
               }`}
             >
               {item.name}
-            </Link>
+            </a>
           ))}
         </div>
       </div>

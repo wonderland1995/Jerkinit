@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { ClipboardCheck, Search, Filter, Calendar, TrendingUp, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
 
 interface Batch {
   id: string;
@@ -13,9 +14,18 @@ interface Batch {
   };
 }
 
+interface QAStats {
+  total_batches: number;
+  pending_qa: number;
+  completed_qa: number;
+  failed_checks: number;
+}
+
 export default function QAPage() {
   const [batches, setBatches] = useState<Batch[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'in_progress' | 'completed'>('all');
 
   useEffect(() => {
     fetchBatches();
@@ -23,7 +33,7 @@ export default function QAPage() {
 
   const fetchBatches = async () => {
     try {
-      const res = await fetch('/api/batches/history?limit=20');
+      const res = await fetch('/api/batches/history?limit=50');
       const data = await res.json();
       setBatches(data.batches || []);
     } catch (error) {
@@ -33,113 +43,242 @@ export default function QAPage() {
     }
   };
 
+  const filteredBatches = batches.filter(batch => {
+    const matchesSearch = batch.batch_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         batch.product?.name?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesFilter = filterStatus === 'all' || batch.status === filterStatus;
+    return matchesSearch && matchesFilter;
+  });
+
+  const stats: QAStats = {
+    total_batches: batches.length,
+    pending_qa: batches.filter(b => b.status === 'in_progress').length,
+    completed_qa: batches.filter(b => b.status === 'completed').length,
+    failed_checks: 0,
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading QA data...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-5 py-6">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-6 py-8">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold">QA Management</h1>
-              <p className="text-gray-600 mt-1">Quality assurance checks for all batches</p>
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center">
+                <ClipboardCheck className="w-7 h-7 text-white" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">QA Management</h1>
+                <p className="text-gray-600 mt-1">FSANZ compliant quality assurance tracking</p>
+              </div>
             </div>
             <Link
               href="/"
-              className="text-blue-600 hover:text-blue-700"
+              className="text-blue-600 hover:text-blue-700 font-medium"
             >
-              ← Back to Dashboard
+              Back to Dashboard
             </Link>
           </div>
         </div>
-      </header>
+      </div>
 
-      <div className="max-w-7xl mx-auto px-5 py-6">
-        {loading ? (
-          <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading batches...</p>
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <StatCard
+            icon={ClipboardCheck}
+            label="Total Batches"
+            value={stats.total_batches}
+            color="blue"
+          />
+          <StatCard
+            icon={Clock}
+            label="Pending QA"
+            value={stats.pending_qa}
+            color="amber"
+          />
+          <StatCard
+            icon={CheckCircle2}
+            label="Completed QA"
+            value={stats.completed_qa}
+            color="green"
+          />
+          <StatCard
+            icon={AlertCircle}
+            label="Failed Checks"
+            value={stats.failed_checks}
+            color="red"
+          />
+        </div>
+
+        {/* Search and Filter Bar */}
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Search Batches
+              </label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input
+                  type="text"
+                  placeholder="Search by batch ID or product name..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Filter by Status
+              </label>
+              <div className="relative">
+                <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none"
+                >
+                  <option value="all">All Batches</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </div>
+            </div>
           </div>
-        ) : batches.length === 0 ? (
-          <div className="bg-white rounded-xl border p-12 text-center">
-            <p className="text-gray-500 mb-4">No batches found</p>
+        </div>
+
+        {/* Batches Grid */}
+        {filteredBatches.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-12 text-center">
+            <ClipboardCheck className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <p className="text-gray-500 text-lg mb-4">No batches found</p>
             <Link
               href="/recipe/new"
-              className="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700"
+              className="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition"
             >
               Create First Batch
             </Link>
           </div>
         ) : (
-          <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Batch ID
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Product
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Created
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {batches.map((batch) => (
-                    <tr key={batch.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="font-mono text-sm font-medium">
-                          {batch.batch_id}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm text-gray-900">
-                          {batch.product?.name || 'Unknown'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          batch.status === 'completed' 
-                            ? 'bg-green-100 text-green-800'
-                            : batch.status === 'in_progress'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {batch.status.replace('_', ' ')}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(batch.created_at).toLocaleDateString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <Link
-                          href={`/qa/${batch.id}` as any}
-                          className="text-blue-600 hover:text-blue-900 mr-4"
-                        >
-                          QA Checks
-                        </Link>
-                        <Link
-                          href={`/batches/${batch.id}` as any}
-                          className="text-gray-600 hover:text-gray-900"
-                        >
-                          View Batch
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredBatches.map((batch) => (
+              <BatchCard key={batch.id} batch={batch} />
+            ))}
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+interface StatCardProps {
+  icon: React.ElementType;
+  label: string;
+  value: number;
+  color: 'blue' | 'amber' | 'green' | 'red';
+}
+
+function StatCard({ icon: Icon, label, value, color }: StatCardProps) {
+  const colorClasses = {
+    blue: 'from-blue-500 to-blue-600',
+    amber: 'from-amber-500 to-amber-600',
+    green: 'from-green-500 to-green-600',
+    red: 'from-red-500 to-red-600',
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+      <div className="flex items-start justify-between mb-4">
+        <div className={`p-3 rounded-xl bg-gradient-to-br ${colorClasses[color]}`}>
+          <Icon className="w-6 h-6 text-white" />
+        </div>
+      </div>
+      <h3 className="text-sm font-medium text-gray-600 mb-1">{label}</h3>
+      <p className="text-3xl font-bold text-gray-900">{value}</p>
+    </div>
+  );
+}
+
+interface BatchCardProps {
+  batch: Batch;
+}
+
+function BatchCard({ batch }: BatchCardProps) {
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return 'bg-green-100 text-green-800 border-green-200';
+      case 'in_progress':
+        return 'bg-amber-100 text-amber-800 border-amber-200';
+      default:
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return <CheckCircle2 className="w-4 h-4" />;
+      case 'in_progress':
+        return <Clock className="w-4 h-4" />;
+      default:
+        return <AlertCircle className="w-4 h-4" />;
+    }
+  };
+
+  return (
+    <Link
+      href={`/qa/${batch.id}` as any}
+      className="block group"
+    >
+      <div className="bg-white rounded-2xl border-2 border-gray-200 shadow-sm hover:shadow-lg hover:border-blue-300 transition-all p-6">
+        {/* Status Badge */}
+        <div className="flex items-center justify-between mb-4">
+          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border ${getStatusColor(batch.status)}`}>
+            {getStatusIcon(batch.status)}
+            {batch.status.replace('_', ' ').toUpperCase()}
+          </span>
+          <Calendar className="w-4 h-4 text-gray-400" />
+        </div>
+
+        {/* Batch ID */}
+        <h3 className="font-mono text-lg font-bold text-gray-900 mb-2 group-hover:text-blue-600 transition">
+          {batch.batch_id}
+        </h3>
+
+        {/* Product Name */}
+        <p className="text-sm text-gray-600 mb-4">
+          {batch.product?.name || 'Unknown Product'}
+        </p>
+
+        {/* Date */}
+        <div className="flex items-center justify-between text-xs text-gray-500 pt-4 border-t border-gray-100">
+          <span>Created</span>
+          <span className="font-medium">
+            {new Date(batch.created_at).toLocaleDateString('en-AU')}
+          </span>
+        </div>
+
+        {/* Hover Arrow */}
+        <div className="mt-4 flex items-center justify-end text-blue-600 opacity-0 group-hover:opacity-100 transition">
+          <span className="text-sm font-medium mr-1">Open QA Checks</span>
+          <TrendingUp className="w-4 h-4" />
+        </div>
+      </div>
+    </Link>
   );
 }

@@ -35,7 +35,7 @@ export default function DeleteBatchModal({
     try {
       await onConfirm();
       onClose();
-    } catch (err) {
+    } catch (_err) {
       setError('Failed to delete batch. Please try again.');
     } finally {
       setIsDeleting(false);

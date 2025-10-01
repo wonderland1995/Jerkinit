@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Layout from '@/components/Layout';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import type { MaterialInventorySummary } from '@/types/inventory';
 

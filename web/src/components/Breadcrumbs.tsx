@@ -34,12 +34,11 @@ export default function Breadcrumbs({ items }: BreadcrumbsProps) {
                 {item.label}
               </span>
             ) : (
-              <Link
-                href={item.href as any}
+              <a href={item.href}
                 className="inline-flex items-center text-sm font-medium text-gray-700 hover:text-blue-600"
               >
                 {item.label}
-              </Link>
+              </a>
             )}
           </li>
         ))}

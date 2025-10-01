@@ -4,8 +4,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Trash2, Eye, ClipboardCheck } from 'lucide-react';
+import DeleteBatchModal from '@/components/DeleteBatchModal';
 import type { Route } from 'next';
-
 
 interface BatchSummary {
   id: string;
@@ -31,9 +32,10 @@ export default function BatchHistoryPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'in_progress' | 'completed' | 'released'>('all');
   const [searchRaw, setSearchRaw] = useState('');
-  const [searchTerm, setSearchTerm] = useState(''); // debounced
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [selectedBatch, setSelectedBatch] = useState<BatchSummary | null>(null);
 
-  // Debounce search input ~250ms
   useEffect(() => {
     const t = setTimeout(() => setSearchTerm(searchRaw.trim().toLowerCase()), 250);
     return () => clearTimeout(t);
@@ -57,6 +59,22 @@ export default function BatchHistoryPage() {
       setLoading(false);
     }
   }
+
+  const handleDeleteConfirm = async () => {
+    if (!selectedBatch) return;
+
+    const res = await fetch(`/api/batches/${selectedBatch.id}/delete`, {
+      method: 'DELETE',
+    });
+
+    if (!res.ok) {
+      throw new Error('Failed to delete batch');
+    }
+
+    await fetchBatches();
+    setShowDeleteModal(false);
+    setSelectedBatch(null);
+  };
 
   const filteredBatches = useMemo(() => {
     return batches.filter((batch) => {
@@ -114,13 +132,11 @@ export default function BatchHistoryPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Batch History</h1>
           <p className="mt-2 text-gray-600">View all production batches and their QA status</p>
         </div>
 
-        {/* Filters & Search */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
@@ -160,7 +176,6 @@ export default function BatchHistoryPage() {
           </div>
         </div>
 
-        {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <StatCard label="Total Batches" value={total} />
           <StatCard label="In Progress" value={inProgress} accent="text-yellow-600" />
@@ -168,7 +183,6 @@ export default function BatchHistoryPage() {
           <StatCard label="Released" value={released} accent="text-green-600" />
         </div>
 
-        {/* Table */}
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -217,12 +231,8 @@ export default function BatchHistoryPage() {
                     </Td>
                     <Td align="center">
                       <div className="flex flex-col items-center text-sm text-gray-700">
-                        <span>
-                          CP: {batch.qa_checkpoints_passed}/{batch.qa_checkpoints_total}
-                        </span>
-                        <span>
-                          Doc: {batch.documents_approved}/{batch.documents_required}
-                        </span>
+                        <span>CP: {batch.qa_checkpoints_passed}/{batch.qa_checkpoints_total}</span>
+                        <span>Doc: {batch.documents_approved}/{batch.documents_required}</span>
                       </div>
                     </Td>
                     <Td align="center">
@@ -233,23 +243,31 @@ export default function BatchHistoryPage() {
                       <div className="text-xs text-gray-500">{batch.created_by ?? 'System'}</div>
                     </Td>
                     <Td align="center">
-                      <div className="flex justify-center gap-3">
-<button
-  onClick={() => router.push((`/qa/${batch.id}` as `/qa/${string}`) as Route)}
-  className="px-3 py-1.5 rounded-md border hover:bg-gray-100 text-sm"
-  aria-label={`Open QA for batch ${batch.batch_id}`}
->
-  QA
-</button>
-
-<button
-  onClick={() => router.push((`/qa/${batch.id}` as `/qa/${string}`) as Route)}
-  className="px-3 py-1.5 rounded-md border hover:bg-gray-100 text-sm"
-  aria-label={`View batch ${batch.batch_id}`}
->
-  View
-</button>
-
+                      <div className="flex justify-center gap-2">
+                        <button
+                          onClick={() => router.push((`/batches/${batch.id}` as `/batches/${string}`) as Route)}
+                          className="text-blue-600 hover:text-blue-900 inline-flex items-center gap-1"
+                          title="View batch"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => router.push((`/qa/${batch.id}` as `/qa/${string}`) as Route)}
+                          className="text-green-600 hover:text-green-900 inline-flex items-center gap-1"
+                          title="QA checks"
+                        >
+                          <ClipboardCheck className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedBatch(batch);
+                            setShowDeleteModal(true);
+                          }}
+                          className="text-red-600 hover:text-red-900 inline-flex items-center gap-1"
+                          title="Delete batch"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </Td>
                   </tr>
@@ -266,11 +284,23 @@ export default function BatchHistoryPage() {
           </div>
         </div>
       </div>
+
+      {selectedBatch && (
+        <DeleteBatchModal
+          isOpen={showDeleteModal}
+          onClose={() => {
+            setShowDeleteModal(false);
+            setSelectedBatch(null);
+          }}
+          onConfirm={handleDeleteConfirm}
+          batchId={selectedBatch.id}
+          batchNumber={selectedBatch.batch_id}
+        />
+      )}
     </div>
   );
 }
 
-/* ---------- small presentational helpers ---------- */
 function StatCard({ label, value, accent = 'text-gray-900' }: { label: string; value: number; accent?: string }) {
   return (
     <div className="bg-white rounded-lg shadow-sm p-4">
@@ -283,7 +313,7 @@ function StatCard({ label, value, accent = 'text-gray-900' }: { label: string; v
 function Th({ children, align = 'left' }: { children: React.ReactNode; align?: 'left' | 'center' | 'right' }) {
   return (
     <th
-      className={`px-6 py-3 text-${align} text-xs font-medium text-gray-500 uppercase tracking-wider`}
+      className={`px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider`}
       style={{ textAlign: align }}
     >
       {children}

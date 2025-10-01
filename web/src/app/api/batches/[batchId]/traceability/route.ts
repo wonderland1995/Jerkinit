@@ -9,13 +9,20 @@ export async function GET(
   const supabase = createClient();
 
   const { data, error } = await supabase
-    .from('batch_qa_checks')
-    .select('*')
+    .from('batch_lot_usage')
+    .select(`
+      *,
+      lot:lots(
+        *,
+        material:materials(*),
+        supplier:suppliers(*)
+      )
+    `)
     .eq('batch_id', batchId);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ checks: data || [] });
+  return NextResponse.json({ traceability: data || [] });
 }

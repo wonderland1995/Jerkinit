@@ -5,14 +5,15 @@ export async function GET() {
   const supabase = createClient();
 
   const { data, error } = await supabase
-    .from('products')
+    .from('qa_checkpoints')
     .select('*')
     .eq('active', true)
-    .order('name');
+    .order('stage')
+    .order('display_order');
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ products: data });
+  return NextResponse.json({ checkpoints: data });
 }

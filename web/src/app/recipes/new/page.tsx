@@ -45,7 +45,7 @@ useEffect(() => {
     });
   };
 
-  const updateIngredient = (index: number, field: string, value: string | number) => {
+  const updateIngredient = (index: number, field: string, value: string | number | boolean) => {
     const updated = [...formData.ingredients];
     updated[index] = { ...updated[index], [field]: value };
     setFormData({ ...formData, ingredients: updated });
@@ -209,7 +209,7 @@ useEffect(() => {
             </div>
 
             {formData.ingredients.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">No ingredients added yet. Click "Add Ingredient" to start.</p>
+              <p className="text-gray-500 text-center py-8">No ingredients added yet. Click &quot;Add Ingredient&quot; to start.</p>
             ) : (
               <div className="space-y-3">
                 {formData.ingredients.map((ingredient, index) => (

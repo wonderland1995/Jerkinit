@@ -31,10 +31,6 @@ export default function BatchDetailPage() {
   const [loading, setLoading] = useState(true);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
-  useEffect(() => {
-    fetchBatch();
-  }, [batchId]);
-
   const fetchBatch = async () => {
     const [batchRes, traceRes] = await Promise.all([
       fetch(`/api/batches/${batchId}`),
@@ -50,6 +46,10 @@ export default function BatchDetailPage() {
     });
     setLoading(false);
   };
+
+  useEffect(() => {
+    fetchBatch();
+  }, [batchId]);
 
   const handleDelete = async () => {
     const res = await fetch(`/api/batches/${batchId}/delete`, {

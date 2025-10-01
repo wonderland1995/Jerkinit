@@ -22,7 +22,7 @@ export async function POST(request: Request) {
       // Use your existing batch counter logic
       const today = new Date().toISOString().split('T')[0];
       
-      const { data: counter, error: counterError } = await supabase
+      const { data: counter } = await supabase
         .from('batch_day_counters')
         .select('counter')
         .eq('date', today)
@@ -120,7 +120,7 @@ target_amount: ing.quantity * (scaling_factor || 1),
     const allocationResults = [];
     
     if (recipeIngredients.length > 0) {
-      interface RecipeIngredientForBatch { material_id: string; quantity: number; unit: string; tolerance_percentage: number | null; is_cure: boolean | null; material: { name: string }; }
+      //interface RecipeIngredientForBatch { material_id: string; quantity: number; unit: string; tolerance_percentage: number | null; is_cure: boolean | null; material: { name: string }; }
       for (const ingredient of recipeIngredients) {
 const scaled_quantity = ingredient.quantity * (scaling_factor || 1);
 

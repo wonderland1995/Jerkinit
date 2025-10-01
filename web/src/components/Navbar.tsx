@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 export default function Navbar() {
@@ -16,22 +17,22 @@ export default function Navbar() {
     { name: 'Inventory', path: '/inventory' },
     { name: 'QA', path: '/qa' },
     { name: 'Reports', path: '/reports' },
-  ];
+  ] as const;
 
   return (
     <nav className="bg-white shadow-sm border-b border-gray-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex">
-            <a href="/" className="flex items-center px-2 text-xl font-bold text-gray-900">
+            <Link href="/" className="flex items-center px-2 text-xl font-bold text-gray-900">
               🥩 Jerky Production
-            </a>
+            </Link>
             
             <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
               {navItems.map((item) => (
-                <a
+                <Link
                   key={item.path}
-                  href={item.path as any}
+                  href={item.path}
                   className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
                     (item.path === '/' ? pathname === '/' : isActive(item.path))
                       ? 'border-blue-500 text-gray-900'
@@ -39,7 +40,7 @@ export default function Navbar() {
                   }`}
                 >
                   {item.name}
-                </a>
+                </Link>
               ))}
             </div>
           </div>
@@ -50,13 +51,12 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* Mobile menu */}
       <div className="sm:hidden">
         <div className="pt-2 pb-3 space-y-1">
           {navItems.map((item) => (
-            <a
+            <Link
               key={item.path}
-              href={item.path as any}
+              href={item.path}
               className={`block pl-3 pr-4 py-2 border-l-4 text-base font-medium ${
                 (item.path === '/' ? pathname === '/' : isActive(item.path))
                   ? 'bg-blue-50 border-blue-500 text-blue-700'
@@ -64,7 +64,7 @@ export default function Navbar() {
               }`}
             >
               {item.name}
-            </a>
+            </Link>
           ))}
         </div>
       </div>

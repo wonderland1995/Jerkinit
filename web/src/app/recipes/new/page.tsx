@@ -374,10 +374,22 @@ const quickCreateMaterial = async () => {
   required
   value={ingredient.material_id}
   onChange={(e) => {
-    const id = e.target.value;
+    const id = e.currentTarget.value;
     const mat = materials.find(m => m.id === id);
-    updateIngredient(index, 'material_id', id);
-    if (mat) updateIngredient(index, 'unit', mat.unit);
+
+    // update this row only
+    setFormData(prev => {
+      const next = { ...prev };
+      const rows = next.ingredients.slice();
+      const row = { ...rows[index] };
+
+      row.material_id = id;
+      if (mat) row.unit = mat.unit; // auto-fill unit from material
+
+      rows[index] = row;
+      next.ingredients = rows;
+      return next;
+    });
   }}
   className="w-full border border-gray-300 rounded px-3 py-2"
 >
@@ -389,19 +401,27 @@ const quickCreateMaterial = async () => {
   ))}
 </select>
 
+
                     </div>
 
                     <div className="w-32">
                       <input
-                        type="number"
-                        required
-                        min="0"
-                        step="0.01"
-                        value={ingredient.quantity}
-                        onChange={(e) => updateIngredient(index, 'quantity', parseFloat(e.target.value))}
-                        className="w-full border border-gray-300 rounded px-3 py-2"
-                        placeholder="Quantity"
-                      />
+  type="number"
+  min="0"
+  step="0.01"
+  value={ingredient.quantity}
+  onChange={(e) => {
+    const v = Number.isNaN(e.currentTarget.valueAsNumber) ? 0 : e.currentTarget.valueAsNumber;
+    setFormData(prev => {
+      const next = { ...prev };
+      const rows = next.ingredients.slice();
+      rows[index] = { ...rows[index], quantity: v };
+      next.ingredients = rows;
+      return next;
+    });
+  }}
+  className="w-full border border-gray-300 rounded px-3 py-2"
+/>
                     </div>
 
                     <div className="w-20">
@@ -419,11 +439,20 @@ const quickCreateMaterial = async () => {
 
                     <label className="flex items-center">
                       <input
-                        type="checkbox"
-                        checked={ingredient.is_critical}
-                        onChange={(e) => updateIngredient(index, 'is_critical', e.target.checked)}
-                        className="mr-2"
-                      />
+  type="checkbox"
+  checked={ingredient.is_critical}
+  onChange={(e) => {
+    const v = e.currentTarget.checked;
+    setFormData(prev => {
+      const next = { ...prev };
+      const rows = next.ingredients.slice();
+      rows[index] = { ...rows[index], is_critical: v };
+      next.ingredients = rows;
+      return next;
+    });
+  }}
+  className="mr-2"
+/>
                       <span className="text-sm">Critical</span>
                     </label>
 

@@ -19,6 +19,20 @@ type Body = {
   }>;
 };
 
+export async function GET() {
+  const supabase = createClient();
+
+  const { data, error } = await supabase
+    .from("recipes")
+    .select("id, name, recipe_code, base_beef_weight, target_yield_weight, is_active, description, created_at")
+    .order("created_at", { ascending: false });
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // shape matches your RecipesPage expectation: { recipes: [...] }
+  return NextResponse.json({ recipes: data ?? [] });
+}
+
 export async function POST(req: Request) {
   const supabase = createClient();
   const body = (await req.json()) as Body;

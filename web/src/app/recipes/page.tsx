@@ -57,14 +57,28 @@ export default function RecipesPage() {
               onClick={() => window.location.href = `/recipes/${recipe.id}`}
             >
               <div className="p-6">
-                <div className="flex justify-between items-start mb-3">
-                  <h3 className="text-xl font-semibold">{recipe.name}</h3>
-                  {recipe.is_active && (
-                    <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded">
-                      Active
-                    </span>
-                  )}
-                </div>
+             <div className="flex justify-between items-start mb-3">
+  <h3 className="text-xl font-semibold">{recipe.name}</h3>
+  <div className="flex items-center gap-2">
+    {recipe.is_active && (
+      <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded">
+        Active
+      </span>
+    )}
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        window.location.href = `/recipes/${recipe.id}/edit`;
+      }}
+      className="text-xs px-2 py-1 border rounded hover:bg-gray-50"
+      title="Edit recipe"
+    >
+      Edit
+    </button>
+  </div>
+</div>
+
                 
                 <p className="text-sm text-gray-600 mb-2">
                   Code: {recipe.recipe_code}

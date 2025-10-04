@@ -3,11 +3,20 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 
+interface Recipe {
+  id: string;
+  name: string;
+  description: string | null;
+  instructions: string | null;
+  is_active: boolean;
+  recipe_code: string;
+}
+
 export default function EditRecipePage() {
   const { recipeId } = useParams<{ recipeId: string }>();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [recipe, setRecipe] = useState<any>(null); // you can swap to a typed model later
+  const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -20,6 +29,8 @@ export default function EditRecipePage() {
   }, [recipeId]);
 
   const save = async () => {
+    if (!recipe) return;
+    
     setSaving(true);
     try {
       const res = await fetch(`/api/recipes/${recipeId}`, {
@@ -30,7 +41,6 @@ export default function EditRecipePage() {
           description: recipe.description,
           instructions: recipe.instructions,
           is_active: recipe.is_active,
-          // optionally also send updated ingredients if you build that UI here
         }),
       });
       if (!res.ok) {
@@ -45,7 +55,7 @@ export default function EditRecipePage() {
     }
   };
 
-  if (loading) return <div className="p-6">Loading…</div>;
+  if (loading) return <div className="p-6">Loading...</div>;
   if (!recipe) return <div className="p-6">Not found</div>;
 
   return (
@@ -57,7 +67,7 @@ export default function EditRecipePage() {
         <input
           className="border rounded p-2 w-full"
           value={recipe.name ?? ''}
-          onChange={(e) => setRecipe((r: any) => ({ ...r, name: e.target.value }))}
+          onChange={(e) => setRecipe(prev => prev ? { ...prev, name: e.target.value } : null)}
         />
       </label>
 
@@ -67,7 +77,7 @@ export default function EditRecipePage() {
           className="border rounded p-2 w-full"
           rows={3}
           value={recipe.description ?? ''}
-          onChange={(e) => setRecipe((r: any) => ({ ...r, description: e.target.value }))}
+          onChange={(e) => setRecipe(prev => prev ? { ...prev, description: e.target.value } : null)}
         />
       </label>
 
@@ -75,7 +85,7 @@ export default function EditRecipePage() {
         <input
           type="checkbox"
           checked={!!recipe.is_active}
-          onChange={(e) => setRecipe((r: any) => ({ ...r, is_active: e.target.checked }))}
+          onChange={(e) => setRecipe(prev => prev ? { ...prev, is_active: e.target.checked } : null)}
         />
         <span className="text-sm">Active</span>
       </label>
@@ -94,7 +104,7 @@ export default function EditRecipePage() {
           onClick={save}
           disabled={saving}
         >
-          {saving ? 'Saving…' : 'Save changes'}
+          {saving ? 'Saving...' : 'Save changes'}
         </button>
       </div>
     </div>

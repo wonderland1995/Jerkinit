@@ -1,6 +1,37 @@
 import { createClient } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 
+interface RecipeIngredient {
+  id: string;
+  material_id: string;
+  quantity: number;
+  unit: string;
+  is_critical: boolean;
+  is_cure: boolean;
+  materials: {
+    id: string;
+    name: string;
+    material_code: string;
+  };
+}
+
+interface RecipeData {
+  id: string;
+  product_id: string;
+  name: string;
+  recipe_code: string;
+  base_beef_weight: number;
+  target_yield_weight: number | null;
+  product_category: string | null;
+  description: string | null;
+  instructions: string | null;
+  version: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  recipe_ingredients: RecipeIngredient[];
+}
+
 export async function GET(
   _req: NextRequest,
   context: { params: Promise<{ recipeId: string }> }
@@ -54,10 +85,12 @@ export async function GET(
       return NextResponse.json({ error: 'Recipe not found' }, { status: 404 });
     }
 
+    const recipeData = recipe as unknown as RecipeData;
+
     // Transform recipe_ingredients to ingredients for frontend
     const transformed = {
-      ...recipe,
-      ingredients: (recipe.recipe_ingredients || []).map((ri: any) => ({
+      ...recipeData,
+      ingredients: (recipeData.recipe_ingredients || []).map((ri) => ({
         ...ri,
         material: ri.materials
       }))
@@ -66,10 +99,11 @@ export async function GET(
     console.log('[API] Returning recipe with', transformed.ingredients.length, 'ingredients');
     return NextResponse.json({ recipe: transformed });
     
-  } catch (error: any) {
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Failed to fetch recipe';
     console.error('[API] Error fetching recipe:', error);
     return NextResponse.json(
-      { error: error?.message || 'Failed to fetch recipe' }, 
+      { error: errorMessage }, 
       { status: 500 }
     );
   }
@@ -99,10 +133,11 @@ export async function PUT(
     if (error) throw error;
 
     return NextResponse.json({ recipe: data });
-  } catch (error: any) {
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Failed to update recipe';
     console.error('[API] Error updating recipe:', error);
     return NextResponse.json(
-      { error: error?.message || 'Failed to update recipe' }, 
+      { error: errorMessage }, 
       { status: 500 }
     );
   }

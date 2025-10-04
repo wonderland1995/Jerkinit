@@ -67,8 +67,8 @@ const quickCreateMaterial = async () => {
     }),
   });
 
-  const json = await res.json().catch(() => ({} as any));
-  if (!res.ok) {
+  const json: { material?: Material; error?: string } = await res.json();
+  if (!res.ok || !json.material) {
     alert(json.error ?? "Failed to create material");
     return;
   }
@@ -81,15 +81,15 @@ const quickCreateMaterial = async () => {
   // 2) If there’s an empty ingredient row, auto-select this new material there and set the unit
   setFormData(prev => {
     const next = { ...prev };
-    const idx = next.ingredients.findIndex(r => !r.material_id);
-    if (idx !== -1) {
-      const row = { ...next.ingredients[idx] };
-      row.material_id = material.id;
-      // use material's default unit if present
-      (row as any).unit = (material as any).unit ?? row.unit;
-      next.ingredients = [...next.ingredients];
-      next.ingredients[idx] = row;
+    if (next.ingredients.length === 0) {
+      next.ingredients = [{ material_id: "", quantity: 0, unit: "g", is_critical: false, notes: null }];
     }
+    const firstEmpty = next.ingredients.findIndex(r => !r.material_id);
+    const idx = firstEmpty === -1 ? 0 : firstEmpty;
+    const row = { ...next.ingredients[idx], material_id: material.id, unit: material.unit };
+    const clone = next.ingredients.slice();
+    clone[idx] = row;
+    next.ingredients = clone;
     return next;
   });
 

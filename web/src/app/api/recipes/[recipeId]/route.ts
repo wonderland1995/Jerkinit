@@ -1,36 +1,89 @@
-// src/app/api/recipes/[recipeId]/route.ts
-import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/db';
+import { NextRequest, NextResponse } from 'next/server';
 
-type Params = { recipeId: string };
-type Ctx = { params: Promise<Params> };
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-export async function GET(_req: NextRequest, ctx: Ctx) {
-  const { recipeId: slug } = await ctx.params;
-  const byId = UUID_RE.test(slug);
-
+export async function GET(
+  _req: NextRequest,
+  context: { params: Promise<{ recipeId: string }> }
+) {
+  const { recipeId } = await context.params;
   const supabase = createClient();
-  const base = supabase
-    .from('recipes')
-    .select(`
-      id, product_id, name, recipe_code, base_beef_weight, target_yield_weight,
-      description, instructions, version, is_active, created_at, updated_at,
-      recipe_ingredients (
-        id, material_id, quantity, unit, tolerance_percentage,
-        is_critical, is_cure, display_order, notes,
-        material:materials ( id, name, material_code, unit )
-      )
-    `)
-    .limit(1);
 
-  const query = byId ? base.eq('id', slug) : base.eq('recipe_code', slug);
-  const { data, error } = await query.single();
+  try {
+    const { data: recipe, error } = await supabase
+      .from('recipes')
+      .select(`
+        id,
+        product_id,
+        name,
+        recipe_code,
+        base_beef_weight,
+        target_yield_weight,
+        product_category,
+        description,
+        instructions,
+        version,
+        is_active,
+        created_at,
+        updated_at,
+        recipe_ingredients (
+          id,
+          material_id,
+          quantity,
+          unit,
+          is_critical,
+          is_cure,
+          material:materials (
+            id,
+            name,
+            material_code
+          )
+        )
+      `)
+      .eq('id', recipeId)
+      .single();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 404 });
+    if (error) throw error;
+
+    // Transform recipe_ingredients to ingredients for frontend
+    const transformed = {
+      ...recipe,
+      ingredients: recipe.recipe_ingredients || []
+    };
+
+    return NextResponse.json({ recipe: transformed });
+  } catch (error) {
+    console.error('Error fetching recipe:', error);
+    return NextResponse.json({ error: 'Failed to fetch recipe' }, { status: 500 });
   }
-  return NextResponse.json({ recipe: data });
+}
+
+export async function PUT(
+  req: NextRequest,
+  context: { params: Promise<{ recipeId: string }> }
+) {
+  const { recipeId } = await context.params;
+  const supabase = createClient();
+
+  try {
+    const body = await req.json();
+    
+    const { data, error } = await supabase
+      .from('recipes')
+      .update({
+        name: body.name,
+        description: body.description,
+        instructions: body.instructions,
+        is_active: body.is_active,
+      })
+      .eq('id', recipeId)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return NextResponse.json({ recipe: data });
+  } catch (error) {
+    console.error('Error updating recipe:', error);
+    return NextResponse.json({ error: 'Failed to update recipe' }, { status: 500 });
+  }
 }

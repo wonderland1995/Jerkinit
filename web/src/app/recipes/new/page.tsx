@@ -34,6 +34,8 @@ const [newMat, setNewMat] = useState({
   unit: "g",         // matches your DB enum
 });
 
+const hasValid = formData.ingredients.some(ing => ing.material_id && Number(ing.quantity) > 0);
+
 
 useEffect(() => {
   fetchMaterials();
@@ -127,37 +129,39 @@ const quickCreateMaterial = async () => {
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
+  e.preventDefault();
+  setSaving(true);
 
-    if (!productId) {
-  alert("Please select a product");
-  setSaving(false);
-  return;
-}
+  const validIngredients = formData.ingredients
+    .filter(ing => ing.material_id && Number(ing.quantity) > 0 && ing.unit);
 
+  if (validIngredients.length === 0) {
+    alert('Please add at least one ingredient with a material and a quantity > 0.');
+    setSaving(false);
+    return;
+  }
 
-    try {
-      const res = await fetch('/api/recipes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...formData, product_id: productId }),
+  try {
+    const res = await fetch('/api/recipes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // product_id is optional; API will auto-create/reuse from recipe_code
+      body: JSON.stringify({ ...formData, ingredients: validIngredients, product_id: productId || undefined }),
+    });
 
-      });
-
-      if (res.ok) {
-        alert('Recipe created successfully!');
-        window.location.href = '/recipes';
-      } else {
-        const error = await res.json();
-        alert(`Error: ${error.error}`);
-      }
-    } catch (error) {
-      alert('Failed to create recipe');
-    } finally {
-      setSaving(false);
+    const data: { id?: string; error?: string } = await res.json().catch(() => ({} as never));
+    if (!res.ok || !data.id) {
+      alert(data.error ?? 'Failed to create recipe');
+      return;
     }
-  };
+    window.location.href = `/recipes/${data.id}`;
+  } catch (_err) {
+    alert('Failed to create recipe');
+  } finally {
+    setSaving(false);
+  }
+};
+
 
   return (
     <Layout>
@@ -434,6 +438,7 @@ const quickCreateMaterial = async () => {
                         <option value="kg">kg</option>
                         <option value="ml">ml</option>
                         <option value="L">L</option>
+                        <option value="units">units</option>
                       </select>
                     </div>
 
@@ -478,13 +483,13 @@ const quickCreateMaterial = async () => {
             >
               Cancel
             </button>
-            <button
-              type="submit"
-              disabled={saving || formData.ingredients.length === 0}
-              className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
-            >
-              {saving ? 'Saving...' : 'Save Recipe'}
-            </button>
+<button
+  type="submit"
+  disabled={saving || !hasValid}
+  className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+>
+  {saving ? 'Saving...' : 'Save Recipe'}
+</button>
           </div>
         </form>
       </div>

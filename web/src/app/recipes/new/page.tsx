@@ -15,19 +15,89 @@ export default function CreateRecipePage() {
     target_yield_weight: null,
     description: '',
     instructions: '',
-    ingredients: [],
+      ingredients: [
+    { material_id: '', quantity: 0, unit: 'g', is_critical: false, notes: null },
+  ],
   });
   const [saving, setSaving] = useState(false);
 
-useEffect(() => {
-    fetchMaterials();
-  }, []);
+type Product = { id: string; name: string; code: string };
 
-  const fetchMaterials = async () => {
+const [products, setProducts] = useState<Product[]>([]);
+const [productId, setProductId] = useState<string>("");
+// Quick-add Material UI state
+const [showQuickAdd, setShowQuickAdd] = useState(false);
+const [newMat, setNewMat] = useState({
+  name: "",
+  material_code: "",
+  category: "spice", // matches your DB enum
+  unit: "g",         // matches your DB enum
+});
+
+
+useEffect(() => {
+  fetchMaterials();
+  (async () => {
+    const res = await fetch("/api/products");
+    const data = await res.json();
+    setProducts(data.products ?? []);
+  })();
+}, []);
+
+const fetchMaterials = async () => {
     const res = await fetch('/api/materials');
     const data = await res.json();
     setMaterials(data.materials);
   };
+const quickCreateMaterial = async () => {
+  // light validation
+  if (!newMat.name.trim() || !newMat.material_code.trim()) {
+    alert("Please enter a name and a code");
+    return;
+  }
+
+  const res = await fetch("/api/materials", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: newMat.name.trim(),
+      material_code: newMat.material_code.trim().toUpperCase(),
+      category: newMat.category, // 'beef' | 'spice' | 'packaging' | 'additive' | 'cure' | 'other'
+      unit: newMat.unit,         // 'g' | 'kg' | 'ml' | 'L' | 'units'
+    }),
+  });
+
+  const json = await res.json().catch(() => ({} as any));
+  if (!res.ok) {
+    alert(json.error ?? "Failed to create material");
+    return;
+  }
+
+  const material = json.material as Material;
+
+  // 1) Add to dropdown (keep sorted by name)
+  setMaterials(prev => [...prev, material].sort((a, b) => a.name.localeCompare(b.name)));
+
+  // 2) If there’s an empty ingredient row, auto-select this new material there and set the unit
+  setFormData(prev => {
+    const next = { ...prev };
+    const idx = next.ingredients.findIndex(r => !r.material_id);
+    if (idx !== -1) {
+      const row = { ...next.ingredients[idx] };
+      row.material_id = material.id;
+      // use material's default unit if present
+      (row as any).unit = (material as any).unit ?? row.unit;
+      next.ingredients = [...next.ingredients];
+      next.ingredients[idx] = row;
+    }
+    return next;
+  });
+
+  // 3) Reset and hide the quick add panel
+  setNewMat({ name: "", material_code: "", category: "spice", unit: "g" });
+  setShowQuickAdd(false);
+};
+
 
   const addIngredient = () => {
     setFormData({
@@ -60,11 +130,19 @@ useEffect(() => {
     e.preventDefault();
     setSaving(true);
 
+    if (!productId) {
+  alert("Please select a product");
+  setSaving(false);
+  return;
+}
+
+
     try {
       const res = await fetch('/api/recipes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+          body: JSON.stringify({ ...formData, product_id: productId }),
+
       });
 
       if (res.ok) {
@@ -95,6 +173,25 @@ useEffect(() => {
         <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow p-6 space-y-6">
           {/* Basic Info */}
           <div className="grid grid-cols-2 gap-4">
+            <div>
+  <label className="block text-sm font-medium text-gray-700 mb-1">
+    Product *
+  </label>
+  <select
+    required
+    value={productId}
+    onChange={(e) => setProductId(e.target.value)}
+    className="w-full border border-gray-300 rounded px-3 py-2"
+  >
+    <option value="">Select product...</option>
+    {products.map((p) => (
+      <option key={p.id} value={p.id}>
+        {p.name} ({p.code})
+      </option>
+    ))}
+  </select>
+</div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Recipe Name *
@@ -207,6 +304,64 @@ useEffect(() => {
                 + Add Ingredient
               </button>
             </div>
+  {/* Quick add material toggle + panel */}
+  <div className="flex justify-between items-center mb-3">
+    <div />
+    <button
+      type="button"
+      onClick={() => setShowQuickAdd(s => !s)}
+      className="text-sm px-3 py-1 rounded border hover:bg-gray-50"
+    >
+      {showQuickAdd ? "Close quick add" : "Quick add material"}
+    </button>
+  </div>
+
+  {showQuickAdd && (
+    <div className="mb-4 grid grid-cols-1 md:grid-cols-5 gap-2 bg-gray-50 p-3 rounded border">
+      <input
+        className="border rounded px-2 py-1"
+        placeholder="Name (e.g., Garlic Powder)"
+        value={newMat.name}
+        onChange={(e) => setNewMat(m => ({ ...m, name: e.target.value }))}
+      />
+      <input
+        className="border rounded px-2 py-1"
+        placeholder="Code (e.g., GAR-PDR)"
+        value={newMat.material_code}
+        onChange={(e) => setNewMat(m => ({ ...m, material_code: e.target.value.toUpperCase() }))}
+      />
+      <select
+        className="border rounded px-2 py-1"
+        value={newMat.category}
+        onChange={(e) => setNewMat(m => ({ ...m, category: e.target.value }))}
+      >
+        <option value="beef">beef</option>
+        <option value="spice">spice</option>
+        <option value="additive">additive</option>
+        <option value="cure">cure</option>
+        <option value="packaging">packaging</option>
+        <option value="other">other</option>
+      </select>
+      <select
+        className="border rounded px-2 py-1"
+        value={newMat.unit}
+        onChange={(e) => setNewMat(m => ({ ...m, unit: e.target.value }))}
+      >
+        <option value="g">g</option>
+        <option value="kg">kg</option>
+        <option value="ml">ml</option>
+        <option value="L">L</option>
+        <option value="units">units</option>
+      </select>
+      <button
+        type="button"
+        onClick={quickCreateMaterial}
+        className="px-3 py-1 rounded bg-black text-white"
+      >
+        Add
+      </button>
+    </div>
+  )}
 
             {formData.ingredients.length === 0 ? (
               <p className="text-gray-500 text-center py-8">No ingredients added yet. Click &quot;Add Ingredient&quot; to start.</p>
@@ -215,19 +370,25 @@ useEffect(() => {
                 {formData.ingredients.map((ingredient, index) => (
                   <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded">
                     <div className="flex-1">
-                      <select
-                        required
-                        value={ingredient.material_id}
-                        onChange={(e) => updateIngredient(index, 'material_id', e.target.value)}
-                        className="w-full border border-gray-300 rounded px-3 py-2"
-                      >
-                        <option value="">Select material...</option>
-                        {materials.map((mat) => (
-                          <option key={mat.id} value={mat.id}>
-                            {mat.name} ({mat.material_code})
-                          </option>
-                        ))}
-                      </select>
+<select
+  required
+  value={ingredient.material_id}
+  onChange={(e) => {
+    const id = e.target.value;
+    const mat = materials.find(m => m.id === id);
+    updateIngredient(index, 'material_id', id);
+    if (mat) updateIngredient(index, 'unit', mat.unit);
+  }}
+  className="w-full border border-gray-300 rounded px-3 py-2"
+>
+  <option value="">Select material...</option>
+  {materials.map((mat) => (
+    <option key={mat.id} value={mat.id}>
+      {mat.name} ({mat.material_code})
+    </option>
+  ))}
+</select>
+
                     </div>
 
                     <div className="w-32">

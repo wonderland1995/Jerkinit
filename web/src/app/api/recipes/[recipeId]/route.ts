@@ -5,10 +5,12 @@ export async function GET(
   _req: NextRequest,
   context: { params: Promise<{ recipeId: string }> }
 ) {
-  const { recipeId } = await context.params;
-  const supabase = createClient();
-
   try {
+    const { recipeId } = await context.params;
+    console.log('[API] Fetching recipe:', recipeId);
+    
+    const supabase = createClient();
+
     const { data: recipe, error } = await supabase
       .from('recipes')
       .select(`
@@ -32,7 +34,7 @@ export async function GET(
           unit,
           is_critical,
           is_cure,
-          material:materials (
+          materials (
             id,
             name,
             material_code
@@ -42,18 +44,34 @@ export async function GET(
       .eq('id', recipeId)
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('[API] Supabase error:', error);
+      throw error;
+    }
+
+    if (!recipe) {
+      console.log('[API] Recipe not found');
+      return NextResponse.json({ error: 'Recipe not found' }, { status: 404 });
+    }
 
     // Transform recipe_ingredients to ingredients for frontend
     const transformed = {
       ...recipe,
-      ingredients: recipe.recipe_ingredients || []
+      ingredients: (recipe.recipe_ingredients || []).map((ri: any) => ({
+        ...ri,
+        material: ri.materials
+      }))
     };
 
+    console.log('[API] Returning recipe with', transformed.ingredients.length, 'ingredients');
     return NextResponse.json({ recipe: transformed });
-  } catch (error) {
-    console.error('Error fetching recipe:', error);
-    return NextResponse.json({ error: 'Failed to fetch recipe' }, { status: 500 });
+    
+  } catch (error: any) {
+    console.error('[API] Error fetching recipe:', error);
+    return NextResponse.json(
+      { error: error?.message || 'Failed to fetch recipe' }, 
+      { status: 500 }
+    );
   }
 }
 
@@ -61,10 +79,9 @@ export async function PUT(
   req: NextRequest,
   context: { params: Promise<{ recipeId: string }> }
 ) {
-  const { recipeId } = await context.params;
-  const supabase = createClient();
-
   try {
+    const { recipeId } = await context.params;
+    const supabase = createClient();
     const body = await req.json();
     
     const { data, error } = await supabase
@@ -82,8 +99,11 @@ export async function PUT(
     if (error) throw error;
 
     return NextResponse.json({ recipe: data });
-  } catch (error) {
-    console.error('Error updating recipe:', error);
-    return NextResponse.json({ error: 'Failed to update recipe' }, { status: 500 });
+  } catch (error: any) {
+    console.error('[API] Error updating recipe:', error);
+    return NextResponse.json(
+      { error: error?.message || 'Failed to update recipe' }, 
+      { status: 500 }
+    );
   }
 }

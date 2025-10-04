@@ -1,144 +1,102 @@
 import { createClient } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 
-interface RecipeIngredient {
-  id: string;
-  material_id: string;
-  quantity: number;
-  unit: string;
-  is_critical: boolean;
-  is_cure: boolean;
-  materials: {
-    id: string;
-    name: string;
-    material_code: string;
-  };
-}
+type Params = { recipeId: string };
+type Ctx = { params: Promise<Params> };
 
-interface RecipeData {
-  id: string;
-  product_id: string;
-  name: string;
-  recipe_code: string;
-  base_beef_weight: number;
-  target_yield_weight: number | null;
-  product_category: string | null;
-  description: string | null;
-  instructions: string | null;
-  version: number;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-  recipe_ingredients: RecipeIngredient[];
-}
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export async function GET(
-  _req: NextRequest,
-  context: { params: Promise<{ recipeId: string }> }
-) {
-  try {
-    const { recipeId } = await context.params;
-    console.log('[API] Fetching recipe:', recipeId);
-    
-    const supabase = createClient();
+export async function GET(_req: NextRequest, context: Ctx) {
+  const { recipeId: slug } = await context.params;
+  const byId = UUID_RE.test(slug);
 
-    const { data: recipe, error } = await supabase
-      .from('recipes')
-      .select(`
+  const supabase = createClient();
+
+  const base = supabase
+    .from('recipes')
+    .select(`
+      id,
+      product_id,
+      name,
+      recipe_code,
+      base_beef_weight,
+      target_yield_weight,
+      description,
+      instructions,
+      version,
+      is_active,
+      created_at,
+      updated_at,
+      recipe_ingredients (
         id,
-        product_id,
-        name,
-        recipe_code,
-        base_beef_weight,
-        target_yield_weight,
-        product_category,
-        description,
-        instructions,
-        version,
-        is_active,
-        created_at,
-        updated_at,
-        recipe_ingredients (
+        material_id,
+        quantity,
+        unit,
+        tolerance_percentage,
+        is_critical,
+        is_cure,
+        display_order,
+        notes,
+        material:materials (
           id,
-          material_id,
-          quantity,
-          unit,
-          is_critical,
-          is_cure,
-          materials (
-            id,
-            name,
-            material_code
-          )
+          name,
+          material_code,
+          unit
         )
-      `)
-      .eq('id', recipeId)
-      .single();
+      )
+    `)
+    .limit(1);
 
-    if (error) {
-      console.error('[API] Supabase error:', error);
-      throw error;
-    }
+  const { data, error } = byId
+    ? await base.eq('id', slug).single()
+    : await base.eq('recipe_code', slug).single();
 
-    if (!recipe) {
-      console.log('[API] Recipe not found');
-      return NextResponse.json({ error: 'Recipe not found' }, { status: 404 });
-    }
-
-    const recipeData = recipe as unknown as RecipeData;
-
-    // Transform recipe_ingredients to ingredients for frontend
-    const transformed = {
-      ...recipeData,
-      ingredients: (recipeData.recipe_ingredients || []).map((ri) => ({
-        ...ri,
-        material: ri.materials
-      }))
-    };
-
-    console.log('[API] Returning recipe with', transformed.ingredients.length, 'ingredients');
-    return NextResponse.json({ recipe: transformed });
-    
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Failed to fetch recipe';
-    console.error('[API] Error fetching recipe:', error);
-    return NextResponse.json(
-      { error: errorMessage }, 
-      { status: 500 }
-    );
+  if (error) {
+    // PGRST116 = not found from PostgREST
+    const status = error.code === 'PGRST116' ? 404 : 500;
+    return NextResponse.json({ error: error.message }, { status });
   }
+
+  // keep your frontend contract: "ingredients" property
+  return NextResponse.json({
+    recipe: { ...data, ingredients: data.recipe_ingredients ?? [] },
+  });
 }
 
-export async function PUT(
-  req: NextRequest,
-  context: { params: Promise<{ recipeId: string }> }
-) {
+export async function PUT(req: NextRequest, context: Ctx) {
+  const { recipeId } = await context.params;
+  const supabase = createClient();
+
+  type PutBody = {
+    name?: string;
+    description?: string | null;
+    instructions?: string | null;
+    is_active?: boolean;
+  };
+
   try {
-    const { recipeId } = await context.params;
-    const supabase = createClient();
-    const body = await req.json();
-    
+    const body = (await req.json()) as PutBody;
+
     const { data, error } = await supabase
       .from('recipes')
       .update({
-        name: body.name,
-        description: body.description,
-        instructions: body.instructions,
-        is_active: body.is_active,
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.description !== undefined ? { description: body.description } : {}),
+        ...(body.instructions !== undefined ? { instructions: body.instructions } : {}),
+        ...(body.is_active !== undefined ? { is_active: !!body.is_active } : {}),
       })
       .eq('id', recipeId)
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      const status = error.code === 'PGRST116' ? 404 : 400;
+      return NextResponse.json({ error: error.message }, { status });
+    }
 
     return NextResponse.json({ recipe: data });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Failed to update recipe';
-    console.error('[API] Error updating recipe:', error);
-    return NextResponse.json(
-      { error: errorMessage }, 
-      { status: 500 }
-    );
+  } catch (_err) {
+    return NextResponse.json({ error: 'Failed to update recipe' }, { status: 500 });
   }
 }

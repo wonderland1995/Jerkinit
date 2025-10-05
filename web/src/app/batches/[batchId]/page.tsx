@@ -3,31 +3,57 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Trash2 } from 'lucide-react';
-
 import Breadcrumbs from '@/components/Breadcrumbs';
 import DeleteBatchModal from '@/components/DeleteBatchModal';
-import type { BatchLotUsage } from '@/types/inventory';
+
+type Unit = 'g' | 'kg' | 'ml' | 'L' | 'units';
+
+interface LotBreakdown {
+  usage_id: string;
+  lot_id: string;
+  lot_number: string;
+  internal_lot_code: string;
+  quantity_used: number;
+  unit: Unit;
+  supplier_name: string | null;
+  received_date: string | null;
+  expiry_date: string | null;
+}
+
+interface MaterialTraceRow {
+  material_id: string;
+  material_name: string;
+  unit: Unit;
+  target_amount: number;          // from recipe (scaled)
+  used_amount: number;            // sum of lot allocations
+  remaining_amount: number;       // target - used
+  is_critical: boolean;
+  tolerance_percentage: number;
+  lots: LotBreakdown[];           // per-lot breakdown
+}
 
 interface BatchDetails {
   id: string;
   batch_number: string;
   recipe_id: string;
-  beef_input_weight: number;
+  beef_input_weight: number;      // NOTE: consider renaming to beef_weight_kg and showing kg
   scaling_factor: number;
   production_date: string;
-  status: string;s
+  status: string;                 // fixed typo
   recipe?: {
     name: string;
     recipe_code: string;
   };
-  lot_usage?: BatchLotUsage[];
 }
 
 export default function BatchDetailPage() {
-  const params = useParams();
+  const params = useParams<{ batchId: string }>();
   const router = useRouter();
-  const batchId = params.batchId as string;
+  const batchId = params.batchId;
+
   const [batch, setBatch] = useState<BatchDetails | null>(null);
+  const [materials, setMaterials] = useState<MaterialTraceRow[]>([]);
+  const [scale, setScale] = useState<number>(1);
   const [loading, setLoading] = useState(true);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
@@ -37,40 +63,40 @@ export default function BatchDetailPage() {
       fetch(`/api/batches/${batchId}/traceability`),
     ]);
 
-    const batchData = await batchRes.json();
-    const traceData = await traceRes.json();
+    const batchJson = await batchRes.json().catch(() => ({} as never));
+    const traceJson = await traceRes.json().catch(() => ({} as never));
 
-    setBatch({
-      ...batchData.batch,
-      lot_usage: traceData.traceability,
-    });
+    // Expect: { batch: {...} } and { batch: { id, recipe_id, scale }, materials: [...] }
+    setBatch(batchJson.batch ?? null);
+    if (traceRes.ok && traceJson && Array.isArray(traceJson.materials)) {
+      setMaterials(traceJson.materials as MaterialTraceRow[]);
+      setScale(typeof traceJson.batch?.scale === 'number' ? traceJson.batch.scale : 1);
+    } else {
+      setMaterials([]);
+      setScale(1);
+    }
+
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchBatch();
+    void fetchBatch();
   }, [batchId]);
 
   const handleDelete = async () => {
-    const res = await fetch(`/api/batches/${batchId}/delete`, {
-      method: 'DELETE',
-    });
-
-    if (!res.ok) {
-      throw new Error('Failed to delete batch');
-    }
-
+    const res = await fetch(`/api/batches/${batchId}/delete`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Failed to delete batch');
     router.push('/batches');
   };
 
- if (loading) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center py-12">Loading batch...</div>
       </div>
     );
   }
- if (!batch) {
+  if (!batch) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center py-12">Batch not found</div>
@@ -78,25 +104,16 @@ export default function BatchDetailPage() {
     );
   }
 
-  // Group lot usage by material
-  const groupedUsage = batch.lot_usage?.reduce((acc, usage) => {
-    const materialName = usage.material?.name || 'Unknown';
-    if (!acc[materialName]) {
-      acc[materialName] = [];
-    }
-    acc[materialName].push(usage);
-    return acc;
-  }, {} as Record<string, BatchLotUsage[]>);
-
   return (
-    // REMOVE <Layout> wrapper, just return the content directly
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-5xl mx-auto px-6 py-6">
-        <Breadcrumbs items={[
-          { label: 'Dashboard', href: '/' },
-          { label: 'Batches', href: '/batches' },
-          { label: batch.batch_number, href: `/batches/${batchId}` }
-        ]} />
+        <Breadcrumbs
+          items={[
+            { label: 'Dashboard', href: '/' },
+            { label: 'Batches', href: '/batches' },
+            { label: batch.batch_number, href: `/batches/${batchId}` },
+          ]}
+        />
 
         <div className="flex justify-between items-start mb-6">
           <div>
@@ -108,12 +125,17 @@ export default function BatchDetailPage() {
             )}
           </div>
           <div className="flex items-center gap-3">
-            <span className={`px-4 py-2 rounded-full text-sm font-medium ${
-              batch.status === 'completed' ? 'bg-green-100 text-green-800' :
-              batch.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' :
-              batch.status === 'released' ? 'bg-blue-100 text-blue-800' :
-              'bg-gray-100 text-gray-800'
-            }`}>
+            <span
+              className={`px-4 py-2 rounded-full text-sm font-medium ${
+                batch.status === 'completed'
+                  ? 'bg-green-100 text-green-800'
+                  : batch.status === 'in_progress'
+                  ? 'bg-yellow-100 text-yellow-800'
+                  : batch.status === 'released'
+                  ? 'bg-blue-100 text-blue-800'
+                  : 'bg-gray-100 text-gray-800'
+              }`}
+            >
               {batch.status.replace('_', ' ').toUpperCase()}
             </span>
             <button
@@ -132,74 +154,108 @@ export default function BatchDetailPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-sm text-gray-600">Production Date</p>
-              <p className="font-medium">{new Date(batch.production_date).toLocaleDateString()}</p>
+              <p className="font-medium">
+                {new Date(batch.production_date).toLocaleDateString()}
+              </p>
             </div>
             <div>
               <p className="text-sm text-gray-600">Beef Input Weight</p>
-              <p className="font-medium">{batch.beef_input_weight}g</p>
+              {/* If this is kg in your DB, show kg or convert to g */}
+              <p className="font-medium">{batch.beef_input_weight} g</p>
             </div>
             <div>
               <p className="text-sm text-gray-600">Scaling Factor</p>
-              <p className="font-medium">{batch.scaling_factor?.toFixed(2)}x</p>
+              <p className="font-medium">{scale.toFixed(2)}×</p>
             </div>
           </div>
         </div>
 
-        {/* Ingredient Traceability */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-semibold mb-4">Ingredient Traceability</h2>
-          
-          {!groupedUsage || Object.keys(groupedUsage).length === 0 ? (
-            <p className="text-gray-500">No ingredient allocations recorded</p>
-          ) : (
-            <div className="space-y-6">
-              {Object.entries(groupedUsage).map(([materialName, usages]) => (
-                <div key={materialName} className="border rounded-lg p-4">
-                  <h3 className="font-semibold text-lg mb-3">{materialName}</h3>
-                  
-                  <div className="space-y-2">
-                    {usages.map((usage) => (
-                      <div 
-                        key={usage.id} 
-                        className="flex items-center justify-between bg-gray-50 p-3 rounded"
-                      >
-                        <div className="flex-1">
-                          <p className="font-medium">
-                            Lot: {usage.lot?.lot_number || 'Unknown'}
-                          </p>
-                          <p className="text-sm text-gray-600">
-                            Internal: {usage.lot?.internal_lot_code}
-                          </p>
-                          {usage.lot?.supplier && (
-                            <p className="text-xs text-gray-500">
-                              Supplier: {usage.lot.supplier.name}
-                            </p>
-                          )}
-                        </div>
-                        
-                        <div className="text-right">
-                          <p className="font-semibold">
-                            {usage.quantity_used} {usage.unit}
-                          </p>
-                          {usage.lot?.expiry_date && (
-                            <p className="text-xs text-gray-500">
-                              Exp: {new Date(usage.lot.expiry_date).toLocaleDateString()}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+        {/* Recipe Targets & Allocations */}
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold">Recipe Targets & Allocations</h2>
+          </div>
 
-                  <div className="mt-2 pt-2 border-t">
-                    <p className="text-sm text-gray-600">
-                      Total used: <span className="font-medium">
-                        {usages.reduce((sum, u) => sum + u.quantity_used, 0).toFixed(2)} g
-                      </span>
-                    </p>
-                  </div>
-                </div>
-              ))}
+          {materials.length === 0 ? (
+            <p className="text-gray-500">No recipe ingredients or allocations yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-left text-gray-600 border-b">
+                    <th className="py-2 pr-4">Ingredient</th>
+                    <th className="py-2 pr-4">Target</th>
+                    <th className="py-2 pr-4">Used</th>
+                    <th className="py-2 pr-4">Remaining</th>
+                    <th className="py-2 pr-4">Critical</th>
+                    <th className="py-2 pr-4">Tol%</th>
+                    <th className="py-2 pr-4">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {materials.map((m) => {
+                    const diffPct =
+                      m.target_amount > 0
+                        ? (Math.abs(m.used_amount - m.target_amount) / m.target_amount) * 100
+                        : 0;
+                    const hasUsed = m.used_amount > 0;
+                    const inTol = hasUsed
+                      ? diffPct <= m.tolerance_percentage
+                      : null;
+
+                    return (
+                      <tr key={m.material_id} className="border-b last:border-0 align-top">
+                        <td className="py-2 pr-4">
+                          <div className="font-medium">{m.material_name}</div>
+                          {/* Per-lot breakdown */}
+                          {m.lots.length > 0 && (
+                            <div className="mt-2 space-y-1">
+                              {m.lots.map((l) => (
+                                <div
+                                  key={l.usage_id}
+                                  className="text-xs text-gray-600 flex justify-between bg-gray-50 px-2 py-1 rounded"
+                                >
+                                  <span>
+                                    Lot {l.lot_number} ({l.internal_lot_code})
+                                    {l.supplier_name ? ` · ${l.supplier_name}` : ''}
+                                  </span>
+                                  <span>
+                                    {l.quantity_used.toFixed(2)} {l.unit}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-2 pr-4">
+                          {m.target_amount.toFixed(2)} {m.unit}
+                        </td>
+                        <td className="py-2 pr-4">
+                          {m.used_amount.toFixed(2)} {m.unit}
+                        </td>
+                        <td className="py-2 pr-4">
+                          {m.remaining_amount.toFixed(2)} {m.unit}
+                        </td>
+                        <td className="py-2 pr-4">{m.is_critical ? 'Yes' : 'No'}</td>
+                        <td className="py-2 pr-4">{m.tolerance_percentage}</td>
+                        <td className="py-2 pr-4">
+                          {!hasUsed ? (
+                            <span className="text-gray-400">—</span>
+                          ) : inTol ? (
+                            <span className="px-2 py-0.5 rounded bg-green-100 text-green-700">
+                              OK
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded bg-red-100 text-red-700">
+                              Out
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
@@ -221,7 +277,6 @@ export default function BatchDetailPage() {
         </div>
       </div>
 
-      {/* Delete Modal */}
       <DeleteBatchModal
         isOpen={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}

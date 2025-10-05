@@ -250,7 +250,6 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   if (allocations.length === 0) {
     return NextResponse.json({ error: 'No valid allocations' }, { status: 400 });
   }
-
   const supabase = createClient();
 
   const rows = allocations.map(a => ({
@@ -261,10 +260,35 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     unit: a.unit,
   }));
 
+
+
   const { error } = await supabase.from('batch_lot_usage').insert(rows);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
   return NextResponse.json({ ok: true }, { status: 201 });
+}
+
+export async function DELETE(req: NextRequest, ctx: { params: Promise<{ batchId: string }> }) {
+  const { batchId } = await ctx.params;
+  const { searchParams } = new URL(req.url);
+  const usage_id = searchParams.get('usage_id');
+
+  if (!usage_id) {
+    return NextResponse.json({ error: 'usage_id is required' }, { status: 400 });
+  }
+
+  const supabase = createClient();
+  // only delete from this batch
+  const { error } = await supabase
+    .from('batch_lot_usage')
+    .delete()
+    .eq('id', usage_id)
+    .eq('batch_id', batchId);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+  return NextResponse.json({ ok: true });
 }

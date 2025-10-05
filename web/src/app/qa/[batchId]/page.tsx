@@ -291,16 +291,76 @@ export default function BatchQAPage() {
 }
 
 // ---------- CheckpointCard (inline component) ----------
+// --- put this BELOW your page component, replacing your existing CheckpointCard ---
+
 interface CheckpointCardProps {
   checkpoint: Checkpoint;
   check: QACheck | undefined;
   onChange: (status: QAStatus, data: Partial<QACheck>) => void;
 }
 
+type FieldFlags = {
+  temperature?: boolean;
+  humidity?: boolean;
+  ph?: boolean;
+  aw?: boolean;
+  notes?: boolean;       // default true
+  managedExternally?: boolean; // shows banner, hides actions
+};
+
+// Map the EXACT inputs each checkpoint code needs.
+// Anything not listed falls back to "notes only".
+const FIELDS_BY_CODE: Record<string, FieldFlags> = {
+  // --- Preparation (some moved out of this page) ---
+  // Raw Beef Receiving Temperature -> handled in Receiving flow, not here
+  'PREP-CCP-001': { managedExternally: true },
+
+  // Lot number recording: status + optional note only
+  'PREP-004': { notes: true },
+
+  // Ingredient weighing accuracy is verified by your batch entry/recipe table
+  'MIX-CCP-001': { notes: true },
+
+  // pH Measurement
+  'MIX-005': { ph: true, notes: true },
+
+  // Product Temperature Control (during mixing)
+  'MIX-CCP-004': { temperature: true, notes: true },
+
+  // Core Temperature Achievement (drying)
+  'DRY-CCP-003': { temperature: true, notes: true },
+
+  // Temperature Log - Hourly (we allow spot entry, or note)
+  'DRY-CCP-004': { temperature: true, notes: true },
+
+  // Water Activity Test
+  'DRY-CCP-005': { aw: true, notes: true },
+
+  // Yield Calculation is usually computed later (final) – just note/mark
+  'FIN-006': { notes: true },
+
+  // Metal detection / label compliance / storage checks — status + optional notes
+  'PKG-CCP-001': { notes: true },
+  'PKG-CCP-002': { notes: true },
+  'PKG-CCP-003': { notes: true },
+  'PKG-CCP-004': { notes: true },
+  'PKG-CCP-005': { notes: true },
+  'FIN-CCP-001': { notes: true },
+  'FIN-CCP-002': { notes: true },
+};
+
+function getFieldFlags(cp: Checkpoint): FieldFlags {
+  const mapped = FIELDS_BY_CODE[cp.code];
+  if (mapped) return { notes: true, ...mapped };
+  // default: notes only
+  return { notes: true };
+}
+
 function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
+  const fields = getFieldFlags(checkpoint);
   const [expanded, setExpanded] = useState(false);
 
-  // form state mirrors numeric, nullable columns (stored as strings for inputs)
+  // Keep form inputs as strings for easy empty checks
   const [temperature, setTemperature] = useState<string>(check?.temperature_c?.toString() ?? '');
   const [humidity, setHumidity] = useState<string>(check?.humidity_percent?.toString() ?? '');
   const [ph, setPh] = useState<string>(check?.ph_level?.toString() ?? '');
@@ -310,29 +370,50 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
 
   const status: QAStatus = check?.status ?? 'pending';
 
-  // Show only relevant numeric fields by stage (keeps UI clean)
-  const showTemp = checkpoint.stage === 'marination' || checkpoint.stage === 'drying' || checkpoint.stage === 'mixing';
-  const showHumidity = checkpoint.stage === 'drying' || checkpoint.stage === 'final';
-  const showPh = checkpoint.stage === 'mixing' || checkpoint.stage === 'final';
-  const showAw = checkpoint.stage === 'drying' || checkpoint.stage === 'final';
+  const validateIfPassing = (): string | null => {
+    // If checkpoint requires a specific reading and user is marking PASSED, require it.
+    if (status === 'passed') {
+      if (fields.temperature && temperature === '') return 'Temperature (°C) is required for this checkpoint.';
+      if (fields.humidity && humidity === '') return 'Humidity (%) is required for this checkpoint.';
+      if (fields.ph && ph === '') return 'pH is required for this checkpoint.';
+      if (fields.aw && aw === '') return 'Water activity (aw) is required for this checkpoint.';
+    }
+    return null;
+  };
 
   const save = () => {
-    onChange(status === 'pending' ? 'failed' : status, {
-      temperature_c: temperature !== '' ? Number(temperature) : null,
-      humidity_percent: humidity !== '' ? Number(humidity) : null,
-      ph_level: ph !== '' ? Number(ph) : null,
-      water_activity: aw !== '' ? Number(aw) : null,
-      notes: notes.trim() ? notes : null,
-      corrective_action: action.trim() ? action : null,
+    const err = validateIfPassing();
+    if (err) {
+      alert(err);
+      setExpanded(true);
+      return;
+    }
+    onChange(status, {
+      temperature_c: fields.temperature ? (temperature !== '' ? Number(temperature) : null) : null,
+      humidity_percent: fields.humidity ? (humidity !== '' ? Number(humidity) : null) : null,
+      ph_level: fields.ph ? (ph !== '' ? Number(ph) : null) : null,
+      water_activity: fields.aw ? (aw !== '' ? Number(aw) : null) : null,
+      notes: fields.notes ? (notes.trim() ? notes : null) : null,
+      corrective_action: status === 'failed' ? (action.trim() ? action : null) : null,
     });
     setExpanded(false);
   };
 
-  const quickPass = () => onChange('passed', {});
+  const quickPass = () => {
+    // Validate quickly; if a value is required, open details
+    if (validateIfPassing()) {
+      setExpanded(true);
+      return;
+    }
+    onChange('passed', {});
+  };
+
   const quickFail = () => {
+    // Encourage corrective action on fail
     setExpanded(true);
     onChange('failed', {});
   };
+
   const quickSkip = () => onChange('skipped', {});
 
   return (
@@ -351,59 +432,70 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <h3 className="truncate text-lg font-semibold">{checkpoint.name}</h3>
+              <h3 className="truncate text-lg font-semibold">
+                {checkpoint.code} — {checkpoint.name}
+              </h3>
               {checkpoint.required && (
                 <span className="rounded bg-red-100 px-2 py-0.5 text-xs text-red-700">Required</span>
               )}
             </div>
             <p className="mt-1 text-sm text-gray-600">{checkpoint.description}</p>
+
+            {fields.managedExternally && (
+              <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                This checkpoint is managed in the **Beef Receiving** flow. Record there; status can be synced here.
+              </div>
+            )}
+
             {check?.checked_at && (
               <p className="mt-2 text-xs text-gray-500">
-                Checked by {check.checked_by} on {new Date(check.checked_at).toLocaleString()}
+                Checked by {check.checked_by ?? '—'} on {new Date(check.checked_at).toLocaleString()}
               </p>
             )}
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={quickPass}
-              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
-                status === 'passed' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-700 hover:bg-green-200'
-              }`}
-            >
-              Pass
-            </button>
-            <button
-              onClick={quickFail}
-              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
-                status === 'failed' ? 'bg-red-600 text-white' : 'bg-red-100 text-red-700 hover:bg-red-200'
-              }`}
-            >
-              Fail
-            </button>
-            <button
-              onClick={quickSkip}
-              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
-                status === 'skipped' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-              title="Mark as not applicable / skipped"
-            >
-              Skip
-            </button>
-            <button
-              onClick={() => setExpanded((v) => !v)}
-              className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
-              title="Details"
-            >
-              {expanded ? '▼' : '▶'}
-            </button>
-          </div>
+          {!fields.managedExternally && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={quickPass}
+                className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                  status === 'passed' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-700 hover:bg-green-200'
+                }`}
+              >
+                Pass
+              </button>
+              <button
+                onClick={quickFail}
+                className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                  status === 'failed' ? 'bg-red-600 text-white' : 'bg-red-100 text-red-700 hover:bg-red-200'
+                }`}
+              >
+                Fail
+              </button>
+              <button
+                onClick={quickSkip}
+                className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                  status === 'skipped' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+                title="Mark as not applicable / skipped"
+              >
+                Skip
+              </button>
+              <button
+                onClick={() => setExpanded((v) => !v)}
+                className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
+                title="Details"
+              >
+                {expanded ? '▼' : '▶'}
+              </button>
+            </div>
+          )}
         </div>
 
-        {expanded && (
+        {!fields.managedExternally && expanded && (
           <div className="mt-4 space-y-3 border-t pt-4">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              {showTemp && (
+              {fields.temperature && (
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">Temperature (°C)</label>
                   <input
@@ -415,7 +507,7 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
                   />
                 </div>
               )}
-              {showHumidity && (
+              {fields.humidity && (
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">Humidity (%)</label>
                   <input
@@ -427,7 +519,7 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
                   />
                 </div>
               )}
-              {showPh && (
+              {fields.ph && (
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">pH</label>
                   <input
@@ -439,7 +531,7 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
                   />
                 </div>
               )}
-              {showAw && (
+              {fields.aw && (
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">Water Activity (aw)</label>
                   <input
@@ -453,15 +545,18 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
               )}
             </div>
 
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Notes</label>
-              <textarea
-                rows={2}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="w-full rounded-lg border px-3 py-2"
-              />
-            </div>
+            {fields.notes && (
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Notes</label>
+                <textarea
+                  rows={2}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full rounded-lg border px-3 py-2"
+                  placeholder="Optional notes…"
+                />
+              </div>
+            )}
 
             {status === 'failed' && (
               <div>

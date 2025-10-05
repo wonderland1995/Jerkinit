@@ -1,59 +1,49 @@
+// src/app/api/qa/checkpoint/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin as supabase } from '@/lib/supabaseAdmin';
+import { createClient } from '@/lib/db';
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const {
-      batch_id,
-      checkpoint_id,
-      status,
-      notes,
-      checked_by,
-      temperature_c,
-      humidity_percent,
-      ph_level,
-      water_activity,
-      corrective_action
-    } = body;
-    
-    // Upsert the QA check
-    const { data, error } = await supabase
-      .from('batch_qa_checks')
-      .upsert({
-        batch_id,
-        checkpoint_id,
-        status,
-        notes,
-        checked_by,
+type Status = 'pending'|'passed'|'failed'|'skipped'|'conditional';
+
+interface PostBody {
+  batch_id: string;
+  checkpoint_id: string;
+  status: Status;
+  checked_by?: string | null;
+  temperature_c?: number | null;
+  humidity_percent?: number | null;
+  ph_level?: number | null;
+  water_activity?: number | null;
+  notes?: string | null;
+  corrective_action?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export async function POST(req: NextRequest) {
+  const supabase = createClient();
+  const body = (await req.json()) as PostBody;
+
+  const { data, error } = await supabase
+    .from('batch_qa_checks')
+    .upsert(
+      [{
+        batch_id: body.batch_id,
+        checkpoint_id: body.checkpoint_id,
+        status: body.status,
+        checked_by: body.checked_by ?? null,
         checked_at: new Date().toISOString(),
-        temperature_c,
-        humidity_percent,
-        ph_level,
-        water_activity,
-        corrective_action,
-        recheck_required: status === 'failed'
-      }, {
-        onConflict: 'batch_id,checkpoint_id'
-      })
-      .select()
-      .single();
-    
-    if (error) {
-      console.error('Error updating checkpoint:', error);
-      return NextResponse.json(
-        { error: 'Failed to update checkpoint' },
-        { status: 500 }
-      );
-    }
-    
-    return NextResponse.json(data);
-    
-  } catch (error) {
-    console.error('Error:', error);
-    return NextResponse.json(
-      { error: 'Failed to update checkpoint' },
-      { status: 500 }
-    );
-  }
+        temperature_c: body.temperature_c ?? null,
+        humidity_percent: body.humidity_percent ?? null,
+        ph_level: body.ph_level ?? null,
+        water_activity: body.water_activity ?? null,
+        notes: body.notes ?? null,
+        corrective_action: body.corrective_action ?? null,
+        metadata: body.metadata ?? {},
+      }],
+      { onConflict: 'batch_id,checkpoint_id' },
+    )
+    .select()
+    .single();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  return NextResponse.json({ check: data });
 }

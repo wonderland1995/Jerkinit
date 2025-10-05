@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Trash2 } from 'lucide-react';
+import { Check, Loader2, Trash2 } from 'lucide-react';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import DeleteBatchModal from '@/components/DeleteBatchModal';
 
@@ -11,93 +11,53 @@ import DeleteBatchModal from '@/components/DeleteBatchModal';
    =========================== */
 type Unit = 'g' | 'kg' | 'ml' | 'L' | 'units';
 
-interface LotBreakdown {
-  usage_id: string;
-  lot_id: string;
-  lot_number: string;
-  internal_lot_code: string;
-  quantity_used: number;
-  unit: Unit;
-  supplier_name: string | null;
-  received_date: string | null;
-  expiry_date: string | null;
-}
-
 interface MaterialTraceRow {
   material_id: string;
   material_name: string;
   unit: Unit;
-  target_amount: number;      // scaled from recipe
-  used_amount: number;        // sum of allocations
-  remaining_amount: number;   // target - used
+  target_amount: number;
+  used_amount: number;        // from lot allocations (we won’t use this column now)
+  remaining_amount: number;   // based on allocations (not used for status now)
   is_critical: boolean;
   tolerance_percentage: number;
-  lots: LotBreakdown[];       // per-lot breakdown
+  lots: unknown[];            // ignored in this UI
+}
+
+interface TraceResp {
+  batch?: { id?: string; recipe_id?: string | null; scale?: number };
+  materials?: MaterialTraceRow[];
 }
 
 interface BatchDetails {
   id: string;
   batch_number: string;
   recipe_id: string | null;
-  beef_weight_kg: number;     // ✅ DB uses kg
+  beef_weight_kg: number;
   scaling_factor: number | null;
   production_date: string;
   status: string;
-  recipe?: {
-    name: string;
-    recipe_code: string;
-  };
+  recipe?: { name: string; recipe_code: string };
 }
 
-interface ApiBatchResponse {
+interface BatchResp {
   batch?: BatchDetails;
 }
 
-interface ApiTraceResponse {
-  batch?: { id?: string; recipe_id?: string | null; scale?: number };
-  materials?: MaterialTraceRow[];
-}
-
-type LotPick = {
+interface ActualRow {
   id: string;
-  lot_number: string;
-  internal_lot_code: string;
-  current_balance: number; // in material.unit
-  unit: Unit;              // material.unit
-  supplier_name: string | null;
-  received_date: string | null;
-  expiry_date: string | null;
-};
-
-interface LotApiRow {
-  id: string;
-  lot_number: string;
-  internal_lot_code: string;
-  current_balance: number | string;
-  supplier?: { name?: string | null } | null;
-  material?: { unit?: string | null } | null;
-  received_date?: string | null;
-  expiry_date?: string | null;
+  material_id: string | null;
+  ingredient_name: string;
+  target_amount: number;     // stored for convenience
+  actual_amount: number | null;
+  unit: Unit;
+  tolerance_percentage: number;
+  in_tolerance: boolean | null;
+  measured_at: string | null;
 }
 
-/* ===========================
-   Helpers
-   =========================== */
-function convert(value: number, from: Unit, to: Unit): number {
-  if (from === to) return value;
-  // weight
-  if (from === 'kg' && to === 'g') return value * 1000;
-  if (from === 'g' && to === 'kg') return value / 1000;
-  // volume
-  if (from === 'L' && to === 'ml') return value * 1000;
-  if (from === 'ml' && to === 'L') return value / 1000;
-  // "units" or mismatched systems -> leave as-is
-  return value;
+interface ActualsResp {
+  actuals?: ActualRow[];
 }
-
-const validUnits: ReadonlySet<Unit> = new Set(['g', 'kg', 'ml', 'L', 'units']);
-const toUnit = (x: unknown, fallback: Unit): Unit =>
-  typeof x === 'string' && validUnits.has(x as Unit) ? (x as Unit) : fallback;
 
 /* ===========================
    Component
@@ -108,133 +68,112 @@ export default function BatchDetailPage() {
   const batchId = params.batchId;
 
   const [batch, setBatch] = useState<BatchDetails | null>(null);
-  const [materials, setMaterials] = useState<MaterialTraceRow[]>([]);
   const [scale, setScale] = useState<number>(1);
+  const [materials, setMaterials] = useState<MaterialTraceRow[]>([]);
+  const [actuals, setActuals] = useState<Record<string, ActualRow>>({});
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [savedFlash, setSavedFlash] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
-  // Allocation UI state
-  const [allocOpen, setAllocOpen] = useState(false);
-  const [allocFor, setAllocFor] = useState<MaterialTraceRow | null>(null);
-  const [lotQuery, setLotQuery] = useState('');
-  const [lots, setLots] = useState<LotPick[]>([]);
-  const [selectedLotId, setSelectedLotId] = useState<string>('');
-  const [allocQty, setAllocQty] = useState<string>(''); // quantity in the ingredient's unit
-  const [allocSaving, setAllocSaving] = useState(false);
-  const [removingId, setRemovingId] = useState<string | null>(null);
-
-  async function fetchBatch() {
-    const [batchRes, traceRes] = await Promise.all([
-      fetch(`/api/batches/${batchId}`),
-      fetch(`/api/batches/${batchId}/traceability`),
-    ]);
-
-    const batchJson = (await batchRes.json().catch(() => ({}))) as ApiBatchResponse;
-    const traceJson = (await traceRes.json().catch(() => ({}))) as ApiTraceResponse;
-
-    setBatch(batchJson.batch ?? null);
-
-    if (traceRes.ok && Array.isArray(traceJson.materials)) {
-      setMaterials(traceJson.materials);
-      setScale(typeof traceJson.batch?.scale === 'number' ? traceJson.batch.scale : 1);
-    } else {
-      setMaterials([]);
-      setScale(1);
-    }
-
-    setLoading(false);
-  }
+  // Local editable inputs per material
+  const [actualInputs, setActualInputs] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    void fetchBatch();
+    void (async () => {
+      const [bRes, tRes, aRes] = await Promise.all([
+        fetch(`/api/batches/${batchId}`),
+        fetch(`/api/batches/${batchId}/traceability`),
+        fetch(`/api/batches/${batchId}/ingredients/actuals`),
+      ]);
+
+      const bJson = (await bRes.json().catch(() => ({}))) as BatchResp;
+      const tJson = (await tRes.json().catch(() => ({}))) as TraceResp;
+      const aJson = (await aRes.json().catch(() => ({}))) as ActualsResp;
+
+      setBatch(bJson.batch ?? null);
+      setScale(typeof tJson.batch?.scale === 'number' ? tJson.batch.scale : 1);
+
+      const mats = Array.isArray(tJson.materials) ? tJson.materials : [];
+      setMaterials(mats);
+
+      const actualMap: Record<string, ActualRow> = {};
+      for (const row of aJson.actuals ?? []) {
+        if (row.material_id) actualMap[row.material_id] = row;
+      }
+      setActuals(actualMap);
+
+      // seed inputs from actuals or empty
+      const inputsSeed: Record<string, string> = {};
+      for (const m of mats) {
+        const current = actualMap[m.material_id]?.actual_amount ?? '';
+        inputsSeed[m.material_id] = current === '' ? '' : String(current);
+      }
+      setActualInputs(inputsSeed);
+
+      setLoading(false);
+    })();
   }, [batchId]);
 
-  async function openAllocate(row: MaterialTraceRow) {
-    setAllocFor(row);
-    setAllocOpen(true);
-    setLotQuery('');
-    setSelectedLotId('');
-    setAllocQty('');
+  const rows = useMemo(() => {
+    // Compute display rows merging targets with current actuals (if any)
+    return materials.map((m) => {
+      const a = actuals[m.material_id];
+      // Use tolerance from recipe; if actual row exists and has a different tolerance, prefer actual’s stored tol
+      const tol = a?.tolerance_percentage ?? m.tolerance_percentage;
+      // Preferred status calculation: based on actual (if entered), not allocations
+      const actualVal =
+        actualInputs[m.material_id] !== undefined && actualInputs[m.material_id] !== ''
+          ? Number(actualInputs[m.material_id])
+          : a?.actual_amount ?? null;
 
-    const res = await fetch(`/api/lots?material_id=${row.material_id}&q=${encodeURIComponent('')}`);
-    const data = (await res.json()) as { lots?: LotApiRow[] };
-    const lotsArr = Array.isArray(data.lots) ? data.lots : [];
+      const target = m.target_amount;
+      const diffPct =
+        actualVal != null && target > 0
+          ? (Math.abs(actualVal - target) / target) * 100
+          : null;
+      const inTol =
+        diffPct == null ? null : diffPct <= tol;
 
-    const mapped: LotPick[] = lotsArr.map((l) => ({
-      id: l.id,
-      lot_number: l.lot_number,
-      internal_lot_code: l.internal_lot_code,
-      current_balance: Number(l.current_balance) || 0,
-      unit: toUnit(l.material?.unit ?? row.unit, row.unit),
-      supplier_name: l.supplier?.name ?? null,
-      received_date: l.received_date ?? null,
-      expiry_date: l.expiry_date ?? null,
-    }));
-    setLots(mapped);
-  }
+      return {
+        ...m,
+        tol,
+        actualVal,
+        diffPct,
+        inTol,
+      };
+    });
+  }, [materials, actuals, actualInputs]);
 
-  async function saveAllocation() {
-    if (!allocFor || !selectedLotId) return;
-    const qtyInRowUnit = Number(allocQty);
-    if (!Number.isFinite(qtyInRowUnit) || qtyInRowUnit <= 0) {
-      alert('Enter a quantity greater than 0');
+  async function saveActual(material_id: string, unit: Unit) {
+    const raw = actualInputs[material_id];
+    const amt = Number(raw);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      alert('Please enter a positive number.');
       return;
     }
 
-    // Validate against lot balance (convert lot balance to the row unit)
-    const lot = lots.find((l) => l.id === selectedLotId);
-    if (!lot) return;
-
-    const lotBalanceInRowUnit = convert(lot.current_balance, lot.unit, allocFor.unit);
-    if (qtyInRowUnit > lotBalanceInRowUnit + 1e-9) {
-      alert(`Exceeds lot balance (${lotBalanceInRowUnit.toFixed(2)} ${allocFor.unit})`);
-      return;
-    }
-
-    setAllocSaving(true);
+    setSaving((s) => ({ ...s, [material_id]: true }));
     try {
-      const res = await fetch(`/api/batches/${batchId}/traceability`, {
+      const res = await fetch(`/api/batches/${batchId}/ingredients/actuals`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          allocations: [
-            {
-              lot_id: selectedLotId,
-              material_id: allocFor.material_id,
-              quantity_used: qtyInRowUnit,
-              unit: allocFor.unit, // store in ingredient's unit; API will convert for lot balance
-            },
-          ],
-        }),
+        body: JSON.stringify({ material_id, actual_amount: amt, unit }),
       });
-      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!res.ok) {
-        alert(j.error ?? 'Failed to allocate');
-        setAllocSaving(false);
+      const j = (await res.json().catch(() => ({}))) as { actual?: ActualRow; error?: string };
+      if (!res.ok || !j.actual) {
+        alert(j.error ?? 'Failed to save actual');
+        setSaving((s) => ({ ...s, [material_id]: false }));
         return;
       }
-      setAllocOpen(false);
-      await fetchBatch(); // refresh
+      // update actuals map & flash
+      setActuals((prev) => ({ ...prev, [material_id]: j.actual! }));
+      setSavedFlash((f) => ({ ...f, [material_id]: true }));
+      setTimeout(() => {
+        setSavedFlash((f) => ({ ...f, [material_id]: false }));
+      }, 1200);
     } finally {
-      setAllocSaving(false);
-    }
-  }
-
-  async function removeAllocation(usageId: string) {
-    try {
-      setRemovingId(usageId);
-      const res = await fetch(
-        `/api/batches/${batchId}/traceability?usage_id=${encodeURIComponent(usageId)}`,
-        { method: 'DELETE' }
-      );
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!res.ok) {
-        alert(json.error ?? 'Failed to remove allocation');
-        return;
-      }
-      await fetchBatch();
-    } finally {
-      setRemovingId(null);
+      setSaving((s) => ({ ...s, [material_id]: false }));
     }
   }
 
@@ -244,10 +183,11 @@ export default function BatchDetailPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center py-12">Loading batch...</div>
+        <div className="text-center py-12">Loading batch…</div>
       </div>
     );
   }
+
   if (!batch) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -258,7 +198,7 @@ export default function BatchDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-5xl mx-auto px-6 py-6">
+      <div className="max-w-6xl mx-auto px-6 py-6">
         <Breadcrumbs
           items={[
             { label: 'Dashboard', href: '/' },
@@ -290,149 +230,128 @@ export default function BatchDetailPage() {
             >
               {batch.status.replace('_', ' ').toUpperCase()}
             </span>
-            <button
-              onClick={() => setShowDeleteModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
-            >
-              <Trash2 className="w-4 h-4" />
-              Delete
-            </button>
           </div>
         </div>
 
         {/* Batch Info */}
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">Batch Information</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-gray-600">Production Date</p>
-              <p className="font-medium">
+        <div className="bg-white rounded-xl shadow p-6 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+            <div className="p-4 rounded-lg bg-gray-50">
+              <p className="text-xs text-gray-500">Production Date</p>
+              <p className="font-semibold mt-1">
                 {new Date(batch.production_date).toLocaleDateString()}
               </p>
             </div>
-            <div>
-              <p className="text-sm text-gray-600">Beef Input Weight</p>
-              <p className="font-medium">{Number(batch.beef_weight_kg).toFixed(2)} kg</p>
+            <div className="p-4 rounded-lg bg-gray-50">
+              <p className="text-xs text-gray-500">Beef Input Weight</p>
+              <p className="font-semibold mt-1">{Number(batch.beef_weight_kg).toFixed(2)} kg</p>
             </div>
-            <div>
-              <p className="text-sm text-gray-600">Scaling Factor</p>
-              <p className="font-medium">{scale.toFixed(2)}×</p>
+            <div className="p-4 rounded-lg bg-gray-50">
+              <p className="text-xs text-gray-500">Scale</p>
+              <p className="font-semibold mt-1">{scale.toFixed(2)}×</p>
             </div>
           </div>
         </div>
 
-        {/* Recipe Targets & Allocations */}
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold">Recipe Targets & Allocations</h2>
+        {/* Recipe Targets & Actuals */}
+        <div className="bg-white rounded-xl shadow p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-xl font-semibold">Recipe Targets & Actuals</h2>
           </div>
 
-          {materials.length === 0 ? (
-            <p className="text-gray-500">No recipe ingredients or allocations yet.</p>
+          {rows.length === 0 ? (
+            <p className="text-gray-500">No recipe ingredients found.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="text-left text-gray-600 border-b">
-                    <th className="py-2 pr-4">Ingredient</th>
-                    <th className="py-2 pr-4">Target</th>
-                    <th className="py-2 pr-4">Used</th>
-                    <th className="py-2 pr-4">Remaining</th>
-                    <th className="py-2 pr-4">Critical</th>
-                    <th className="py-2 pr-4">Tol%</th>
-                    <th className="py-2 pr-4">Status</th>
-                    <th className="py-2 pr-4">Actions</th>
+                <thead className="bg-gray-50 text-gray-600">
+                  <tr className="text-left">
+                    <th className="py-3 px-4 font-medium">Ingredient</th>
+                    <th className="py-3 px-4 font-medium">Target</th>
+                    <th className="py-3 px-4 font-medium w-64">Actual used</th>
+                    <th className="py-3 px-4 font-medium">Tol%</th>
+                    <th className="py-3 px-4 font-medium">Status</th>
+                    <th className="py-3 px-4"></th>
                   </tr>
                 </thead>
-                <tbody>
-                  {materials.map((m) => {
-                    const diffPct =
-                      m.target_amount > 0
-                        ? (Math.abs(m.used_amount - m.target_amount) / m.target_amount) * 100
-                        : 0;
-                    const hasUsed = m.used_amount > 0;
-                    const inTol = hasUsed ? diffPct <= m.tolerance_percentage : null;
-                    const canAllocate = m.remaining_amount > 0.0001;
-
-                    return (
-                      <tr key={m.material_id} className="border-b last:border-0 align-top">
-                        <td className="py-2 pr-4">
-                          <div className="font-medium">{m.material_name}</div>
-                          {/* Per-lot breakdown (with remove buttons) */}
-                          {m.lots.length > 0 && (
-                            <div className="mt-2 space-y-1">
-                              {m.lots.map((l) => (
-                                <div
-                                  key={l.usage_id}
-                                  className="text-xs text-gray-600 flex justify-between items-center bg-gray-50 px-2 py-1 rounded"
-                                >
-                                  <span>
-                                    Lot {l.lot_number} ({l.internal_lot_code})
-                                    {l.supplier_name ? ` · ${l.supplier_name}` : ''}
-                                  </span>
-                                  <span className="flex items-center gap-2">
-                                    {l.quantity_used.toFixed(2)} {l.unit}
-                                    <button
-                                      onClick={() => removeAllocation(l.usage_id)}
-                                      disabled={removingId === l.usage_id}
-                                      className={`ml-2 ${
-                                        removingId === l.usage_id
-                                          ? 'text-gray-400'
-                                          : 'text-red-600 hover:text-red-800'
-                                      }`}
-                                      title="Remove allocation"
-                                      aria-label="Remove allocation"
-                                    >
-                                      {removingId === l.usage_id ? '…' : '×'}
-                                    </button>
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-2 pr-4">
-                          {m.target_amount.toFixed(2)} {m.unit}
-                        </td>
-                        <td className="py-2 pr-4">
-                          {m.used_amount.toFixed(2)} {m.unit}
-                        </td>
-                        <td className="py-2 pr-4">
-                          {m.remaining_amount.toFixed(2)} {m.unit}
-                        </td>
-                        <td className="py-2 pr-4">{m.is_critical ? 'Yes' : 'No'}</td>
-                        <td className="py-2 pr-4">{m.tolerance_percentage}</td>
-                        <td className="py-2 pr-4">
-                          {!hasUsed ? (
-                            <span className="text-gray-400">—</span>
-                          ) : inTol ? (
-                            <span className="px-2 py-0.5 rounded bg-green-100 text-green-700">
-                              OK
-                            </span>
+                <tbody className="divide-y">
+                  {rows.map((r) => (
+                    <tr key={r.material_id} className="align-middle">
+                      <td className="py-3 px-4">
+                        <div className="font-medium">{r.material_name}</div>
+                        {r.is_critical && (
+                          <div className="text-[11px] text-red-600 mt-0.5">Critical</div>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="inline-flex items-center gap-2">
+                          <span className="font-semibold">{r.target_amount.toFixed(2)}</span>
+                          <span className="text-gray-600">{r.unit}</span>
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex gap-2 items-center">
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={actualInputs[r.material_id] ?? ''}
+                            onChange={(e) =>
+                              setActualInputs((prev) => ({
+                                ...prev,
+                                [r.material_id]: e.target.value,
+                              }))
+                            }
+                            placeholder={`0.00`}
+                            className="w-36 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                          />
+                          <span className="text-gray-600">{r.unit}</span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">{r.tol}</td>
+                      <td className="py-3 px-4">
+                        {r.actualVal == null || r.actualVal === 0 ? (
+                          <span className="text-gray-400">—</span>
+                        ) : r.inTol ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5">
+                            <Check className="w-3 h-3" />
+                            OK
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 px-2 py-0.5">
+                            Out
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        <button
+                          type="button"
+                          onClick={() => saveActual(r.material_id, r.unit)}
+                          disabled={saving[r.material_id] === true || (actualInputs[r.material_id] ?? '') === ''}
+                          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg ${
+                            saving[r.material_id]
+                              ? 'bg-indigo-300 text-white'
+                              : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                          } disabled:opacity-50`}
+                          title="Save"
+                        >
+                          {saving[r.material_id] ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Saving…
+                            </>
+                          ) : savedFlash[r.material_id] ? (
+                            <>
+                              <Check className="w-4 h-4" />
+                              Saved
+                            </>
                           ) : (
-                            <span className="px-2 py-0.5 rounded bg-red-100 text-red-700">
-                              Out
-                            </span>
+                            'Save'
                           )}
-                        </td>
-                        <td className="py-2 pr-4">
-                          <button
-                            type="button"
-                            onClick={() => openAllocate(m)}
-                            disabled={!canAllocate}
-                            className={`px-3 py-1.5 rounded ${
-                              canAllocate
-                                ? 'bg-indigo-600 text-white hover:bg-indigo-700'
-                                : 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                            }`}
-                            title={canAllocate ? 'Allocate lot' : 'Target fulfilled'}
-                          >
-                            Allocate lot
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -443,176 +362,25 @@ export default function BatchDetailPage() {
         <div className="mt-6 flex gap-3">
           <button
             onClick={() => (window.location.href = `/qa/${batchId}`)}
-            className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
           >
             QA Management
           </button>
           <button
             onClick={() => (window.location.href = `/recipe/print/${batchId}`)}
-            className="bg-gray-600 text-white px-6 py-2 rounded hover:bg-gray-700"
+            className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700"
           >
             Print Batch Record
           </button>
+          <button
+            onClick={() => setShowDeleteModal(true)}
+            className="ml-auto flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete
+          </button>
         </div>
       </div>
-
-      {/* Allocate Modal */}
-      {allocOpen && allocFor && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="w-full max-w-2xl bg-white rounded-lg shadow-lg">
-            <div className="p-4 border-b flex justify-between items-center">
-              <h3 className="text-lg font-semibold">Allocate lot · {allocFor.material_name}</h3>
-              <button
-                onClick={() => setAllocOpen(false)}
-                className="text-gray-500 hover:text-gray-700"
-                aria-label="Close"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="p-4 space-y-4">
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <p className="text-xs text-gray-500">Target</p>
-                  <p className="font-medium">
-                    {allocFor.target_amount.toFixed(2)} {allocFor.unit}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Used</p>
-                  <p className="font-medium">
-                    {allocFor.used_amount.toFixed(2)} {allocFor.unit}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Remaining</p>
-                  <p className="font-medium">
-                    {allocFor.remaining_amount.toFixed(2)} {allocFor.unit}
-                  </p>
-                </div>
-              </div>
-
-              {/* Lot search */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Lot</label>
-                <div className="flex gap-2">
-                  <input
-                    value={lotQuery}
-                    onChange={async (e) => {
-                      setLotQuery(e.target.value);
-                      if (!allocFor) return;
-
-                      const res = await fetch(
-                        `/api/lots?material_id=${allocFor.material_id}&q=${encodeURIComponent(
-                          e.target.value
-                        )}`
-                      );
-                      const data = (await res.json()) as { lots?: LotApiRow[] };
-                      const lotsArr = Array.isArray(data.lots) ? data.lots : [];
-
-                      const mapped: LotPick[] = lotsArr.map((l) => ({
-                        id: l.id,
-                        lot_number: l.lot_number,
-                        internal_lot_code: l.internal_lot_code,
-                        current_balance: Number(l.current_balance) || 0,
-                        unit: toUnit(l.material?.unit ?? allocFor.unit, allocFor.unit),
-                        supplier_name: l.supplier?.name ?? null,
-                        received_date: l.received_date ?? null,
-                        expiry_date: l.expiry_date ?? null,
-                      }));
-                      setLots(mapped);
-                    }}
-                    placeholder="Search lot number…"
-                    className="border rounded px-3 py-2 flex-1"
-                  />
-                </div>
-
-                <div className="mt-2 max-h-44 overflow-auto border rounded">
-                  {lots.length === 0 ? (
-                    <div className="p-3 text-sm text-gray-500">No available lots</div>
-                  ) : (
-                    lots.map((l) => {
-                      const balanceInRowUnit = convert(l.current_balance, l.unit, allocFor.unit);
-                      const active = l.id === selectedLotId;
-                      return (
-                        <button
-                          key={l.id}
-                          onClick={() => setSelectedLotId(l.id)}
-                          className={`w-full text-left px-3 py-2 border-b last:border-0 ${
-                            active ? 'bg-indigo-50' : 'hover:bg-gray-50'
-                          }`}
-                        >
-                          <div className="flex justify-between">
-                            <div>
-                              <div className="font-medium">
-                                Lot {l.lot_number} ({l.internal_lot_code})
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {l.supplier_name ?? '—'} · Rec{' '}
-                                {l.received_date
-                                  ? new Date(l.received_date).toLocaleDateString()
-                                  : '—'}
-                                {l.expiry_date
-                                  ? ` · Exp ${new Date(l.expiry_date).toLocaleDateString()}`
-                                  : ''}
-                              </div>
-                            </div>
-                            <div className="text-sm">
-                              Bal: {balanceInRowUnit.toFixed(2)} {allocFor.unit}
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              {/* Quantity */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Quantity ({allocFor.unit})
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={allocQty}
-                    onChange={(e) => setAllocQty(e.target.value)}
-                    className="border rounded px-3 py-2 flex-1"
-                    placeholder="0.00"
-                  />
-                  <button
-                    type="button"
-                    className="px-3 py-2 border rounded hover:bg-gray-50"
-                    onClick={() => setAllocQty(allocFor.remaining_amount.toFixed(2))}
-                  >
-                    Allocate remaining
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 border-t flex justify-end gap-2">
-              <button
-                onClick={() => setAllocOpen(false)}
-                className="px-4 py-2 border rounded hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={saveAllocation}
-                disabled={allocSaving || !selectedLotId || !allocQty}
-                className="px-4 py-2 rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
-              >
-                {allocSaving ? 'Saving…' : 'Allocate'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <DeleteBatchModal
         isOpen={showDeleteModal}

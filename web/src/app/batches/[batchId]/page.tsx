@@ -463,7 +463,7 @@ async function removeAllocation(usageId: string) {
                 if (!allocFor) return;
                 const res = await fetch(`/api/lots?material_id=${allocFor.material_id}&q=${encodeURIComponent(e.target.value)}`);
                 const data = await res.json();
-                const mapped: LotPick[] = (data.lots ?? []).map((l: any) => ({
+                const mapped: LotPick[] = (data.lots ?? []).map((l) => ({
                   id: l.id,
                   lot_number: l.lot_number,
                   internal_lot_code: l.internal_lot_code,

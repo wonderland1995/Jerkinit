@@ -1,10 +1,19 @@
+// src/app/api/batches/[batchId]/qa/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/db';
 
-type Stage = 'preparation' | 'mixing' | 'marination' | 'drying' | 'packaging' | 'final';
 type QAStatus = 'pending' | 'passed' | 'failed' | 'skipped' | 'conditional';
 
-type QACheckpoint = {
+type Stage =
+  | 'preparation'
+  | 'mixing'
+  | 'marination'
+  | 'drying'
+  | 'packaging'
+  | 'final'
+  | null;
+
+interface CheckpointRow {
   id: string;
   code: string;
   name: string;
@@ -12,56 +21,93 @@ type QACheckpoint = {
   stage: Stage;
   required: boolean;
   display_order: number;
-};
+  active: boolean;
+}
 
-type QACheck = {
+interface BatchCheckRow {
   id: string;
   checkpoint_id: string;
   status: QAStatus | null;
+  checked_at: string | null;
+  temperature_c: number | null;
+  humidity_percent: number | null;
+  ph_level: number | null;
+  water_activity: number | null;
+  notes: string | null;
+  corrective_action: string | null;
+  recheck_required: boolean | null;
   metadata: Record<string, unknown> | null;
-};
+}
+
+interface CheckpointOut extends CheckpointRow {
+  status: QAStatus;
+  last_checked_at: string | null;
+  temperature_c: number | null;
+  humidity_percent: number | null;
+  ph_level: number | null;
+  water_activity: number | null;
+  notes: string | null;
+  corrective_action: string | null;
+  recheck_required: boolean;
+  metadata: Record<string, unknown>;
+}
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { batchId: string } }
+  context: { params: Promise<{ batchId: string }> }
 ) {
-  const { batchId } = params;
+  const { batchId } = await context.params;
+
   const supabase = createClient();
 
-  // Get active checkpoints
-  const { data: cps, error: cpsErr } = await supabase
+  // 1) Load all active checkpoints
+  const { data: cpData, error: cpErr } = await supabase
     .from('qa_checkpoints')
-    .select('id, code, name, description, stage, required, display_order')
+    .select(
+      'id, code, name, description, stage, required, display_order, active'
+    )
     .eq('active', true)
     .order('stage', { ascending: true })
     .order('display_order', { ascending: true });
 
-  if (cpsErr || !cps) {
-    return NextResponse.json({ error: cpsErr?.message ?? 'Failed to load checkpoints' }, { status: 500 });
+  if (cpErr) {
+    return NextResponse.json({ error: cpErr.message }, { status: 400 });
   }
 
-  // Existing checks for this batch
-  const { data: checks, error: chkErr } = await supabase
+  // 2) Load existing batch QA results for this batch
+  const { data: chkData, error: chkErr } = await supabase
     .from('batch_qa_checks')
-    .select('id, checkpoint_id, status, metadata')
+    .select(
+      'id, checkpoint_id, status, checked_at, temperature_c, humidity_percent, ph_level, water_activity, notes, corrective_action, recheck_required, metadata'
+    )
     .eq('batch_id', batchId);
 
-  if (chkErr || !checks) {
-    return NextResponse.json({ error: chkErr?.message ?? 'Failed to load QA checks' }, { status: 500 });
+  if (chkErr) {
+    return NextResponse.json({ error: chkErr.message }, { status: 400 });
   }
 
-  const map = new Map<string, QACheck>();
-  checks.forEach((c) => map.set(c.checkpoint_id, c));
+  const checkpoints = (cpData ?? []) as CheckpointRow[];
+  const checks = (chkData ?? []) as BatchCheckRow[];
 
-  const merged = (cps as QACheckpoint[]).map((cp) => {
-    const found = map.get(cp.id);
+  const byCheckpoint = new Map<string, BatchCheckRow>();
+  for (const r of checks) byCheckpoint.set(r.checkpoint_id, r);
+
+  const out: CheckpointOut[] = checkpoints.map((cp) => {
+    const r = byCheckpoint.get(cp.id);
     return {
       ...cp,
-      status: found?.status ?? 'pending',
-      metadata: found?.metadata ?? null,
-      check_id: found?.id ?? null,
+      status: (r?.status ?? 'pending') as QAStatus,
+      last_checked_at: r?.checked_at ?? null,
+      temperature_c: r?.temperature_c ?? null,
+      humidity_percent: r?.humidity_percent ?? null,
+      ph_level: r?.ph_level ?? null,
+      water_activity: r?.water_activity ?? null,
+      notes: r?.notes ?? null,
+      corrective_action: r?.corrective_action ?? null,
+      recheck_required: r?.recheck_required ?? false,
+      metadata: r?.metadata ?? {},
     };
   });
 
-  return NextResponse.json({ checkpoints: merged });
+  return NextResponse.json({ checkpoints: out });
 }

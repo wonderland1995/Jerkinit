@@ -1,430 +1,345 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
+import { useParams } from 'next/navigation';
+import { CORE_TEMP_LIMIT } from '@/config/qa';
 
-interface Checkpoint {
+type Stage = 'preparation' | 'mixing' | 'marination' | 'drying' | 'packaging' | 'final';
+type QAStatus = 'pending' | 'passed' | 'failed' | 'skipped' | 'conditional';
+
+type CheckpointVm = {
   id: string;
   code: string;
   name: string;
-  description: string;
-  stage: string;
+  description: string | null;
+  stage: Stage;
   required: boolean;
-}
+  display_order: number;
+  status: QAStatus;
+  metadata: Record<string, unknown> | null;
+  check_id: string | null;
+};
 
-interface QACheck {
-  id: string;
-  checkpoint_id: string;
-  status: string;
-  checked_by: string | null;
-  checked_at: string | null;
-  temperature_c: number | null;
-  humidity_percent: number | null;
-  ph_level: number | null;
-  water_activity: number | null;
-  notes: string | null;
-  corrective_action: string | null;
-}
+// ----- Special card types
+type CoreTempReading = { tempC: number | ''; minutes: number | '' };
+type CoreTempMeta = { readings: [CoreTempReading, CoreTempReading, CoreTempReading] };
 
-interface BatchDetails {
-  id: string;
-  batch_id: string;
-  status: string;
-  product?: {
-    name: string;
-  };
-}
+type MarTimesMeta = { startISO: string; endISO: string; tempC: number | '' };
+type AwMeta = { aw: number | '' };
 
-export default function BatchQAPage() {
-  const params = useParams();
-  const router = useRouter();
-  const batchId = params.batchId as string;
-
-  const [batch, setBatch] = useState<BatchDetails | null>(null);
-  const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
-  const [qaChecks, setQAChecks] = useState<Record<string, QACheck>>({});
-  const [loading, setLoading] = useState(true);
-  const [activeStage, setActiveStage] = useState<string>('preparation');
-
-  const stages = [
-    { key: 'preparation', label: 'Preparation' },
-    { key: 'mixing', label: 'Mixing' },
-    { key: 'marination', label: 'Marination' },
-    { key: 'drying', label: 'Drying' },
-    { key: 'packaging', label: 'Packaging' },
-    { key: 'final', label: 'Final Inspection' },
-  ];
-
-  useEffect(() => {
-    fetchData();
-  }, [batchId]);
-
-  const fetchData = async () => {
-    try {
-      const [batchRes, checkpointsRes, checksRes] = await Promise.all([
-        fetch(`/api/batches/${batchId}`),
-        fetch('/api/qa/checkpoints'),
-        fetch(`/api/qa/batch/${batchId}`),
-      ]);
-
-      const batchData = await batchRes.json();
-      const checkpointsData = await checkpointsRes.json();
-      const checksData = await checksRes.json();
-
-      setBatch(batchData.batch);
-      setCheckpoints(checkpointsData.checkpoints || []);
-
-      // Convert checks array to map by checkpoint_id
-      const checksMap: Record<string, QACheck> = {};
-      (checksData.checks || []).forEach((check: QACheck) => {
-        checksMap[check.checkpoint_id] = check;
-      });
-      setQAChecks(checksMap);
-    } catch (error) {
-      console.error('Failed to fetch QA data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCheckpointUpdate = async (
-    checkpointId: string,
-    status: string,
-    data: Partial<QACheck>
-  ) => {
-    try {
-      const res = await fetch('/api/qa/checkpoint', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          batch_id: batchId,
-          checkpoint_id: checkpointId,
-          status,
-          ...data,
-          checked_by: 'User', // Replace with actual user
-        }),
-      });
-
-      if (res.ok) {
-        fetchData(); // Refresh data
-      } else {
-        const error = await res.json();
-        alert(`Error: ${error.error}`);
-      }
-    } catch (error) {
-      alert('Failed to update checkpoint');
-    }
-  };
-
-  const stageCheckpoints = checkpoints.filter(cp => cp.stage === activeStage);
-  const stageProgress = stageCheckpoints.length > 0
-    ? stageCheckpoints.filter(cp => qaChecks[cp.id]?.status === 'passed').length / stageCheckpoints.length * 100
-    : 0;
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading QA checkpoints...</p>
-        </div>
-      </div>
-    );
+// ----- Helpers
+async function saveCheckpoint(batchId: string, checkpointId: string, status: QAStatus, metadata?: Record<string, unknown>) {
+  const res = await fetch(`/api/batches/${batchId}/qa/${checkpointId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status, metadata }),
+  });
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error(j.error ?? 'Failed to save');
   }
+}
+
+const STAGE_ORDER: Stage[] = ['preparation', 'mixing', 'marination', 'drying', 'packaging', 'final'];
+
+// ----- Special Cards
+function CoreTempCard({
+  initialMeta,
+  onSave,
+}: {
+  initialMeta?: CoreTempMeta;
+  onSave: (meta: CoreTempMeta, passed: boolean) => Promise<void>;
+}) {
+  const [readings, setReadings] = useState<CoreTempMeta['readings']>(
+    initialMeta?.readings ?? [
+      { tempC: '', minutes: '' },
+      { tempC: '', minutes: '' },
+      { tempC: '', minutes: '' },
+    ]
+  );
+
+  const update = (i: 0 | 1 | 2, field: keyof CoreTempReading, v: string) => {
+    const next = readings.map((r, idx) =>
+      idx === i ? { ...r, [field]: v === '' ? '' : Number(v) } : r
+    ) as CoreTempMeta['readings'];
+    setReadings(next);
+  };
+
+  const allEntered = readings.every(r => r.tempC !== '' && r.minutes !== '');
+  const passed = allEntered && readings.every(r =>
+    Number(r.tempC) >= CORE_TEMP_LIMIT.tempC && Number(r.minutes) >= CORE_TEMP_LIMIT.minutes
+  );
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      {/* Header */}
-      <header className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-5 py-4">
-          <button
-            onClick={() => router.push(`/batches/${batchId}`)}
-            className="text-blue-600 hover:text-blue-700 mb-2"
-          >
-            ← Back to Batch
-          </button>
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold">QA Test Sheet</h1>
-              <p className="text-gray-600">
-                {batch?.batch_id} - {batch?.product?.name}
-              </p>
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {(['Probe 1','Probe 2','Probe 3'] as const).map((label, i) => (
+          <div key={label} className="rounded-lg border p-3">
+            <div className="text-sm font-medium mb-2">{label}</div>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                inputMode="decimal"
+                placeholder="Temp (°C)"
+                value={readings[i as 0|1|2].tempC}
+                onChange={(e) => update(i as 0|1|2, 'tempC', e.target.value)}
+                className="w-1/2 border rounded px-2 py-1"
+              />
+              <input
+                type="number"
+                inputMode="decimal"
+                placeholder="Hold (min)"
+                value={readings[i as 0|1|2].minutes}
+                onChange={(e) => update(i as 0|1|2, 'minutes', e.target.value)}
+                className="w-1/2 border rounded px-2 py-1"
+              />
             </div>
-            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-              batch?.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-            }`}>
-              {batch?.status}
-            </span>
           </div>
-        </div>
-      </header>
-
-      {/* Stage Tabs */}
-      <div className="bg-white border-b sticky top-[73px] z-10">
-        <div className="max-w-6xl mx-auto px-5">
-          <div className="flex gap-2 overflow-x-auto py-2">
-            {stages.map((stage) => {
-              const stageChks = checkpoints.filter(cp => cp.stage === stage.key);
-              const stagePassed = stageChks.filter(cp => qaChecks[cp.id]?.status === 'passed').length;
-              const stageTotal = stageChks.length;
-
-              return (
-                <button
-                  key={stage.key}
-                  onClick={() => setActiveStage(stage.key)}
-                  className={`flex-shrink-0 px-4 py-2 rounded-xl font-medium transition ${
-                    activeStage === stage.key
-                      ? 'bg-gray-900 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {stage.label}
-                  <span className="ml-2 text-xs opacity-75">
-                    {stagePassed}/{stageTotal}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        ))}
       </div>
 
-      {/* Progress Bar */}
-      <div className="max-w-6xl mx-auto px-5 py-4">
-        <div className="bg-white rounded-xl border p-4 mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-700">
-              {stages.find(s => s.key === activeStage)?.label} Progress
-            </span>
-            <span className="text-sm font-semibold text-gray-900">
-              {stageProgress.toFixed(0)}%
-            </span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
-            <div
-              className="bg-green-600 h-2 rounded-full transition-all"
-              style={{ width: `${stageProgress}%` }}
-            />
-          </div>
+      <div className="flex items-center justify-between text-sm">
+        <div className="text-gray-600">
+          Limit: ≥ {CORE_TEMP_LIMIT.tempC} °C for ≥ {CORE_TEMP_LIMIT.minutes} min (each probe)
         </div>
+        <span className={`px-2 py-1 rounded ${
+          !allEntered ? 'bg-gray-100 text-gray-600'
+          : passed ? 'bg-green-100 text-green-700'
+          : 'bg-red-100 text-red-700'
+        }`}>
+          {!allEntered ? 'Awaiting readings' : passed ? 'PASS' : 'FAIL'}
+        </span>
+      </div>
 
-        {/* Checkpoints */}
-        <div className="space-y-4">
-          {stageCheckpoints.length === 0 ? (
-            <div className="bg-white rounded-xl border p-8 text-center text-gray-500">
-              No checkpoints defined for this stage
-            </div>
-          ) : (
-            stageCheckpoints.map((checkpoint) => {
-              const check = qaChecks[checkpoint.id];
-              return (
-                <CheckpointCard
-                  key={checkpoint.id}
-                  checkpoint={checkpoint}
-                  check={check}
-                  onUpdate={(status, data) => handleCheckpointUpdate(checkpoint.id, status, data)}
-                />
-              );
-            })
-          )}
-        </div>
+      <div className="text-right">
+        <button
+          disabled={!allEntered}
+          onClick={() => onSave({ readings }, Boolean(passed))}
+          className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
+        >
+          Save readings
+        </button>
       </div>
     </div>
   );
 }
 
-interface CheckpointCardProps {
-  checkpoint: Checkpoint;
-  check: QACheck | undefined;
-  onUpdate: (status: string, data: Partial<QACheck>) => void;
-}
-
-function CheckpointCard({ checkpoint, check, onUpdate }: CheckpointCardProps) {
-  const [expanded, setExpanded] = useState(false);
-  const [formData, setFormData] = useState({
-    temperature_c: check?.temperature_c?.toString() || '',
-    humidity_percent: check?.humidity_percent?.toString() || '',
-    ph_level: check?.ph_level?.toString() || '',
-    water_activity: check?.water_activity?.toString() || '',
-    notes: check?.notes || '',
-    corrective_action: check?.corrective_action || '',
-  });
-
-  const status = check?.status || 'pending';
-
-  const handleStatusChange = (newStatus: string) => {
-    if (newStatus === 'passed' || newStatus === 'skipped') {
-      onUpdate(newStatus, {});
-    } else {
-      setExpanded(true);
-    }
-  };
-
-  const handleSave = () => {
-    onUpdate(status === 'pending' ? 'failed' : status, {
-      temperature_c: formData.temperature_c ? parseFloat(formData.temperature_c) : null,
-      humidity_percent: formData.humidity_percent ? parseFloat(formData.humidity_percent) : null,
-      ph_level: formData.ph_level ? parseFloat(formData.ph_level) : null,
-      water_activity: formData.water_activity ? parseFloat(formData.water_activity) : null,
-      notes: formData.notes || null,
-      corrective_action: formData.corrective_action || null,
-    });
-    setExpanded(false);
-  };
+function MarinationTimesCard({
+  initialMeta,
+  onSave,
+}: {
+  initialMeta?: MarTimesMeta;
+  onSave: (meta: MarTimesMeta, passed: boolean) => Promise<void>;
+}) {
+  const [m, setM] = useState<MarTimesMeta>(
+    initialMeta ?? { startISO: '', endISO: '', tempC: '' }
+  );
+  const complete = Boolean(m.startISO && m.endISO && m.tempC !== '');
+  const passed = complete && Number(m.tempC) <= 5;
 
   return (
-    <div className={`bg-white rounded-xl border-2 transition ${
-      status === 'passed' ? 'border-green-500' :
-      status === 'failed' ? 'border-red-500' :
-      status === 'conditional' ? 'border-yellow-500' :
-      'border-gray-200'
-    }`}>
-      <div className="p-4">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <h3 className="font-semibold text-lg">{checkpoint.name}</h3>
-              {checkpoint.required && (
-                <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">Required</span>
-              )}
-            </div>
-            <p className="text-sm text-gray-600 mt-1">{checkpoint.description}</p>
-            {check?.checked_at && (
-              <p className="text-xs text-gray-500 mt-2">
-                Checked by {check.checked_by} on {new Date(check.checked_at).toLocaleString()}
-              </p>
-            )}
-          </div>
-
-          {/* Status Buttons */}
-          <div className="flex gap-2 ml-4">
-            <button
-              onClick={() => handleStatusChange('passed')}
-              className={`px-4 py-2 rounded-lg font-medium transition ${
-                status === 'passed'
-                  ? 'bg-green-600 text-white'
-                  : 'bg-green-100 text-green-700 hover:bg-green-200'
-              }`}
-            >
-              ✓ Pass
-            </button>
-            <button
-              onClick={() => handleStatusChange('failed')}
-              className={`px-4 py-2 rounded-lg font-medium transition ${
-                status === 'failed'
-                  ? 'bg-red-600 text-white'
-                  : 'bg-red-100 text-red-700 hover:bg-red-200'
-              }`}
-            >
-              ✗ Fail
-            </button>
-            <button
-              onClick={() => setExpanded(!expanded)}
-              className="px-3 py-2 rounded-lg border hover:bg-gray-50"
-            >
-              {expanded ? '▼' : '▶'}
-            </button>
-          </div>
-        </div>
-
-        {/* Expanded Form */}
-        {expanded && (
-          <div className="mt-4 pt-4 border-t space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Temperature (°C)
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={formData.temperature_c}
-                  onChange={(e) => setFormData({...formData, temperature_c: e.target.value})}
-                  className="w-full border rounded-lg px-3 py-2"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Humidity (%)
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={formData.humidity_percent}
-                  onChange={(e) => setFormData({...formData, humidity_percent: e.target.value})}
-                  className="w-full border rounded-lg px-3 py-2"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  pH Level
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.ph_level}
-                  onChange={(e) => setFormData({...formData, ph_level: e.target.value})}
-                  className="w-full border rounded-lg px-3 py-2"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Water Activity
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.water_activity}
-                  onChange={(e) => setFormData({...formData, water_activity: e.target.value})}
-                  className="w-full border rounded-lg px-3 py-2"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Notes
-              </label>
-              <textarea
-                rows={2}
-                value={formData.notes}
-                onChange={(e) => setFormData({...formData, notes: e.target.value})}
-                className="w-full border rounded-lg px-3 py-2"
-              />
-            </div>
-
-            {status === 'failed' && (
-              <div>
-                <label className="block text-sm font-medium text-red-700 mb-1">
-                  Corrective Action
-                </label>
-                <textarea
-                  rows={2}
-                  value={formData.corrective_action}
-                  onChange={(e) => setFormData({...formData, corrective_action: e.target.value})}
-                  className="w-full border-2 border-red-300 rounded-lg px-3 py-2"
-                  placeholder="What corrective action was taken?"
-                />
-              </div>
-            )}
-
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setExpanded(false)}
-                className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800"
-              >
-                Save Details
-              </button>
-            </div>
-          </div>
-        )}
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <input type="datetime-local" value={m.startISO}
+          onChange={e => setM({ ...m, startISO: e.target.value })}
+          className="border rounded px-2 py-1" />
+        <input type="datetime-local" value={m.endISO}
+          onChange={e => setM({ ...m, endISO: e.target.value })}
+          className="border rounded px-2 py-1" />
+        <input type="number" inputMode="decimal" placeholder="Chill °C" value={m.tempC}
+          onChange={e => setM({ ...m, tempC: e.target.value === '' ? '' : Number(e.target.value) })}
+          className="border rounded px-2 py-1" />
       </div>
+      <div className="text-right">
+        <button
+          disabled={!complete}
+          onClick={() => onSave(m, passed)}
+          className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
+        >
+          Save
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function WaterActivityCard({
+  initialMeta, onSave,
+}: { initialMeta?: AwMeta; onSave: (m: AwMeta, passed: boolean)=>Promise<void> }) {
+  const [m, setM] = useState<AwMeta>(initialMeta ?? { aw: '' });
+  const entered = m.aw !== '';
+  const passed = entered && Number(m.aw) <= 0.85;
+  return (
+    <div className="space-y-3">
+      <input
+        type="number"
+        inputMode="decimal"
+        step="0.01"
+        placeholder="a_w"
+        value={m.aw}
+        onChange={e => setM({ aw: e.target.value === '' ? '' : Number(e.target.value) })}
+        className="border rounded px-2 py-1 w-40"
+      />
+      <div className="text-right">
+        <button
+          disabled={!entered}
+          onClick={() => onSave(m, passed)}
+          className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
+        >
+          Save
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Simple status card for non-special checkpoints
+function SimpleStatusCard({
+  initialStatus,
+  onSave,
+  labelYes = 'Pass',
+  labelNo = 'Fail',
+}: {
+  initialStatus: QAStatus;
+  onSave: (status: QAStatus) => Promise<void>;
+  labelYes?: string;
+  labelNo?: string;
+}) {
+  const [status, setStatus] = useState<QAStatus>(initialStatus);
+
+  return (
+    <div className="flex items-center gap-2">
+      <select
+        value={status}
+        onChange={(e) => setStatus(e.target.value as QAStatus)}
+        className="border rounded px-2 py-1"
+      >
+        <option value="pending">Pending</option>
+        <option value="passed">{labelYes}</option>
+        <option value="failed">{labelNo}</option>
+        <option value="skipped">Skipped</option>
+        <option value="conditional">Conditional</option>
+      </select>
+      <button
+        onClick={() => onSave(status)}
+        className="px-3 py-1 rounded bg-blue-600 text-white"
+      >
+        Save
+      </button>
+    </div>
+  );
+}
+
+// ----- Page
+export default function BatchQA() {
+  const params = useParams();
+  const batchId = params.batchId as string;
+
+  const [items, setItems] = useState<CheckpointVm[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  async function load() {
+    setLoading(true);
+    const res = await fetch(`/api/batches/${batchId}/qa`);
+    const j = await res.json();
+    setItems(j.checkpoints as CheckpointVm[]);
+    setLoading(false);
+  }
+
+  useEffect(() => { void load(); }, [batchId]);
+
+  const grouped = useMemo(() => {
+    const by: Record<Stage, CheckpointVm[]> = {
+      preparation: [], mixing: [], marination: [], drying: [], packaging: [], final: []
+    };
+    (items ?? []).forEach(c => by[c.stage].push(c));
+    return by;
+  }, [items]);
+
+  if (loading) return <div className="p-6">Loading QA…</div>;
+  if (!items)   return <div className="p-6">No checkpoints found.</div>;
+
+  return (
+    <div className="max-w-5xl mx-auto p-6 space-y-8">
+      <h1 className="text-2xl font-bold">QA Checks</h1>
+
+      {STAGE_ORDER.map((stage) => {
+        const rows = grouped[stage].sort((a, b) => a.display_order - b.display_order);
+        if (!rows.length) return null;
+        return (
+          <section key={stage} className="space-y-4">
+            <h2 className="text-xl font-semibold capitalize">{stage}</h2>
+
+            <div className="grid gap-4">
+              {rows.map((cp) => {
+                const baseCard = (
+                  <div key={cp.id} className="rounded-lg border p-4 bg-white">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="font-semibold">{cp.name}</div>
+                        {cp.description && (
+                          <div className="text-sm text-gray-600 mt-1">{cp.description}</div>
+                        )}
+                        {cp.required && (
+                          <div className="mt-2 inline-block text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800">
+                            Required
+                          </div>
+                        )}
+                      </div>
+                      <span className={`text-xs px-2 py-1 rounded ${
+                        cp.status === 'passed' ? 'bg-green-100 text-green-700'
+                        : cp.status === 'failed' ? 'bg-red-100 text-red-700'
+                        : cp.status === 'skipped' ? 'bg-gray-100 text-gray-700'
+                        : cp.status === 'conditional' ? 'bg-blue-100 text-blue-700'
+                        : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {cp.status.toUpperCase()}
+                      </span>
+                    </div>
+
+                    <div className="mt-4">
+                      {cp.code === 'DRY-CORE' ? (
+                        <CoreTempCard
+                          initialMeta={cp.metadata as CoreTempMeta | undefined}
+                          onSave={async (meta, passed) => {
+                            await saveCheckpoint(batchId, cp.id, passed ? 'passed' : 'failed', meta);
+                            await load();
+                          }}
+                        />
+                      ) : cp.code === 'MAR-TIMES' ? (
+                        <MarinationTimesCard
+                          initialMeta={cp.metadata as MarTimesMeta | undefined}
+                          onSave={async (meta, passed) => {
+                            await saveCheckpoint(batchId, cp.id, passed ? 'passed' : 'failed', meta);
+                            await load();
+                          }}
+                        />
+                      ) : cp.code === 'DRY-AW' ? (
+                        <WaterActivityCard
+                          initialMeta={cp.metadata as AwMeta | undefined}
+                          onSave={async (meta, passed) => {
+                            await saveCheckpoint(batchId, cp.id, passed ? 'passed' : 'failed', meta);
+                            await load();
+                          }}
+                        />
+                      ) : (
+                        <SimpleStatusCard
+                          initialStatus={cp.status}
+                          onSave={async (status) => {
+                            await saveCheckpoint(batchId, cp.id, status);
+                            await load();
+                          }}
+                        />
+                      )}
+                    </div>
+                  </div>
+                );
+                return baseCard;
+              })}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }

@@ -11,7 +11,7 @@ export default function CreateRecipePage() {
     name: '',
     recipe_code: '',
     product_category: '',
-    base_beef_weight: 1000,
+    base_beef_weight: 1,
     target_yield_weight: null,
     description: '',
     instructions: '',

@@ -1,36 +1,45 @@
 'use client';
 
-import { useEffect, useState, ChangeEvent } from 'react';
+import { useEffect, useMemo, useState, ChangeEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 
-// ---- Types (align with your DB) ----
 type Unit = 'g' | 'kg' | 'ml' | 'L' | 'units';
+
+type Material = {
+  id: string;
+  name: string;
+  material_code: string;
+  unit: Unit;
+};
+
+type IngredientRow = {
+  material_id: string;
+  quantity: number;
+  unit: Unit;
+  is_critical: boolean;
+  notes: string | null;
+};
 
 type RecipeIngredient = {
   id: string;
   material_id: string;
   quantity: number;
   unit: Unit;
-  tolerance_percentage: number | null;
   is_critical: boolean;
-  is_cure: boolean;
-  display_order: number;
   notes: string | null;
+  display_order: number;
+  material?: Material;
 };
 
 type Recipe = {
   id: string;
-  product_id: string;
   name: string;
   recipe_code: string;
-  base_beef_weight: number;
+  base_beef_weight: number;         // grams
   target_yield_weight: number | null;
   description: string | null;
   instructions: string | null;
-  version: number;
   is_active: boolean;
-  created_at: string;
-  updated_at: string;
   recipe_ingredients: RecipeIngredient[];
 };
 
@@ -41,84 +50,155 @@ export default function EditRecipePage() {
   const { recipeId } = useParams<{ recipeId: string }>();
   const router = useRouter();
 
-  const [loading, setLoading] = useState<boolean>(true);
-  const [saving, setSaving] = useState<boolean>(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const [materials, setMaterials] = useState<Material[]>([]);
   const [recipe, setRecipe] = useState<Recipe | null>(null);
 
-  // Fetch recipe
+  // local editable fields
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState<string>('');
+  const [instructions, setInstructions] = useState<string>('');
+  const [isActive, setIsActive] = useState<boolean>(true);
+  const [baseBeefGrams, setBaseBeefGrams] = useState<number>(1000);
+  const [targetYield, setTargetYield] = useState<number | null>(null);
+  const [rows, setRows] = useState<IngredientRow[]>([]);
+
+  // Load materials + recipe
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const res = await fetch(`/api/recipes/${recipeId}`);
-      let data: RecipeGetResponse | null = null;
-      try {
-        data = (await res.json()) as RecipeGetResponse;
-      } catch {
-        data = { error: 'Invalid server response' };
-      }
+      // materials
+      const mRes = await fetch('/api/materials');
+      const mJson = await mRes.json();
+      const mList: Material[] = Array.isArray(mJson.materials) ? mJson.materials : [];
+      if (!cancelled) setMaterials(mList);
+
+      // recipe
+      const rRes = await fetch(`/api/recipes/${recipeId}`);
+      const rJson = (await rRes.json()) as RecipeGetResponse;
       if (cancelled) return;
 
-      if (!res.ok || ('error' in (data ?? {}))) {
+      if (!rRes.ok || 'error' in rJson) {
         setRecipe(null);
         setLoading(false);
         return;
       }
-      setRecipe((data as { recipe: Recipe }).recipe);
+
+      const rec = rJson.recipe;
+      setRecipe(rec);
+      setName(rec.name);
+      setDescription(rec.description ?? '');
+      setInstructions(rec.instructions ?? '');
+      setIsActive(Boolean(rec.is_active));
+      setBaseBeefGrams(Number(rec.base_beef_weight || 1000));
+      setTargetYield(
+        typeof rec.target_yield_weight === 'number' ? rec.target_yield_weight : null
+      );
+
+      // map existing ingredients -> editable rows
+      const mapped: IngredientRow[] = [...(rec.recipe_ingredients ?? [])]
+        .sort((a, b) => a.display_order - b.display_order)
+        .map((ri) => ({
+          material_id: ri.material_id,
+          quantity: Number(ri.quantity),
+          unit: ri.unit,
+          is_critical: Boolean(ri.is_critical),
+          notes: ri.notes ?? null,
+        }));
+      setRows(mapped);
       setLoading(false);
     })();
+
     return () => {
       cancelled = true;
     };
   }, [recipeId]);
 
-  // Change handlers (no any)
-  const onTextChange =
-    (field: 'name' | 'description' | 'instructions') =>
-    (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      if (!recipe) return;
-      const value = e.currentTarget.value;
-      setRecipe({ ...recipe, [field]: value });
-    };
+  const canSave = useMemo(() => {
+    // need name + at least one ingredient with qty > 0
+    if (!name.trim()) return false;
+    const validCount = rows.filter(
+      (r) => r.material_id && Number(r.quantity) > 0 && r.unit
+    ).length;
+    return validCount > 0;
+  }, [name, rows]);
 
-  const onActiveChange = (e: ChangeEvent<HTMLInputElement>) => {
-    if (!recipe) return;
-    setRecipe({ ...recipe, is_active: e.currentTarget.checked });
+  const addRow = () => {
+    // default: first material (if any)
+    const defaultMaterial = materials[0]?.id ?? '';
+    // default unit: material’s native or g
+    const defaultUnit = materials[0]?.unit ?? 'g';
+    setRows((prev) => [
+      ...prev,
+      {
+        material_id: defaultMaterial,
+        quantity: 0,
+        unit: defaultUnit,
+        is_critical: false,
+        notes: null,
+      },
+    ]);
   };
 
-  // Save
+  const updateRow = <K extends keyof IngredientRow>(
+    idx: number,
+    key: K,
+    value: IngredientRow[K]
+  ) => {
+    setRows((prev) => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], [key]: value };
+      return next;
+    });
+  };
+
+  const removeRow = (idx: number) => {
+    setRows((prev) => prev.filter((_, i) => i !== idx));
+  };
+
   const save = async () => {
     if (!recipe) return;
+    if (!canSave) {
+      alert('Please add at least one valid ingredient.');
+      return;
+    }
     setSaving(true);
     try {
+      const payload = {
+        name: name.trim(),
+        description: description.trim() || null,
+        instructions: instructions.trim() || null,
+        is_active: isActive,
+        base_beef_weight: Number(baseBeefGrams), // grams
+        target_yield_weight: targetYield === null ? null : Number(targetYield),
+        ingredients: rows
+          .map((r) => ({
+            material_id: r.material_id,
+            quantity: Number(r.quantity),
+            unit: r.unit,
+            is_critical: Boolean(r.is_critical),
+            notes: r.notes && r.notes.trim() ? r.notes.trim() : null,
+          }))
+          .filter((i) => i.material_id && i.quantity > 0),
+      };
+
       const res = await fetch(`/api/recipes/${recipeId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: recipe.name,
-          description: recipe.description,
-          instructions: recipe.instructions,
-          is_active: recipe.is_active,
-        }),
+        body: JSON.stringify(payload),
       });
 
-      let data: PutResponse | null = null;
-      try {
-        data = (await res.json()) as PutResponse;
-      } catch {
-        data = null;
-      }
-
-      if (!res.ok || !data || ('error' in data)) {
-        const msg =
-          (data && 'error' in data && typeof data.error === 'string')
-            ? data.error
-            : 'Failed to update recipe';
-        alert(msg);
+      const data = (await res.json()) as PutResponse;
+      if (!res.ok || 'error' in data) {
+        alert(('error' in data && data.error) || 'Failed to update recipe');
+        setSaving(false);
         return;
-      }
+        }
 
       router.push(`/recipes/${recipeId}`);
-    } catch (_error) {
+    } catch {
       alert('Failed to update recipe');
     } finally {
       setSaving(false);
@@ -129,63 +209,204 @@ export default function EditRecipePage() {
   if (!recipe) return <div className="p-6">Recipe not found</div>;
 
   return (
-    <div className="max-w-3xl mx-auto p-6 space-y-4">
-      <h1 className="text-2xl font-bold">Edit Recipe</h1>
+    <div className="max-w-4xl mx-auto p-6 space-y-6">
+      <h1 className="text-2xl font-bold">Edit Recipe — {recipe.recipe_code}</h1>
 
-      <label className="block">
-        <span className="text-sm font-medium">Name</span>
-        <input
-          className="border rounded p-2 w-full"
-          value={recipe.name}
-          onChange={onTextChange('name')}
-        />
-      </label>
+      {/* Basics */}
+      <div className="rounded-xl border bg-white p-5 space-y-4">
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="block">
+            <span className="text-sm font-medium">Name</span>
+            <input
+              className="mt-1 w-full rounded border px-3 py-2"
+              value={name}
+              onChange={(e) => setName(e.currentTarget.value)}
+              required
+            />
+          </label>
 
-      <label className="block">
-        <span className="text-sm font-medium">Description</span>
-        <textarea
-          className="border rounded p-2 w-full"
-          rows={3}
-          value={recipe.description ?? ''}
-          onChange={onTextChange('description')}
-        />
-      </label>
+          <label className="block">
+            <span className="text-sm font-medium">Active</span>
+            <div className="mt-2">
+              <input
+                type="checkbox"
+                checked={isActive}
+                onChange={(e) => setIsActive(e.currentTarget.checked)}
+              />{' '}
+              <span className="text-sm">Enabled</span>
+            </div>
+          </label>
 
-      <label className="block">
-        <span className="text-sm font-medium">Instructions</span>
-        <textarea
-          className="border rounded p-2 w-full"
-          rows={5}
-          value={recipe.instructions ?? ''}
-          onChange={onTextChange('instructions')}
-        />
-      </label>
+          <label className="block">
+            <span className="text-sm font-medium">Base Beef Weight (g)</span>
+            <input
+              type="number"
+              min={1}
+              className="mt-1 w-full rounded border px-3 py-2"
+              value={baseBeefGrams}
+              onChange={(e) => setBaseBeefGrams(Number(e.currentTarget.value || 0))}
+              required
+            />
+          </label>
 
-      <label className="inline-flex items-center gap-2">
-        <input
-          type="checkbox"
-          checked={recipe.is_active}
-          onChange={onActiveChange}
-        />
-        <span className="text-sm">Active</span>
-      </label>
+          <label className="block">
+            <span className="text-sm font-medium">Target Yield (g)</span>
+            <input
+              type="number"
+              min={1}
+              className="mt-1 w-full rounded border px-3 py-2"
+              value={targetYield ?? ''}
+              onChange={(e) =>
+                setTargetYield(e.currentTarget.value ? Number(e.currentTarget.value) : null)
+              }
+            />
+          </label>
+        </div>
 
-      <div className="flex gap-3">
-        <button
-          className="px-4 py-2 rounded border"
-          type="button"
-          onClick={() => router.back()}
-        >
-          Cancel
-        </button>
-        <button
-          className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
-          type="button"
-          onClick={save}
-          disabled={saving}
-        >
-          {saving ? 'Saving…' : 'Save changes'}
-        </button>
+        <label className="block">
+          <span className="text-sm font-medium">Description</span>
+          <textarea
+            rows={2}
+            className="mt-1 w-full rounded border px-3 py-2"
+            value={description}
+            onChange={(e) => setDescription(e.currentTarget.value)}
+            placeholder="Optional…"
+          />
+        </label>
+
+        <label className="block">
+          <span className="text-sm font-medium">Instructions</span>
+          <textarea
+            rows={4}
+            className="mt-1 w-full rounded border px-3 py-2"
+            value={instructions}
+            onChange={(e) => setInstructions(e.currentTarget.value)}
+            placeholder="Optional…"
+          />
+        </label>
+      </div>
+
+      {/* Ingredients */}
+      <div className="rounded-xl border bg-white p-5">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Ingredients</h2>
+          <button
+            type="button"
+            onClick={addRow}
+            className="rounded bg-green-600 px-3 py-1.5 text-sm text-white hover:bg-green-700"
+          >
+            + Add Ingredient
+          </button>
+        </div>
+
+        {rows.length === 0 ? (
+          <div className="rounded border border-dashed p-6 text-center text-gray-500">
+            No ingredients yet. Click “Add Ingredient”.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-gray-50 text-left">
+                  <th className="p-2">Material</th>
+                  <th className="p-2 w-28">Qty</th>
+                  <th className="p-2 w-24">Unit</th>
+                  <th className="p-2 w-24">Critical</th>
+                  <th className="p-2">Notes</th>
+                  <th className="p-2 w-16"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, idx) => (
+                  <tr key={`${r.material_id}-${idx}`} className="border-b last:border-0">
+                    <td className="p-2">
+                      <select
+                        className="w-full rounded border px-2 py-1.5"
+                        value={r.material_id}
+                        onChange={(e) => updateRow(idx, 'material_id', e.currentTarget.value)}
+                        required
+                      >
+                        <option value="">Select material…</option>
+                        {materials.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name} ({m.material_code})
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="p-2">
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.01}
+                        className="w-full rounded border px-2 py-1.5"
+                        value={r.quantity}
+                        onChange={(e) => updateRow(idx, 'quantity', Number(e.currentTarget.value || 0))}
+                        required
+                      />
+                    </td>
+                    <td className="p-2">
+                      <select
+                        className="w-full rounded border px-2 py-1.5"
+                        value={r.unit}
+                        onChange={(e) => updateRow(idx, 'unit', e.currentTarget.value as Unit)}
+                      >
+                        <option value="g">g</option>
+                        <option value="kg">kg</option>
+                        <option value="ml">ml</option>
+                        <option value="L">L</option>
+                        <option value="units">units</option>
+                      </select>
+                    </td>
+                    <td className="p-2">
+                      <input
+                        type="checkbox"
+                        checked={r.is_critical}
+                        onChange={(e) => updateRow(idx, 'is_critical', e.currentTarget.checked)}
+                      />
+                    </td>
+                    <td className="p-2">
+                      <input
+                        className="w-full rounded border px-2 py-1.5"
+                        value={r.notes ?? ''}
+                        onChange={(e) => updateRow(idx, 'notes', e.currentTarget.value || null)}
+                        placeholder="Optional…"
+                      />
+                    </td>
+                    <td className="p-2">
+                      <button
+                        type="button"
+                        onClick={() => removeRow(idx)}
+                        className="rounded px-2 py-1 text-red-600 hover:bg-red-50"
+                        title="Remove"
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            className="rounded border px-4 py-2"
+            onClick={() => router.back()}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50"
+            onClick={save}
+            disabled={saving || !canSave}
+          >
+            {saving ? 'Saving…' : 'Save Changes'}
+          </button>
+        </div>
       </div>
     </div>
   );

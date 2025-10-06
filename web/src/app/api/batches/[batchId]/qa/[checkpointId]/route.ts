@@ -4,69 +4,78 @@ import { createClient } from '@/lib/db';
 
 type QAStatus = 'pending' | 'passed' | 'failed' | 'skipped' | 'conditional';
 
-interface SaveBody {
+interface PostBody {
   status: QAStatus;
-  metadata?: Record<string, unknown>;
+  notes?: string | null;
+  corrective_action?: string | null;
+  recheck_required?: boolean;
+  temperature_c?: number | null;
+  humidity_percent?: number | null;
+  ph_level?: number | null;
+  water_activity?: number | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export async function POST(
   req: NextRequest,
-  ctx: { params: Promise<{ batchId: string; checkpointId: string }> }
+  context: { params: Promise<{ batchId: string; checkpointId: string }> }
 ) {
-  const { batchId, checkpointId } = await ctx.params; // <-- KEY FIX
+  const { batchId, checkpointId } = await context.params;
   const supabase = createClient();
 
-  let body: SaveBody;
+  let body: PostBody;
   try {
-    body = (await req.json()) as SaveBody;
+    body = (await req.json()) as PostBody;
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const ALLOWED = ['pending', 'passed', 'failed', 'skipped', 'conditional'] as const;
-  if (!ALLOWED.includes(body.status)) {
-    return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+  if (!body.status) {
+    return NextResponse.json({ error: 'status is required' }, { status: 400 });
   }
 
-  // find existing check for this batch + checkpoint
-  const { data: existing, error: findErr } = await supabase
+  const fields = {
+    status: body.status,
+    notes: body.notes ?? null,
+    corrective_action: body.corrective_action ?? null,
+    recheck_required: body.recheck_required ?? false,
+    temperature_c: body.temperature_c ?? null,
+    humidity_percent: body.humidity_percent ?? null,
+    ph_level: body.ph_level ?? null,
+    water_activity: body.water_activity ?? null,
+    metadata: body.metadata ?? {},
+    checked_at: new Date().toISOString(),
+  };
+
+  // Check if a row already exists for this batch/checkpoint
+  const { data: existingRows, error: selErr } = await supabase
     .from('batch_qa_checks')
     .select('id')
     .eq('batch_id', batchId)
     .eq('checkpoint_id', checkpointId)
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
 
-  if (findErr) {
-    return NextResponse.json({ error: findErr.message }, { status: 500 });
+  if (selErr) {
+    return NextResponse.json({ error: selErr.message }, { status: 400 });
   }
 
-  if (existing?.id) {
+  if (existingRows && existingRows.length > 0) {
+    const id = existingRows[0].id as string;
     const { error: updErr } = await supabase
       .from('batch_qa_checks')
-      .update({
-        status: body.status,
-        metadata: body.metadata ?? {},
-        checked_at: new Date().toISOString(),
-      })
-      .eq('id', existing.id);
+      .update(fields)
+      .eq('id', id);
 
     if (updErr) {
-      return NextResponse.json({ error: updErr.message }, { status: 500 });
+      return NextResponse.json({ error: updErr.message }, { status: 400 });
     }
   } else {
     const { error: insErr } = await supabase
       .from('batch_qa_checks')
-      .insert({
-        batch_id: batchId,
-        checkpoint_id: checkpointId,
-        status: body.status,
-        metadata: body.metadata ?? {},
-        checked_at: new Date().toISOString(),
-      });
+      .insert([{ batch_id: batchId, checkpoint_id: checkpointId, ...fields }]);
 
     if (insErr) {
-      return NextResponse.json({ error: insErr.message }, { status: 500 });
+      return NextResponse.json({ error: insErr.message }, { status: 400 });
     }
   }
 

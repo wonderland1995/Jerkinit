@@ -114,12 +114,13 @@ export async function POST(
     .limit(1);
 
   if (lotErr) return NextResponse.json({ error: lotErr.message }, { status: 500 });
-  const lotData = lotRows?.[0] as any;
+  const lotData = lotRows?.[0];
   if (!lotData) return NextResponse.json({ error: 'Lot not found' }, { status: 404 });
   
-  // Handle material being an array or single object
-  const material = Array.isArray(lotData.material) ? lotData.material[0] : lotData.material;
-  if (!material || material.category !== 'beef') {
+  // Handle material being an array or single object - Supabase can return relations as arrays
+  const materialData = lotData.material;
+  const material = Array.isArray(materialData) ? materialData[0] : materialData;
+  if (!material || !('category' in material) || material.category !== 'beef') {
     return NextResponse.json({ error: 'Selected lot is not beef' }, { status: 400 });
   }
   

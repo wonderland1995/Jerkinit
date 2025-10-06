@@ -200,12 +200,21 @@ export default function BatchDetailPage() {
     const res = await fetch(`/api/lots?category=beef&q=${encodeURIComponent(term)}`);
     const data = await res.json();
     if (res.ok) {
-      const mapped: BeefPick[] = (data.lots ?? []).map((l: any) => ({
+      const mapped: BeefPick[] = (data.lots ?? []).map((l: {
+        id: string;
+        lot_number: string;
+        internal_lot_code: string;
+        current_balance: number;
+        unit: string;
+        supplier?: { name: string } | null;
+        received_date?: string | null;
+        expiry_date?: string | null;
+      }) => ({
         id: l.id,
         lot_number: l.lot_number,
         internal_lot_code: l.internal_lot_code,
         current_balance: Number(l.current_balance) || 0,
-        unit: l.unit,
+        unit: l.unit as BeefPick['unit'],
         supplier_name: l.supplier?.name ?? null,
         received_date: l.received_date ?? null,
         expiry_date: l.expiry_date ?? null,
@@ -222,10 +231,12 @@ export default function BatchDetailPage() {
         setLoading(false);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchId]);
 
   useEffect(() => {
     loadBeefAllocations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchId]);
 
   useEffect(() => {

@@ -1,4 +1,3 @@
-// src/app/api/recipes/[recipeId]/route.ts
 import { createClient } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -19,15 +18,14 @@ type PutBody = {
   is_active?: boolean;
   base_beef_weight?: number;        // grams
   target_yield_weight?: number | null;
-  // If provided, we will REPLACE all existing ingredients with this list.
-  ingredients?: PutIngredient[];
+  ingredients?: PutIngredient[];    // replace all if provided
 };
 
 export async function GET(
-  _req: NextRequest,
-  { params }: { params: { recipeId: string } }
+  req: NextRequest,
+  context: { params: Promise<{ recipeId: string }> }
 ) {
-  const { recipeId } = params;
+  const { recipeId } = await context.params;
   const supabase = createClient();
 
   try {
@@ -78,36 +76,30 @@ export async function GET(
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { recipeId: string } }
+  context: { params: Promise<{ recipeId: string }> }
 ) {
-  const { recipeId } = params;
+  const { recipeId } = await context.params;
   const supabase = createClient();
 
   try {
     const body: PutBody = await req.json();
 
-    // 1) Update recipe scalar fields (only those sent)
+    // 1) update scalars if provided
     const patch: Record<string, unknown> = {};
     if (typeof body.name === 'string') patch.name = body.name;
     if (typeof body.description !== 'undefined') patch.description = body.description;
     if (typeof body.instructions !== 'undefined') patch.instructions = body.instructions;
     if (typeof body.is_active === 'boolean') patch.is_active = body.is_active;
-    if (typeof body.base_beef_weight === 'number') patch.base_beef_weight = body.base_beef_weight; // grams
+    if (typeof body.base_beef_weight === 'number') patch.base_beef_weight = body.base_beef_weight;
     if (typeof body.target_yield_weight !== 'undefined') patch.target_yield_weight = body.target_yield_weight;
 
     if (Object.keys(patch).length > 0) {
-      const { error: rErr } = await supabase
-        .from('recipes')
-        .update(patch)
-        .eq('id', recipeId);
-      if (rErr) {
-        return NextResponse.json({ error: rErr.message }, { status: 400 });
-      }
+      const { error: rErr } = await supabase.from('recipes').update(patch).eq('id', recipeId);
+      if (rErr) return NextResponse.json({ error: rErr.message }, { status: 400 });
     }
 
-    // 2) Replace ingredients if provided
+    // 2) replace ingredients if provided
     if (Array.isArray(body.ingredients)) {
-      // Validate each ingredient
       const clean = body.ingredients
         .map((ing, idx) => ({
           recipe_id: recipeId,
@@ -120,13 +112,7 @@ export async function PUT(
           display_order: idx,
           notes: ing.notes ?? null,
         }))
-        .filter(
-          (row) =>
-            !!row.material_id &&
-            Number.isFinite(row.quantity) &&
-            row.quantity > 0 &&
-            !!row.unit
-        );
+        .filter((row) => row.material_id && row.quantity > 0 && row.unit);
 
       if (clean.length === 0) {
         return NextResponse.json(
@@ -135,21 +121,14 @@ export async function PUT(
         );
       }
 
-      // delete then insert (simple consistent replacement)
       const { error: delErr } = await supabase
         .from('recipe_ingredients')
         .delete()
         .eq('recipe_id', recipeId);
-      if (delErr) {
-        return NextResponse.json({ error: delErr.message }, { status: 400 });
-      }
+      if (delErr) return NextResponse.json({ error: delErr.message }, { status: 400 });
 
-      const { error: insErr } = await supabase
-        .from('recipe_ingredients')
-        .insert(clean);
-      if (insErr) {
-        return NextResponse.json({ error: insErr.message }, { status: 400 });
-      }
+      const { error: insErr } = await supabase.from('recipe_ingredients').insert(clean);
+      if (insErr) return NextResponse.json({ error: insErr.message }, { status: 400 });
     }
 
     return NextResponse.json({ ok: true });

@@ -16,11 +16,11 @@ interface MaterialTraceRow {
   material_name: string;
   unit: Unit;
   target_amount: number;
-  used_amount: number;          // (not used for status)
-  remaining_amount: number;     // (not used for status)
+  used_amount: number;
+  remaining_amount: number;
   is_critical: boolean;
   tolerance_percentage: number;
-  lots: unknown[];              // (ignored in this screen)
+  lots: unknown[];
 }
 
 interface TraceResp {
@@ -49,7 +49,7 @@ interface ActualRow {
   id: string;
   material_id: string | null;
   ingredient_name: string;
-  target_amount: number;     // convenience
+  target_amount: number;
   actual_amount: number | null;
   unit: Unit;
   tolerance_percentage: number;
@@ -77,9 +77,21 @@ interface QaStageCount {
 
 interface QaSummaryResp {
   current_stage: QaStage;
-  percent_complete: number; // 0..100
+  percent_complete: number;
   counts: QaStageCount[];
 }
+
+// Beef allocation types
+type BeefPick = {
+  id: string;
+  lot_number: string;
+  internal_lot_code: string;
+  current_balance: number;
+  unit: 'g' | 'kg' | 'ml' | 'L' | 'units';
+  supplier_name: string | null;
+  received_date: string | null;
+  expiry_date: string | null;
+};
 
 /* handy guard */
 function isOkResponse(res: Response) {
@@ -103,84 +115,145 @@ export default function BatchDetailPage() {
   const [loading, setLoading] = useState(true);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
-  // Optional QA summary for stage/progress (gracefully absent if API not present)
   const [qaSummary, setQaSummary] = useState<QaSummaryResp | null>(null);
-
-  // Local editable inputs per material
   const [actualInputs, setActualInputs] = useState<Record<string, string>>({});
+
+  // Beef allocations state
+  const [beefLots, setBeefLots] = useState<BeefPick[]>([]);
+  const [beefQuery, setBeefQuery] = useState('');
+  const [selectedLotId, setSelectedLotId] = useState<string>('');
+  const [beefQty, setBeefQty] = useState<number>(0);
+  const [beefUnit, setBeefUnit] = useState<'g' | 'kg'>('g');
+  const [beefTotalG, setBeefTotalG] = useState<number>(0);
+
+  const fetchBatch = async () => {
+    const [bRes, tRes, aRes, qRes] = await Promise.all([
+      fetch(`/api/batches/${batchId}`),
+      fetch(`/api/batches/${batchId}/traceability`),
+      fetch(`/api/batches/${batchId}/ingredients/actuals`),
+      fetch(`/api/batches/${batchId}/qa/summary`).catch(() => new Response(null, { status: 404 })),
+    ]);
+
+    if (isOkResponse(bRes)) {
+      const bJson = (await bRes.json()) as BatchResp;
+      setBatch(bJson.batch ?? null);
+    } else {
+      setBatch(null);
+    }
+
+    if (isOkResponse(tRes)) {
+      const tJson = (await tRes.json()) as TraceResp;
+      setScale(typeof tJson.batch?.scale === 'number' ? tJson.batch.scale : 1);
+      setMaterials(Array.isArray(tJson.materials) ? tJson.materials : []);
+    } else {
+      setScale(1);
+      setMaterials([]);
+    }
+
+    if (isOkResponse(aRes)) {
+      const aJson = (await aRes.json()) as ActualsResp;
+      const map: Record<string, ActualRow> = {};
+      for (const row of aJson.actuals ?? []) {
+        if (row.material_id) map[row.material_id] = row;
+      }
+      setActuals(map);
+
+      const seed: Record<string, string> = {};
+      for (const m of Array.isArray((await tRes.clone().json().catch(() => ({} as TraceResp))).materials)
+        ? ((await tRes.clone().json()) as TraceResp).materials!
+        : []) {
+        const current = map[m.material_id]?.actual_amount ?? '';
+        seed[m.material_id] = current === '' ? '' : String(current);
+      }
+      if (Object.keys(seed).length === 0) {
+        const simplerSeed: Record<string, string> = {};
+        for (const m of Array.isArray(materials) ? materials : []) {
+          const current = map[m.material_id]?.actual_amount ?? '';
+          simplerSeed[m.material_id] = current === '' ? '' : String(current);
+        }
+        setActualInputs(simplerSeed);
+      } else {
+        setActualInputs(seed);
+      }
+    } else {
+      setActuals({});
+      setActualInputs({});
+    }
+
+    if (isOkResponse(qRes)) {
+      const qJson = (await qRes.json()) as QaSummaryResp;
+      setQaSummary(qJson);
+    } else {
+      setQaSummary(null);
+    }
+  };
+
+  const loadBeefAllocations = async () => {
+    const res = await fetch(`/api/batches/${batchId}/beef`);
+    const data = await res.json();
+    if (res.ok) {
+      setBeefTotalG(Number(data.total_g || 0));
+    }
+  };
+
+  const searchBeefLots = async (term: string) => {
+    const res = await fetch(`/api/lots?category=beef&q=${encodeURIComponent(term)}`);
+    const data = await res.json();
+    if (res.ok) {
+      const mapped: BeefPick[] = (data.lots ?? []).map((l: any) => ({
+        id: l.id,
+        lot_number: l.lot_number,
+        internal_lot_code: l.internal_lot_code,
+        current_balance: Number(l.current_balance) || 0,
+        unit: l.unit,
+        supplier_name: l.supplier?.name ?? null,
+        received_date: l.received_date ?? null,
+        expiry_date: l.expiry_date ?? null,
+      }));
+      setBeefLots(mapped);
+    }
+  };
 
   useEffect(() => {
     (async () => {
       try {
-        const [bRes, tRes, aRes, qRes] = await Promise.all([
-          fetch(`/api/batches/${batchId}`),
-          fetch(`/api/batches/${batchId}/traceability`),
-          fetch(`/api/batches/${batchId}/ingredients/actuals`),
-          fetch(`/api/batches/${batchId}/qa/summary`).catch(() => new Response(null, { status: 404 })),
-        ]);
-
-        // batch
-        if (isOkResponse(bRes)) {
-          const bJson = (await bRes.json()) as BatchResp;
-          setBatch(bJson.batch ?? null);
-        } else {
-          setBatch(null);
-        }
-
-        // traceability / recipe targets
-        if (isOkResponse(tRes)) {
-          const tJson = (await tRes.json()) as TraceResp;
-          setScale(typeof tJson.batch?.scale === 'number' ? tJson.batch.scale : 1);
-          setMaterials(Array.isArray(tJson.materials) ? tJson.materials : []);
-        } else {
-          setScale(1);
-          setMaterials([]);
-        }
-
-        // actuals
-        if (isOkResponse(aRes)) {
-          const aJson = (await aRes.json()) as ActualsResp;
-          const map: Record<string, ActualRow> = {};
-          for (const row of aJson.actuals ?? []) {
-            if (row.material_id) map[row.material_id] = row;
-          }
-          setActuals(map);
-
-          const seed: Record<string, string> = {};
-          for (const m of Array.isArray((await tRes.clone().json().catch(() => ({} as TraceResp))).materials)
-            ? ((await tRes.clone().json()) as TraceResp).materials!
-            : []) {
-            const current = map[m.material_id]?.actual_amount ?? '';
-            seed[m.material_id] = current === '' ? '' : String(current);
-          }
-          // If the above clone path is too defensive, just seed from materials state after it’s set:
-          if (Object.keys(seed).length === 0) {
-            const simplerSeed: Record<string, string> = {};
-            for (const m of Array.isArray(materials) ? materials : []) {
-              const current = map[m.material_id]?.actual_amount ?? '';
-              simplerSeed[m.material_id] = current === '' ? '' : String(current);
-            }
-            setActualInputs(simplerSeed);
-          } else {
-            setActualInputs(seed);
-          }
-        } else {
-          setActuals({});
-          setActualInputs({});
-        }
-
-        // QA summary (optional)
-        if (isOkResponse(qRes)) {
-          const qJson = (await qRes.json()) as QaSummaryResp;
-          setQaSummary(qJson);
-        } else {
-          setQaSummary(null);
-        }
+        await fetchBatch();
       } finally {
         setLoading(false);
       }
     })();
-  }, [batchId]); // only depends on the route param
+  }, [batchId]);
+
+  useEffect(() => {
+    loadBeefAllocations();
+  }, [batchId]);
+
+  useEffect(() => {
+    searchBeefLots(beefQuery);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const addBeef = async () => {
+    if (!selectedLotId || beefQty <= 0) return;
+
+    const res = await fetch(`/api/batches/${batchId}/beef`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lot_id: selectedLotId, quantity: beefQty, unit: beefUnit }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error ?? 'Failed to add beef');
+      return;
+    }
+
+    await Promise.all([loadBeefAllocations(), fetchBatch()]);
+    setSelectedLotId('');
+    setBeefQty(0);
+    setBeefUnit('g');
+    setBeefQuery('');
+    setBeefLots([]);
+  };
 
   const isLocked = batch?.status === 'completed';
 
@@ -212,7 +285,6 @@ export default function BatchDetailPage() {
 
   const allCriticalOk = useMemo(() => {
     if (rows.length === 0) return false;
-    // If there are no criticals, allow; if there are, all must be inTol === true
     const criticals = rows.filter((r) => r.is_critical);
     if (criticals.length === 0) return true;
     return criticals.every((r) => r.inTol === true);
@@ -265,9 +337,6 @@ export default function BatchDetailPage() {
     setBatch((b) => (b ? { ...b, status: j.status ?? 'completed' } : b));
   }
 
-  /* =========================================
-     UI helpers
-     ========================================= */
   const stageOrder: QaStage[] = [
     'preparation',
     'mixing',
@@ -281,9 +350,6 @@ export default function BatchDetailPage() {
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
 
-  /* =========================================
-     Render
-     ========================================= */
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -356,7 +422,6 @@ export default function BatchDetailPage() {
             </div>
           </div>
 
-          {/* Optional stage progress */}
           {qaSummary && (
             <div className="mt-6">
               <div className="flex items-center justify-between mb-2">
@@ -395,6 +460,89 @@ export default function BatchDetailPage() {
               </div>
             </div>
           )}
+        </div>
+
+        {/* Beef used (traceability link) */}
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold">Beef Used</h2>
+            <div className="text-sm text-gray-600">
+              Total recorded: <span className="font-medium">{beefTotalG.toFixed(0)} g</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Search beef lot</label>
+              <input
+                value={beefQuery}
+                onChange={async (e) => {
+                  const v = e.target.value;
+                  setBeefQuery(v);
+                  await searchBeefLots(v);
+                }}
+                placeholder="Lot number…"
+                className="w-full border rounded px-3 py-2"
+              />
+              {beefLots.length > 0 && (
+                <div className="mt-2 max-h-44 overflow-auto border rounded">
+                  {beefLots.map((l) => (
+                    <button
+                      key={l.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedLotId(l.id);
+                        setBeefQuery(`${l.lot_number} (${l.internal_lot_code})`);
+                        setBeefLots([]);
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-gray-50"
+                    >
+                      <div className="font-medium">{l.lot_number} <span className="text-gray-500">({l.internal_lot_code})</span></div>
+                      <div className="text-xs text-gray-500">
+                        Balance: {l.current_balance} {l.unit}{l.supplier_name ? ` · ${l.supplier_name}` : ''}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={Number.isFinite(beefQty) ? beefQty : 0}
+                onChange={(e) => setBeefQty(Number(e.target.value))}
+                className="w-full border rounded px-3 py-2"
+                placeholder="e.g. 250"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
+              <select
+                value={beefUnit}
+                onChange={(e) => setBeefUnit(e.target.value === 'kg' ? 'kg' : 'g')}
+                className="w-full border rounded px-3 py-2"
+              >
+                <option value="g">g</option>
+                <option value="kg">kg</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={addBeef}
+              disabled={!selectedLotId || beefQty <= 0}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              Add Beef Allocation
+            </button>
+          </div>
         </div>
 
         {/* Recipe Targets & Actuals */}

@@ -1,99 +1,99 @@
+// src/app/api/batches/[batchId]/qa/progress/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/db';
 
+// Stages we support in your schema
 type Stage = 'preparation' | 'mixing' | 'marination' | 'drying' | 'packaging' | 'final';
-const STAGES: Stage[] = ['preparation', 'mixing', 'marination', 'drying', 'packaging', 'final'];
 
-type CheckpointRow = {
+type Checkpoint = {
   id: string;
   stage: Stage | null;
-  required: boolean | null;
-  active: boolean | null;
+  required: boolean;
+  active: boolean;
+  display_order: number | null;
 };
 
-type BatchCheckRow = {
-  checkpoint_id: string | null;
-  status: 'pending' | 'passed' | 'failed' | 'skipped' | 'conditional' | null;
+type BatchCheckStatus = 'pending' | 'passed' | 'failed' | 'skipped' | 'conditional' | null;
+
+type BatchCheck = {
+  checkpoint_id: string;
+  status: BatchCheckStatus;
 };
 
 type StageProgress = {
   stage: Stage;
-  required_total: number;
-  required_passed: number;
-  percent: number; // 0..100
+  total_required: number;
+  completed_required: number;
+  percentage: number; // 0..100
 };
+
+const STAGE_ORDER: Stage[] = ['preparation', 'mixing', 'marination', 'drying', 'packaging', 'final'];
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { batchId: string } }
+  context: { params: Promise<{ batchId: string }> }   // <-- Next 15 shape
 ) {
-  const { batchId } = params;
+  const { batchId } = await context.params;            // <-- await the params
   const supabase = createClient();
 
-  // 1) Fetch active checkpoints
-  const { data: checkpoints, error: cpErr } = await supabase
+  // 1) Load active checkpoints
+  const { data: cpRows, error: cpErr } = await supabase
     .from('qa_checkpoints')
-    .select('id, stage, required, active') as unknown as { data: CheckpointRow[] | null; error: { message: string } | null };
+    .select('id, stage, required, active, display_order')
+    .eq('active', true)
+    .order('stage', { ascending: true })
+    .order('display_order', { ascending: true });
 
   if (cpErr) {
     return NextResponse.json({ error: cpErr.message }, { status: 500 });
   }
 
-  const activeCheckpoints = (checkpoints ?? []).filter(c => c.active === true && c.stage !== null);
+  const checkpoints = (cpRows ?? []) as Checkpoint[];
 
-  // 2) Fetch this batch's QA checks
-  const { data: checks, error: chErr } = await supabase
+  // 2) Load batch checks for this batch
+  const { data: chkRows, error: chErr } = await supabase
     .from('batch_qa_checks')
     .select('checkpoint_id, status')
-    .eq('batch_id', batchId) as unknown as { data: BatchCheckRow[] | null; error: { message: string } | null };
+    .eq('batch_id', batchId);
 
   if (chErr) {
     return NextResponse.json({ error: chErr.message }, { status: 500 });
   }
 
-  const checkMap = new Map<string, BatchCheckRow>();
-  for (const row of checks ?? []) {
-    if (row.checkpoint_id) checkMap.set(row.checkpoint_id, row);
+  const checks = (chkRows ?? []) as BatchCheck[];
+
+  // Build lookup sets for progress calc
+  const requiredByStage = new Map<Stage, string[]>();
+  STAGE_ORDER.forEach((s) => requiredByStage.set(s, []));
+
+  for (const cp of checkpoints) {
+    if (!cp.stage || !cp.required) continue;
+    requiredByStage.get(cp.stage)!.push(cp.id);
   }
 
-  // 3) Compute per-stage required vs passed
-  const stageTotals = new Map<Stage, number>();
-  const stagePassed = new Map<Stage, number>();
-  STAGES.forEach(s => {
-    stageTotals.set(s, 0);
-    stagePassed.set(s, 0);
+  const passed = new Set<string>();
+  for (const c of checks) {
+    if (c.status === 'passed') passed.add(c.checkpoint_id);
+  }
+
+  const stages: StageProgress[] = STAGE_ORDER.map((s) => {
+    const ids = requiredByStage.get(s) ?? [];
+    const completed = ids.filter((id) => passed.has(id)).length;
+    const percentage = ids.length === 0 ? 100 : Math.round((completed / ids.length) * 100);
+    return {
+      stage: s,
+      total_required: ids.length,
+      completed_required: completed,
+      percentage,
+    };
   });
 
-  for (const cp of activeCheckpoints) {
-    const st = (cp.stage ?? 'preparation') as Stage;
-    const isRequired = cp.required === true;
-    if (isRequired) {
-      stageTotals.set(st, (stageTotals.get(st) ?? 0) + 1);
-      const chk = cp.id ? checkMap.get(cp.id) : undefined;
-      if (chk && chk.status === 'passed') {
-        stagePassed.set(st, (stagePassed.get(st) ?? 0) + 1);
-      }
-    }
-  }
+  // Current stage = first stage with incomplete required checkpoints, else 'final'
+  const current_stage =
+    stages.find((sp) => sp.completed_required < sp.total_required)?.stage ?? 'final';
 
-  const stages: StageProgress[] = STAGES.map(stage => {
-    const total = stageTotals.get(stage) ?? 0;
-    const passed = stagePassed.get(stage) ?? 0;
-    const percent = total === 0 ? 100 : Math.round((passed / total) * 100);
-    return { stage, required_total: total, required_passed: passed, percent };
-  });
-
-  // 4) Determine current stage (first stage with missing required)
-  let current_stage: Stage | null = null;
-  for (const s of stages) {
-    if (s.required_passed < s.required_total) {
-      current_stage = s.stage;
-      break;
-    }
-  }
-
-  // 5) Can complete = all required passed across all stages
-  const can_complete = stages.every(s => s.required_passed >= s.required_total);
+  // You can complete batch only if all required items across all stages are passed
+  const can_complete = stages.every((sp) => sp.completed_required >= sp.total_required);
 
   return NextResponse.json({ current_stage, stages, can_complete });
 }

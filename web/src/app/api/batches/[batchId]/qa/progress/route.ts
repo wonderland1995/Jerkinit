@@ -2,7 +2,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/db';
 
-// Stages we support in your schema
 type Stage = 'preparation' | 'mixing' | 'marination' | 'drying' | 'packaging' | 'final';
 
 type Checkpoint = {
@@ -24,16 +23,17 @@ type StageProgress = {
   stage: Stage;
   total_required: number;
   completed_required: number;
-  percentage: number; // 0..100
+  percentage: number;
 };
 
 const STAGE_ORDER: Stage[] = ['preparation', 'mixing', 'marination', 'drying', 'packaging', 'final'];
 
 export async function GET(
   _req: NextRequest,
-  context: { params: Promise<{ batchId: string }> }   // <-- Next 15 shape
+  props: { params: Promise<{ batchId: string }> }
 ) {
-  const { batchId } = await context.params;            // <-- await the params
+  const params = await props.params;
+  const { batchId } = params;
   const supabase = createClient();
 
   // 1) Load active checkpoints
@@ -92,8 +92,26 @@ export async function GET(
   const current_stage =
     stages.find((sp) => sp.completed_required < sp.total_required)?.stage ?? 'final';
 
+  // Calculate overall percent complete
+  const totalRequired = stages.reduce((sum, sp) => sum + sp.total_required, 0);
+  const totalCompleted = stages.reduce((sum, sp) => sum + sp.completed_required, 0);
+  const percent_complete = totalRequired === 0 ? 100 : Math.round((totalCompleted / totalRequired) * 100);
+
   // You can complete batch only if all required items across all stages are passed
   const can_complete = stages.every((sp) => sp.completed_required >= sp.total_required);
 
-  return NextResponse.json({ current_stage, stages, can_complete });
+  // Return in the format expected by the batch detail page
+  const counts = stages.map(sp => ({
+    stage: sp.stage,
+    total: sp.total_required,
+    done: sp.completed_required,
+  }));
+
+  return NextResponse.json({ 
+    current_stage, 
+    percent_complete,
+    counts,
+    stages, 
+    can_complete 
+  });
 }

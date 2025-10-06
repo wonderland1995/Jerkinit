@@ -131,7 +131,7 @@ export default function BatchDetailPage() {
       fetch(`/api/batches/${batchId}`),
       fetch(`/api/batches/${batchId}/traceability`),
       fetch(`/api/batches/${batchId}/ingredients/actuals`),
-      fetch(`/api/batches/${batchId}/qa/summary`).catch(() => new Response(null, { status: 404 })),
+      fetch(`/api/batches/${batchId}/qa/progress`).catch(() => new Response(null, { status: 404 })),
     ]);
 
     if (isOkResponse(bRes)) {

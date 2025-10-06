@@ -1,18 +1,19 @@
+// src/app/api/batches/[batchId]/qa/[checkpointId]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/db';
 
 type QAStatus = 'pending' | 'passed' | 'failed' | 'skipped' | 'conditional';
 
-type SaveBody = {
+interface SaveBody {
   status: QAStatus;
   metadata?: Record<string, unknown>;
-};
+}
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { batchId: string; checkpointId: string } }
+  ctx: { params: Promise<{ batchId: string; checkpointId: string }> }
 ) {
-  const { batchId, checkpointId } = params;
+  const { batchId, checkpointId } = await ctx.params; // <-- KEY FIX
   const supabase = createClient();
 
   let body: SaveBody;
@@ -22,12 +23,12 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const ALLOWED: QAStatus[] = ['pending', 'passed', 'failed', 'skipped', 'conditional'];
+  const ALLOWED = ['pending', 'passed', 'failed', 'skipped', 'conditional'] as const;
   if (!ALLOWED.includes(body.status)) {
     return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
   }
 
-  // Find existing check (if any)
+  // find existing check for this batch + checkpoint
   const { data: existing, error: findErr } = await supabase
     .from('batch_qa_checks')
     .select('id')

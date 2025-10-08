@@ -79,6 +79,7 @@ interface QaSummaryResp {
   current_stage: QaStage;
   percent_complete: number;
   counts: QaStageCount[];
+  current_checkpoint?: { id: string; code: string; name: string; stage: QaStage } | null;
 }
 
 // Beef allocation types
@@ -441,6 +442,12 @@ export default function BatchDetailPage() {
                   {prettyStage(qaSummary.current_stage)} · {qaSummary.percent_complete.toFixed(0)}%
                 </span>
               </div>
+
+              {qaSummary.current_checkpoint && qaSummary.current_stage !== 'final' && (
+                <div className="text-xs text-gray-500 text-right mb-2">
+                  Next: {qaSummary.current_checkpoint.code} — {qaSummary.current_checkpoint.name}
+                </div>
+              )}
 
               <div className="flex items-center gap-2">
                 {stageOrder.map((s, i) => {

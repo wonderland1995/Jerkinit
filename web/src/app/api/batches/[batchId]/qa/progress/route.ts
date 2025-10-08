@@ -6,6 +6,8 @@ type Stage = 'preparation' | 'mixing' | 'marination' | 'drying' | 'packaging' | 
 
 type Checkpoint = {
   id: string;
+  code?: string | null;
+  name?: string | null;
   stage: Stage | null;
   required: boolean;
   active: boolean;
@@ -39,7 +41,7 @@ export async function GET(
   // 1) Load active checkpoints
   const { data: cpRows, error: cpErr } = await supabase
     .from('qa_checkpoints')
-    .select('id, stage, required, active, display_order')
+    .select('id, code, name, stage, required, active, display_order')
     .eq('active', true)
     .order('stage', { ascending: true })
     .order('display_order', { ascending: true });
@@ -92,6 +94,29 @@ export async function GET(
   const current_stage =
     stages.find((sp) => sp.completed_required < sp.total_required)?.stage ?? 'final';
 
+  // Determine the next/current checkpoint within the current stage
+  let current_checkpoint: { id: string; code: string; name: string; stage: Stage } | null = null;
+  if (current_stage) {
+    const statusById = new Map<string, BatchCheckStatus>();
+    for (const c of checks) statusById.set(c.checkpoint_id, c.status);
+
+    const stageCps = checkpoints
+      .filter((cp) => cp.stage === current_stage)
+      .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
+
+    const firstRequiredNotPassed = stageCps.find((cp) => cp.required && statusById.get(cp.id) !== 'passed');
+    const firstOptionalNotPassed = stageCps.find((cp) => !cp.required && statusById.get(cp.id) !== 'passed');
+    const chosen = firstRequiredNotPassed ?? firstOptionalNotPassed;
+    if (chosen) {
+      current_checkpoint = {
+        id: chosen.id,
+        code: String(chosen.code ?? ''),
+        name: String(chosen.name ?? ''),
+        stage: current_stage,
+      };
+    }
+  }
+
   // Calculate overall percent complete
   const totalRequired = stages.reduce((sum, sp) => sum + sp.total_required, 0);
   const totalCompleted = stages.reduce((sum, sp) => sum + sp.completed_required, 0);
@@ -112,6 +137,7 @@ export async function GET(
     percent_complete,
     counts,
     stages, 
-    can_complete 
+    can_complete,
+    current_checkpoint,
   });
 }

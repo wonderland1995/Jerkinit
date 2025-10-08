@@ -122,6 +122,14 @@ export default function BatchQAPage() {
   const stageTotal = stageCheckpoints.length;
   const stageProgress = stageTotal > 0 ? Math.round((stagePassed / stageTotal) * 100) : 0;
 
+  // Determine current/next checkpoint within the active stage
+  const currentCheckpoint = useMemo(() => {
+    const ordered = [...stageCheckpoints].sort((a, b) => a.display_order - b.display_order);
+    const firstRequiredNotPassed = ordered.find((c) => c.required && qaChecks[c.id]?.status !== 'passed');
+    const firstOptionalNotPassed = ordered.find((c) => !c.required && qaChecks[c.id]?.status !== 'passed');
+    return firstRequiredNotPassed ?? firstOptionalNotPassed ?? null;
+  }, [stageCheckpoints, qaChecks]);
+
   const passAllRequired = async () => {
     const required = stageCheckpoints.filter((c) => c.required);
     await Promise.all(
@@ -224,6 +232,11 @@ export default function BatchQAPage() {
                 {stages.find((s) => s.key === activeStage)?.label} progress
               </div>
               <div className="text-sm font-semibold text-gray-900">{stageProgress}%</div>
+              {currentCheckpoint && (
+                <div className="mt-0.5 text-xs text-gray-500">
+                  Current: {currentCheckpoint.code} — {currentCheckpoint.name}
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2">

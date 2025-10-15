@@ -333,23 +333,30 @@ const FIELDS_BY_CODE: Record<string, FieldFlags> = {
 
   // Ingredient weighing accuracy is verified by your batch entry/recipe table
   'MIX-CCP-001': { notes: true },
+  'MIX-TEMP': { temperature: true, notes: true },
+  'MIX-CORE': { temperature: true, notes: true },
 
   // pH Measurement
   'MIX-005': { ph: true, notes: true },
 
   // Product Temperature Control (during mixing)
   'MIX-CCP-004': { temperature: true, notes: true },
+  'MIX-TEMPERATURE': { temperature: true, notes: true },
 
   // Core Temperature Achievement (drying)
   'DRY-CCP-003': { temperature: true, notes: true },
+  'DRY-CORE': { temperature: true, notes: true },
 
   // Temperature Log - Hourly (we allow spot entry, or note)
   'DRY-CCP-004': { temperature: true, notes: true },
+  'DRY-TEMP': { temperature: true, notes: true },
+  'DRY-TEMPERATURE': { temperature: true, notes: true },
 
   // Water Activity Test
   'DRY-CCP-005': { aw: true, notes: true },
+  'DRY-AW': { aw: true, notes: true },
 
-  // Yield Calculation is usually computed later (final) – just note/mark
+  // Yield Calculation is usually computed later (final) — just note/mark
   'FIN-006': { notes: true },
 
   // Metal detection / label compliance / storage checks — status + optional notes
@@ -364,9 +371,29 @@ const FIELDS_BY_CODE: Record<string, FieldFlags> = {
 
 function getFieldFlags(cp: Checkpoint): FieldFlags {
   const mapped = FIELDS_BY_CODE[cp.code];
-  if (mapped) return { notes: true, ...mapped };
-  // default: notes only
-  return { notes: true };
+  const base: FieldFlags = mapped ? { notes: true, ...mapped } : { notes: true };
+
+  if (base.managedExternally) {
+    return base;
+  }
+
+  const text = `${cp.code ?? ''} ${cp.name ?? ''} ${cp.description ?? ''}`
+    .toLowerCase();
+
+  if (!base.temperature && /temp|core|°c|celsius/.test(text)) {
+    base.temperature = true;
+  }
+  if (!base.humidity && /humidity|%rh|relative humidity/.test(text)) {
+    base.humidity = true;
+  }
+  if (!base.ph && /\bph\b/.test(text)) {
+    base.ph = true;
+  }
+  if (!base.aw && /(water activity|a_w|aw)/.test(text)) {
+    base.aw = true;
+  }
+
+  return base;
 }
 
 function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
@@ -444,20 +471,32 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
       }`}
     >
       <div className="p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <h3 className="truncate text-lg font-semibold">
-                {checkpoint.code} — {checkpoint.name}
-              </h3>
-              {checkpoint.required && (
-                <span className="rounded bg-red-100 px-2 py-0.5 text-xs text-red-700">Required</span>
-              )}
-            </div>
-            <p className="mt-1 text-sm text-gray-600">{checkpoint.description}</p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <h3 className="truncate text-lg font-semibold">
+                  {checkpoint.code} — {checkpoint.name}
+                </h3>
+                {checkpoint.required && (
+                  <span className="rounded bg-red-100 px-2 py-0.5 text-xs text-red-700">Required</span>
+                )}
+                {fields.temperature && (
+                  <span className="rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700">Temperature</span>
+                )}
+                {fields.humidity && (
+                  <span className="rounded bg-teal-100 px-2 py-0.5 text-xs text-teal-700">Humidity</span>
+                )}
+                {fields.ph && (
+                  <span className="rounded bg-purple-100 px-2 py-0.5 text-xs text-purple-700">pH</span>
+                )}
+                {fields.aw && (
+                  <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-700">Water Activity</span>
+                )}
+              </div>
+              <p className="mt-1 text-sm text-gray-600">{checkpoint.description}</p>
 
-            {fields.managedExternally && (
-              <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              {fields.managedExternally && (
+                <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                 This checkpoint is managed in the **Beef Receiving** flow. Record there; status can be synced here.
               </div>
             )}

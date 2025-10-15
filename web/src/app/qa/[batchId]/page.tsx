@@ -371,7 +371,7 @@ function getFieldFlags(cp: Checkpoint): FieldFlags {
 
 function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
   const fields = getFieldFlags(checkpoint);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(() => Boolean(fields.temperature || fields.humidity || fields.ph || fields.aw));
 
   // Keep form inputs as strings for easy empty checks
   const [temperature, setTemperature] = useState<string>(check?.temperature_c?.toString() ?? '');
@@ -383,9 +383,9 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
 
   const status: QAStatus = check?.status ?? 'pending';
 
-  const validateIfPassing = (): string | null => {
+  const validateIfPassing = (nextStatus: QAStatus = status): string | null => {
     // If checkpoint requires a specific reading and user is marking PASSED, require it.
-    if (status === 'passed') {
+    if (nextStatus === 'passed') {
       if (fields.temperature && temperature === '') return 'Temperature (°C) is required for this checkpoint.';
       if (fields.humidity && humidity === '') return 'Humidity (%) is required for this checkpoint.';
       if (fields.ph && ph === '') return 'pH is required for this checkpoint.';
@@ -394,40 +394,42 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
     return null;
   };
 
+  const buildPayload = (nextStatus: QAStatus): Partial<QACheck> => ({
+    temperature_c: fields.temperature ? (temperature !== '' ? Number(temperature) : null) : null,
+    humidity_percent: fields.humidity ? (humidity !== '' ? Number(humidity) : null) : null,
+    ph_level: fields.ph ? (ph !== '' ? Number(ph) : null) : null,
+    water_activity: fields.aw ? (aw !== '' ? Number(aw) : null) : null,
+    notes: fields.notes ? (notes.trim() ? notes : null) : null,
+    corrective_action: nextStatus === 'failed' ? (action.trim() ? action : null) : null,
+  });
+
   const save = () => {
-    const err = validateIfPassing();
+    const err = validateIfPassing(status);
     if (err) {
       alert(err);
       setExpanded(true);
       return;
     }
-    onChange(status, {
-      temperature_c: fields.temperature ? (temperature !== '' ? Number(temperature) : null) : null,
-      humidity_percent: fields.humidity ? (humidity !== '' ? Number(humidity) : null) : null,
-      ph_level: fields.ph ? (ph !== '' ? Number(ph) : null) : null,
-      water_activity: fields.aw ? (aw !== '' ? Number(aw) : null) : null,
-      notes: fields.notes ? (notes.trim() ? notes : null) : null,
-      corrective_action: status === 'failed' ? (action.trim() ? action : null) : null,
-    });
+    onChange(status, buildPayload(status));
     setExpanded(false);
   };
 
   const quickPass = () => {
     // Validate quickly; if a value is required, open details
-    if (validateIfPassing()) {
+    if (validateIfPassing('passed')) {
       setExpanded(true);
       return;
     }
-    onChange('passed', {});
+    onChange('passed', buildPayload('passed'));
   };
 
   const quickFail = () => {
     // Encourage corrective action on fail
     setExpanded(true);
-    onChange('failed', {});
+    onChange('failed', buildPayload('failed'));
   };
 
-  const quickSkip = () => onChange('skipped', {});
+  const quickSkip = () => onChange('skipped', buildPayload('skipped'));
 
   return (
     <div

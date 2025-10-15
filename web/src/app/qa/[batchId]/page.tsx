@@ -154,7 +154,7 @@ export default function BatchQAPage() {
       <div className="min-h-screen grid place-items-center bg-gray-50">
         <div className="text-center">
           <div className="mx-auto h-12 w-12 animate-spin rounded-full border-b-2 border-gray-900" />
-          <p className="mt-4 text-gray-600">Loading QA checkpoints…</p>
+          <p className="mt-4 text-gray-600">Loading QA checkpoints...</p>
         </div>
       </div>
     );
@@ -164,23 +164,23 @@ export default function BatchQAPage() {
     <div className="min-h-screen bg-gray-50 pb-24">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-white border-b">
-        <div className="mx-auto max-w-6xl px-5 py-4">
+        <div className="mx-auto max-w-6xl px-4 py-4 sm:px-5">
           <button
             onClick={() => router.push('/qa')}
-            className="mb-2 text-blue-600 hover:text-blue-700"
+            className="mb-2 text-sm text-blue-600 hover:text-blue-700"
           >
-            ← Back to QA list
+            {'< Back to QA list'}
           </button>
 
-          <div className="flex items-start justify-between gap-4">
-            <div>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex-1">
               <h1 className="text-2xl font-bold">QA Test Sheet</h1>
               <p className="text-gray-600">
-                {batch?.batch_id} {batch?.product?.name ? `— ${batch.product.name}` : ''}
+                {batch?.batch_id} {batch?.product?.name ? `- ${batch.product.name}` : ''}
               </p>
             </div>
             <span
-              className={`rounded-full px-3 py-1 text-sm font-medium ${
+              className={`self-start sm:self-auto rounded-full px-3 py-1 text-sm font-medium ${
                 batch?.status === 'completed'
                   ? 'bg-green-100 text-green-700'
                   : batch?.status === 'in_progress'
@@ -188,7 +188,7 @@ export default function BatchQAPage() {
                   : 'bg-gray-100 text-gray-700'
               }`}
             >
-              {batch?.status?.replace('_', ' ') ?? '—'}
+              {batch?.status?.replace('_', ' ') ?? '-'}
             </span>
           </div>
         </div>
@@ -196,7 +196,7 @@ export default function BatchQAPage() {
 
       {/* Stage Tabs */}
       <div className="sticky top-[81px] z-10 bg-white/90 backdrop-blur border-b">
-        <div className="mx-auto max-w-6xl px-5">
+        <div className="mx-auto max-w-6xl px-4 sm:px-5">
           <div className="flex gap-2 overflow-x-auto py-2">
             {stages.map((s) => {
               const list = checkpoints.filter((c) => c.stage === s.key);
@@ -224,9 +224,9 @@ export default function BatchQAPage() {
       </div>
 
       {/* Stage progress + quick actions */}
-      <section className="mx-auto max-w-6xl px-5 py-4">
+      <section className="mx-auto max-w-6xl px-4 py-4 sm:px-5">
         <div className="rounded-xl border bg-white p-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <div className="text-sm font-medium text-gray-700">
                 {stages.find((s) => s.key === activeStage)?.label} progress
@@ -234,21 +234,21 @@ export default function BatchQAPage() {
               <div className="text-sm font-semibold text-gray-900">{stageProgress}%</div>
               {currentCheckpoint && (
                 <div className="mt-0.5 text-xs text-gray-500">
-                  Current: {currentCheckpoint.code} — {currentCheckpoint.name}
+                  Current: {currentCheckpoint.code} - {currentCheckpoint.name}
                 </div>
               )}
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 sm:justify-end">
               <button
                 onClick={passAllRequired}
-                className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
+                className="w-full rounded-lg border px-3 py-2 text-sm hover:bg-gray-50 sm:w-auto"
               >
                 Pass all required in stage
               </button>
               <button
                 onClick={() => setActiveStage('final')}
-                className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
+                className="w-full rounded-lg border px-3 py-2 text-sm hover:bg-gray-50 sm:w-auto"
               >
                 Jump to Final
               </button>
@@ -380,7 +380,7 @@ function getFieldFlags(cp: Checkpoint): FieldFlags {
   const text = `${cp.code ?? ''} ${cp.name ?? ''} ${cp.description ?? ''}`
     .toLowerCase();
 
-  if (!base.temperature && /temp|core|°c|celsius/.test(text)) {
+  if (!base.temperature && /temp|core|degc|deg c|celsius/.test(text)) {
     base.temperature = true;
   }
   if (!base.humidity && /humidity|%rh|relative humidity/.test(text)) {
@@ -413,7 +413,7 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
   const validateIfPassing = (nextStatus: QAStatus = status): string | null => {
     // If checkpoint requires a specific reading and user is marking PASSED, require it.
     if (nextStatus === 'passed') {
-      if (fields.temperature && temperature === '') return 'Temperature (°C) is required for this checkpoint.';
+      if (fields.temperature && temperature === '') return 'Temperature (deg C) is required for this checkpoint.';
       if (fields.humidity && humidity === '') return 'Humidity (%) is required for this checkpoint.';
       if (fields.ph && ph === '') return 'pH is required for this checkpoint.';
       if (fields.aw && aw === '') return 'Water activity (aw) is required for this checkpoint.';
@@ -471,48 +471,48 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
       }`}
     >
       <div className="p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <h3 className="truncate text-lg font-semibold">
-                  {checkpoint.code} — {checkpoint.name}
-                </h3>
-                {checkpoint.required && (
-                  <span className="rounded bg-red-100 px-2 py-0.5 text-xs text-red-700">Required</span>
-                )}
-                {fields.temperature && (
-                  <span className="rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700">Temperature</span>
-                )}
-                {fields.humidity && (
-                  <span className="rounded bg-teal-100 px-2 py-0.5 text-xs text-teal-700">Humidity</span>
-                )}
-                {fields.ph && (
-                  <span className="rounded bg-purple-100 px-2 py-0.5 text-xs text-purple-700">pH</span>
-                )}
-                {fields.aw && (
-                  <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-700">Water Activity</span>
-                )}
-              </div>
-              <p className="mt-1 text-sm text-gray-600">{checkpoint.description}</p>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="truncate text-lg font-semibold">
+                {checkpoint.code} - {checkpoint.name}
+              </h3>
+              {checkpoint.required && (
+                <span className="rounded bg-red-100 px-2 py-0.5 text-xs text-red-700">Required</span>
+              )}
+              {fields.temperature && (
+                <span className="rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700">Temperature</span>
+              )}
+              {fields.humidity && (
+                <span className="rounded bg-teal-100 px-2 py-0.5 text-xs text-teal-700">Humidity</span>
+              )}
+              {fields.ph && (
+                <span className="rounded bg-purple-100 px-2 py-0.5 text-xs text-purple-700">pH</span>
+              )}
+              {fields.aw && (
+                <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-700">Water Activity</span>
+              )}
+            </div>
+            <p className="mt-1 text-sm text-gray-600">{checkpoint.description}</p>
 
-              {fields.managedExternally && (
-                <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                This checkpoint is managed in the **Beef Receiving** flow. Record there; status can be synced here.
+            {fields.managedExternally && (
+              <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                This checkpoint is managed in the Beef Receiving flow. Record there; status can be synced here.
               </div>
             )}
 
             {check?.checked_at && (
               <p className="mt-2 text-xs text-gray-500">
-                Checked by {check.checked_by ?? '—'} on {new Date(check.checked_at).toLocaleString()}
+                Checked by {check.checked_by ?? '-'} on {new Date(check.checked_at).toLocaleString()}
               </p>
             )}
           </div>
 
           {!fields.managedExternally && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 justify-end sm:justify-end lg:justify-start">
               <button
                 onClick={quickPass}
-                className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                className={`flex-1 min-w-[90px] sm:flex-none rounded-lg px-3 py-2 text-sm font-medium transition ${
                   status === 'passed' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-700 hover:bg-green-200'
                 }`}
               >
@@ -520,7 +520,7 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
               </button>
               <button
                 onClick={quickFail}
-                className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                className={`flex-1 min-w-[90px] sm:flex-none rounded-lg px-3 py-2 text-sm font-medium transition ${
                   status === 'failed' ? 'bg-red-600 text-white' : 'bg-red-100 text-red-700 hover:bg-red-200'
                 }`}
               >
@@ -528,7 +528,7 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
               </button>
               <button
                 onClick={quickSkip}
-                className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                className={`flex-1 min-w-[90px] sm:flex-none rounded-lg px-3 py-2 text-sm font-medium transition ${
                   status === 'skipped' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
                 title="Mark as not applicable / skipped"
@@ -537,10 +537,10 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
               </button>
               <button
                 onClick={() => setExpanded((v) => !v)}
-                className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
-                title="Details"
+                className="flex-1 min-w-[90px] sm:flex-none rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
+                title="Toggle details"
               >
-                {expanded ? '▼' : '▶'}
+                {expanded ? 'Hide' : 'Show'}
               </button>
             </div>
           )}
@@ -551,7 +551,7 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {fields.temperature && (
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Temperature (°C)</label>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Temperature (deg C)</label>
                   <input
                     type="number"
                     step="0.1"
@@ -625,11 +625,11 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
               </div>
             )}
 
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setExpanded(false)} className="rounded-lg border px-4 py-2 hover:bg-gray-50">
+            <div className="flex flex-wrap justify-end gap-2 sm:flex-nowrap">
+              <button onClick={() => setExpanded(false)} className="w-full rounded-lg border px-4 py-2 hover:bg-gray-50 sm:w-auto">
                 Cancel
               </button>
-              <button onClick={save} className="rounded-lg bg-gray-900 px-4 py-2 text-white hover:bg-gray-800">
+              <button onClick={save} className="w-full rounded-lg bg-gray-900 px-4 py-2 text-white hover:bg-gray-800 sm:w-auto">
                 Save details
               </button>
             </div>

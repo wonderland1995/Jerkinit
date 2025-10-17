@@ -93,10 +93,10 @@ export default function BatchHistoryPage() {
               label = 'QA Complete';
               badgeClass = 'bg-green-100 text-green-800';
             } else if (stage) {
-              label = `${STAGE_LABELS[stage]} stage`;
+              label = STAGE_LABELS[stage] ?? stage;
               badgeClass = STAGE_BADGE_CLASSES[stage] ?? 'bg-gray-100 text-gray-700';
             } else {
-              label = data.status ? String(data.status) : 'In progress';
+              label = data.status ? String(data.status).replace('_', ' ') : 'In progress';
               badgeClass = 'bg-yellow-100 text-yellow-800';
             }
             return [batch.id, { label, badgeClass, percent, stage }] as const;

@@ -180,10 +180,15 @@ export default function BatchDetailPage() {
       setBatch(null);
     }
 
+    let traceMaterials: MaterialTraceRow[] = [];
+
     if (isOkResponse(tRes)) {
-      const tJson = (await tRes.json()) as TraceResp;
-      setScale(typeof tJson.batch?.scale === 'number' ? tJson.batch.scale : 1);
-      setMaterials(Array.isArray(tJson.materials) ? tJson.materials : []);
+      const traceJson = (await tRes.json()) as TraceResp;
+      traceMaterials = Array.isArray(traceJson?.materials) ? traceJson.materials ?? [] : [];
+      const nextScale =
+        typeof traceJson?.batch?.scale === 'number' ? Number(traceJson.batch?.scale) : 1;
+      setScale(nextScale);
+      setMaterials(traceMaterials);
     } else {
       setScale(1);
       setMaterials([]);
@@ -198,22 +203,13 @@ export default function BatchDetailPage() {
       setActuals(map);
 
       const seed: Record<string, string> = {};
-      for (const m of Array.isArray((await tRes.clone().json().catch(() => ({} as TraceResp))).materials)
-        ? ((await tRes.clone().json()) as TraceResp).materials!
-        : []) {
+      const materialsForSeed =
+        traceMaterials.length > 0 ? traceMaterials : Array.isArray(materials) ? materials : [];
+      for (const m of materialsForSeed) {
         const current = map[m.material_id]?.actual_amount ?? '';
         seed[m.material_id] = current === '' ? '' : String(current);
       }
-      if (Object.keys(seed).length === 0) {
-        const simplerSeed: Record<string, string> = {};
-        for (const m of Array.isArray(materials) ? materials : []) {
-          const current = map[m.material_id]?.actual_amount ?? '';
-          simplerSeed[m.material_id] = current === '' ? '' : String(current);
-        }
-        setActualInputs(simplerSeed);
-      } else {
-        setActualInputs(seed);
-      }
+      setActualInputs(seed);
     } else {
       setActuals({});
       setActualInputs({});

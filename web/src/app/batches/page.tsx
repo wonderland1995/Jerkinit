@@ -26,6 +26,30 @@ interface BatchSummary {
   release_number: string | null;
 }
 
+type Stage = 'preparation' | 'mixing' | 'marination' | 'drying' | 'packaging' | 'final';
+const STAGE_LABELS: Record<Stage, string> = {
+  preparation: 'Preparation',
+  mixing: 'Mixing',
+  marination: 'Marination',
+  drying: 'Drying',
+  packaging: 'Packaging',
+  final: 'Final',
+};
+const STAGE_BADGE_CLASSES: Record<Stage, string> = {
+  preparation: 'bg-slate-100 text-slate-700',
+  mixing: 'bg-blue-100 text-blue-700',
+  marination: 'bg-amber-100 text-amber-700',
+  drying: 'bg-orange-100 text-orange-700',
+  packaging: 'bg-indigo-100 text-indigo-700',
+  final: 'bg-emerald-100 text-emerald-700',
+};
+interface QaStageSummary {
+  label: string;
+  badgeClass: string;
+  percent: number;
+  stage: Stage | null;
+}
+
 export default function BatchHistoryPage() {
   const router = useRouter();
   const [batches, setBatches] = useState<BatchSummary[]>([]);
@@ -35,6 +59,7 @@ export default function BatchHistoryPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState<BatchSummary | null>(null);
+  const [qaStages, setQaStages] = useState<Record<string, QaStageSummary | null>>({});
 
   useEffect(() => {
     const t = setTimeout(() => setSearchTerm(searchRaw.trim().toLowerCase()), 250);
@@ -44,6 +69,51 @@ export default function BatchHistoryPage() {
   useEffect(() => {
     fetchBatches();
   }, []);
+
+  useEffect(() => {
+    if (batches.length === 0) {
+      setQaStages({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const results = await Promise.all(
+        batches.map(async (batch) => {
+          try {
+            const res = await fetch(`/api/batches/${batch.id}/qa/progress`, { cache: 'no-store' });
+            if (!res.ok) return [batch.id, null] as const;
+            const data = await res.json();
+            const percentRaw = typeof data.percent_complete === 'number' ? data.percent_complete : Number(data.percent_complete ?? 0);
+            const percent = Number.isFinite(percentRaw) ? percentRaw : 0;
+            const stage = (data.current_stage ?? null) as Stage | null;
+            const completed = percent >= 100;
+            let label: string;
+            let badgeClass: string;
+            if (completed) {
+              label = 'QA Complete';
+              badgeClass = 'bg-green-100 text-green-800';
+            } else if (stage) {
+              label = `${STAGE_LABELS[stage]} stage`;
+              badgeClass = STAGE_BADGE_CLASSES[stage] ?? 'bg-gray-100 text-gray-700';
+            } else {
+              label = data.status ? String(data.status) : 'In progress';
+              badgeClass = 'bg-yellow-100 text-yellow-800';
+            }
+            return [batch.id, { label, badgeClass, percent, stage }] as const;
+          } catch (error) {
+            console.warn('Failed to load QA progress for batch', batch.id, error);
+            return [batch.id, null] as const;
+          }
+        })
+      );
+      if (!cancelled) {
+        setQaStages(Object.fromEntries(results));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [batches]);
 
   async function fetchBatches() {
     try {
@@ -201,17 +271,18 @@ export default function BatchHistoryPage() {
                         {batch.created_by ? ` - ${batch.created_by}` : ''}
                       </div>
                     </div>
-                    <span
-                      className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                        batch.status === 'completed'
-                          ? 'bg-blue-100 text-blue-800'
-                          : batch.status === 'released'
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-yellow-100 text-yellow-800'
-                      }`}
-                    >
-                      {batch.status.replace('_', ' ')}
-                    </span>
+                    {(() => {
+                      const summary = qaStages[batch.id];
+                      const label = summary?.label ?? batch.status.replace('_', ' ');
+                      const badge = summary?.badgeClass ?? (batch.status === 'completed'
+                        ? 'bg-blue-100 text-blue-800'
+                        : batch.status === 'released'
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-yellow-100 text-yellow-800');
+                      return (
+                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${badge}`}>{label}</span>
+                      );
+                    })()}
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 text-sm text-gray-700">
@@ -222,13 +293,14 @@ export default function BatchHistoryPage() {
                     <div>
                       <div className="text-xs text-gray-500 uppercase">Compliance</div>
                       <div className={`font-semibold ${getComplianceColor(batch.tolerance_compliance_percent)}`}>
-                        {batch.tolerance_compliance_percent !== null ? `${batch.tolerance_compliance_percent}%` : '-'}
+                        {batch.tolerance_compliance_percent != null ? `${batch.tolerance_compliance_percent}%` : '-'}
                       </div>
                     </div>
                     <div>
                       <div className="text-xs text-gray-500 uppercase">QA Progress</div>
                       <div>CP: {batch.qa_checkpoints_passed}/{batch.qa_checkpoints_total}</div>
                       <div>Doc: {batch.documents_approved}/{batch.documents_required}</div>
+                      <div>QA %: {qaStages[batch.id]?.percent != null ? Math.round(qaStages[batch.id]?.percent ?? 0) : '-'}%</div>
                     </div>
                     <div>
                       <div className="text-xs text-gray-500 uppercase">Release</div>
@@ -306,7 +378,7 @@ export default function BatchHistoryPage() {
                     </Td>
                     <Td align="center">
                       <span className={`font-semibold ${getComplianceColor(batch.tolerance_compliance_percent)}`}>
-                        {batch.tolerance_compliance_percent !== null
+                        {batch.tolerance_compliance_percent != null
                           ? `${batch.tolerance_compliance_percent}%`
                           : '-'}
                       </span>

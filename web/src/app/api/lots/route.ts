@@ -32,11 +32,12 @@ export async function GET(req: NextRequest) {
     .gt('current_balance', 0)
     .order('received_date', { ascending: true });
 
-  if (q) {
-    const safe = q.replace(/[%_]/g, '\\$&');
-    const like = `%${safe}%`;
+  const trimmed = q.trim();
+  const sanitized = trimmed.replace(/[%_]/g, '');
+  if (sanitized) {
+    const like = `%${sanitized}%`;
     query = query.or(
-      `lot_number.ilike.${like},internal_lot_code.ilike.${like},material.name.ilike.${like}`
+      `lot_number.ilike.${like},internal_lot_code.ilike.${like}`
     );
   }
   if (materialId) {
@@ -63,6 +64,20 @@ export async function GET(req: NextRequest) {
   if (category) {
     const normalized = category.toLowerCase();
     lots = lots.filter((lot) => lot.material?.category?.toLowerCase() === normalized);
+  }
+
+  if (sanitized) {
+    const needle = sanitized.toLowerCase();
+    lots = lots.filter((lot) => {
+      const candidate = [
+        lot.lot_number,
+        lot.internal_lot_code,
+        lot.material?.name,
+      ]
+        .filter(Boolean)
+        .map((value) => value!.toLowerCase());
+      return candidate.some((value) => value.includes(needle));
+    });
   }
 
   return NextResponse.json({ lots });

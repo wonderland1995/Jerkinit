@@ -118,9 +118,46 @@ export default function BatchQAPage() {
     [checkpoints, activeStage],
   );
 
+  const overallStage = useMemo<Stage>(() => {
+    const order: Stage[] = ['preparation', 'mixing', 'marination', 'drying', 'packaging', 'final'];
+    for (const key of order) {
+      const required = checkpoints.filter((cp) => cp.stage === key && cp.required);
+      if (required.length > 0) {
+        const pending = required.some((cp) => qaChecks[cp.id]?.status !== 'passed');
+        if (pending) return key;
+      }
+    }
+    return 'final';
+  }, [checkpoints, qaChecks]);
+
   const stagePassed = stageCheckpoints.filter((cp) => qaChecks[cp.id]?.status === 'passed').length;
   const stageTotal = stageCheckpoints.length;
   const stageProgress = stageTotal > 0 ? Math.round((stagePassed / stageTotal) * 100) : 0;
+
+  const qaComplete = useMemo(() => {
+    return checkpoints
+      .filter((cp) => cp.required)
+      .every((cp) => qaChecks[cp.id]?.status === 'passed');
+  }, [checkpoints, qaChecks]);
+
+  const currentStageLabel = useMemo(() => {
+    if (qaComplete) return 'QA Complete';
+    const match = stages.find((s) => s.key === overallStage);
+    return match ? match.label : 'QA in progress';
+  }, [qaComplete, stages, overallStage]);
+
+  const currentStageBadgeClass = useMemo(() => {
+    if (qaComplete) return 'bg-green-100 text-green-700';
+    const stageColor: Partial<Record<Stage, string>> = {
+      preparation: 'bg-slate-100 text-slate-700',
+      mixing: 'bg-blue-100 text-blue-700',
+      marination: 'bg-amber-100 text-amber-700',
+      drying: 'bg-orange-100 text-orange-700',
+      packaging: 'bg-indigo-100 text-indigo-700',
+      final: 'bg-emerald-100 text-emerald-700',
+    };
+    return stageColor[overallStage] ?? 'bg-gray-100 text-gray-700';
+  }, [overallStage, qaComplete]);
 
   // Determine current/next checkpoint within the active stage
   const currentCheckpoint = useMemo(() => {
@@ -180,15 +217,9 @@ export default function BatchQAPage() {
               </p>
             </div>
             <span
-              className={`self-start sm:self-auto rounded-full px-3 py-1 text-sm font-medium ${
-                batch?.status === 'completed'
-                  ? 'bg-green-100 text-green-700'
-                  : batch?.status === 'in_progress'
-                  ? 'bg-yellow-100 text-yellow-700'
-                  : 'bg-gray-100 text-gray-700'
-              }`}
+              className={`self-start sm:self-auto rounded-full px-3 py-1 text-sm font-medium ${currentStageBadgeClass}`}
             >
-              {batch?.status?.replace('_', ' ') ?? '-'}
+              {currentStageLabel}
             </span>
           </div>
         </div>

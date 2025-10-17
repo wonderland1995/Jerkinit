@@ -431,7 +431,7 @@ export default function BatchDetailPage() {
           : status === 'cancelled'
           ? 'bg-red-100 text-red-700'
           : 'bg-yellow-100 text-yellow-700';
-      return { label: status.replace('_', ' ').toUpperCase(), className: fallback };
+      return { label: status.replace('_', ' '), className: fallback };
     }
 
     const percent = Number.isFinite(summary.percent_complete)
@@ -439,16 +439,16 @@ export default function BatchDetailPage() {
       : Number(summary.percent_complete ?? 0);
 
     if (percent >= 100 || summary.current_stage === 'final') {
-      return { label: 'QA COMPLETE', className: 'bg-green-100 text-green-700' };
+      return { label: 'QA Complete', className: 'bg-green-100 text-green-700' };
     }
 
     const stage = summary.current_stage;
     if (stage) {
       const className = QA_STAGE_BADGE[stage] ?? 'bg-gray-100 text-gray-700';
-      return { label: prettyStage(stage).toUpperCase(), className };
+      return { label: `${prettyStage(stage)} stage`, className };
     }
 
-    return { label: status.replace('_', ' ').toUpperCase(), className: 'bg-yellow-100 text-yellow-700' };
+    return { label: status.replace('_', ' '), className: 'bg-yellow-100 text-yellow-700' };
   }
 
   function prettyStage(s: QaStage) {

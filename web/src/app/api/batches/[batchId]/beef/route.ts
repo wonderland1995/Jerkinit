@@ -23,6 +23,8 @@ type BeefAllocationRow = {
     lot_number: string;
     internal_lot_code: string;
     current_balance: number;
+    unit?: string | null;
+    material?: { unit?: string | null } | Array<{ unit?: string | null }> | null;
     received_date: string | null;
     expiry_date: string | null;
     supplier: { name: string } | null;
@@ -63,6 +65,7 @@ export async function GET(
       id, batch_id, lot_id, material_id, quantity_used, unit, allocated_at,
       lot:lots (
         id, lot_number, internal_lot_code, current_balance, received_date, expiry_date,
+        material:materials(unit),
         supplier:suppliers(name)
       )
     `)
@@ -74,12 +77,20 @@ export async function GET(
 
   const allocations = (data ?? []).map(item => {
     const lot = Array.isArray(item.lot) ? item.lot[0] : item.lot;
+    if (!lot) return { ...item, lot: null } as BeefAllocationRow;
+
+    const supplier = Array.isArray(lot.supplier) ? lot.supplier[0] : lot.supplier;
+    const material = Array.isArray(lot.material) ? lot.material[0] : lot.material;
+    const materialUnit = typeof material?.unit === 'string' ? material.unit : null;
+    const inferredUnit: Unit = materialUnit === 'kg' ? 'kg' : 'g';
     return {
       ...item,
-      lot: lot ? {
+      lot: {
         ...lot,
-        supplier: Array.isArray(lot.supplier) ? lot.supplier[0] : lot.supplier,
-      } : null,
+        unit: inferredUnit,
+        material,
+        supplier,
+      },
     };
   }) as BeefAllocationRow[];
   const total_g = allocations.reduce((sum, a) => sum + Number(a.quantity_used || 0), 0);
@@ -107,8 +118,8 @@ export async function POST(
   const { data: lotRows, error: lotErr } = await supabase
     .from('lots')
     .select(`
-      id, material_id, lot_number, internal_lot_code, current_balance, unit,
-      material:materials(id, category)
+      id, material_id, lot_number, internal_lot_code, current_balance,
+      material:materials(id, category, unit)
     `)
     .eq('id', body.lot_id)
     .limit(1);
@@ -127,9 +138,8 @@ export async function POST(
   // Now use lotData as lot for the rest of the function
   const lot = lotData;
 
-  // We expect lot.unit to be 'g' or 'kg'; normalize current_balance to grams for comparison
-  const lotUnit = (lot.unit === 'kg' ? 'kg' : 'g') as Unit;
-  const lotBalance_g = toGrams(Number(lot.current_balance || 0), lotUnit);
+  // Lots store balance in grams
+  const lotBalance_g = Number(lot.current_balance || 0);
 
   if (lotBalance_g < qty_g) {
     return NextResponse.json({ error: 'Insufficient lot balance' }, { status: 400 });
@@ -172,12 +182,10 @@ export async function POST(
 
   // 3) Update lot balance
   const newBalance_g = lotBalance_g - qty_g;
-  const newBalanceDisplay =
-    lotUnit === 'kg' ? newBalance_g / 1000 : newBalance_g;
 
   const { error: bErr } = await supabase
     .from('lots')
-    .update({ current_balance: newBalanceDisplay })
+    .update({ current_balance: newBalance_g })
     .eq('id', lot.id);
 
   if (bErr) {

@@ -35,10 +35,6 @@ export async function GET(req: NextRequest) {
   if (q) {
     query = query.ilike('lot_number', `%${q}%`);
   }
-  if (category) {
-    // filter through joined material
-    query = query.eq('material.category', category);
-  }
   if (materialId) {
     query = query.eq('material_id', materialId);
   }
@@ -48,11 +44,16 @@ export async function GET(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Normalize Supabase nested relations (can return as arrays)
-  const lots = (data ?? []).map(item => ({
+  let lots = (data ?? []).map(item => ({
     ...item,
     supplier: Array.isArray(item.supplier) ? item.supplier[0] : item.supplier,
     material: Array.isArray(item.material) ? item.material[0] : item.material,
   })) as LotListItem[];
-  
+
+  if (category) {
+    const normalized = category.toLowerCase();
+    lots = lots.filter((lot) => lot.material?.category?.toLowerCase() === normalized);
+  }
+
   return NextResponse.json({ lots });
 }

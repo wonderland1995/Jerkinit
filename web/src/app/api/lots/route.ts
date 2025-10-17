@@ -33,7 +33,11 @@ export async function GET(req: NextRequest) {
     .order('received_date', { ascending: true });
 
   if (q) {
-    query = query.ilike('lot_number', `%${q}%`);
+    const safe = q.replace(/[%_]/g, '\\$&');
+    const like = `%${safe}%`;
+    query = query.or(
+      `lot_number.ilike.${like},internal_lot_code.ilike.${like},material.name.ilike.${like}`
+    );
   }
   if (materialId) {
     query = query.eq('material_id', materialId);

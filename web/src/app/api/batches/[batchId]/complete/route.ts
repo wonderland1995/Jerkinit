@@ -24,16 +24,17 @@ export async function POST(
     );
   }
 
-  // If already completed, just return ok
-  if (existing.status === 'completed') {
-    return NextResponse.json({ ok: true, status: 'completed' as BatchStatus });
+  // If already released, just return ok
+  if (existing.status === 'released') {
+    return NextResponse.json({ ok: true, status: 'released' as BatchStatus });
   }
 
-  // Mark as completed
+  // Mark as released
   const { data: updated, error: updErr } = await supabase
     .from('batches')
     .update({
-      status: 'completed',
+      status: 'released',
+      release_status: 'approved',
       completed_at: new Date().toISOString(),
     })
     .eq('id', batchId)

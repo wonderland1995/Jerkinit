@@ -123,6 +123,7 @@ export default function BatchDetailPage() {
   const [beefLots, setBeefLots] = useState<BeefPick[]>([]);
   const [beefQuery, setBeefQuery] = useState('');
   const [selectedLotId, setSelectedLotId] = useState<string>('');
+  const [selectedLot, setSelectedLot] = useState<BeefPick | null>(null);
   const [beefQty, setBeefQty] = useState<number>(0);
   const [beefUnit, setBeefUnit] = useState<'g' | 'kg'>('g');
   const [beefTotalG, setBeefTotalG] = useState<number>(0);
@@ -197,6 +198,9 @@ export default function BatchDetailPage() {
     }
   };
 
+  const formatLotOption = (lot: BeefPick) =>
+    `${lot.lot_number}${lot.internal_lot_code ? ` (${lot.internal_lot_code})` : ''}`;
+
   const searchBeefLots = async (term: string) => {
     const res = await fetch(`/api/lots?category=beef&q=${encodeURIComponent(term)}`);
     const data = await res.json();
@@ -221,6 +225,41 @@ export default function BatchDetailPage() {
         expiry_date: l.expiry_date ?? null,
       }));
       setBeefLots(mapped);
+      if (selectedLotId) {
+        const match = mapped.find((lot) => lot.id === selectedLotId);
+        if (match) {
+          setSelectedLot(match);
+        }
+      }
+      return mapped;
+    }
+    return [];
+  };
+
+  const handleLotInputChange = async (value: string) => {
+    setBeefQuery(value);
+
+    const normalized = value.trim().toLowerCase();
+    const localMatch = beefLots.find(
+      (lot) => formatLotOption(lot).toLowerCase() === normalized,
+    );
+
+    if (localMatch) {
+      setSelectedLotId(localMatch.id);
+      setSelectedLot(localMatch);
+      return;
+    }
+
+    const fetched = await searchBeefLots(value);
+    const fetchedMatch = fetched.find(
+      (lot) => formatLotOption(lot).toLowerCase() === normalized,
+    );
+    if (fetchedMatch) {
+      setSelectedLotId(fetchedMatch.id);
+      setSelectedLot(fetchedMatch);
+    } else {
+      setSelectedLotId('');
+      setSelectedLot(null);
     }
   };
 
@@ -256,16 +295,17 @@ export default function BatchDetailPage() {
     const data = await res.json();
     if (!res.ok) {
       alert(data.error ?? 'Failed to add beef');
-      return;
-    }
+    return;
+  }
 
-    await Promise.all([loadBeefAllocations(), fetchBatch()]);
-    setSelectedLotId('');
-    setBeefQty(0);
-    setBeefUnit('g');
-    setBeefQuery('');
-    setBeefLots([]);
-  };
+  await Promise.all([loadBeefAllocations(), fetchBatch()]);
+  setSelectedLotId('');
+  setSelectedLot(null);
+  setBeefQty(0);
+  setBeefUnit('g');
+  setBeefQuery('');
+  await searchBeefLots('');
+};
 
   const isLocked = batch?.status === 'completed';
 
@@ -491,36 +531,32 @@ export default function BatchDetailPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Search beef lot</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Select beef lot</label>
               <input
+                list="beef-lot-options"
                 value={beefQuery}
-                onChange={async (e) => {
-                  const v = e.target.value;
-                  setBeefQuery(v);
-                  await searchBeefLots(v);
-                }}
-                placeholder="Lot number…"
+                onChange={(e) => void handleLotInputChange(e.target.value)}
+                placeholder="Start typing lot number..."
                 className="w-full border rounded px-3 py-2"
               />
-              {beefLots.length > 0 && (
-                <div className="mt-2 max-h-44 overflow-auto border rounded">
-                  {beefLots.map((l) => (
-                    <button
-                      key={l.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedLotId(l.id);
-                        setBeefQuery(`${l.lot_number} (${l.internal_lot_code})`);
-                        setBeefLots([]);
-                      }}
-                      className="w-full text-left px-3 py-2 hover:bg-gray-50"
-                    >
-                      <div className="font-medium">{l.lot_number} <span className="text-gray-500">({l.internal_lot_code})</span></div>
-                      <div className="text-xs text-gray-500">
-                        Balance: {l.current_balance} {l.unit}{l.supplier_name ? ` · ${l.supplier_name}` : ''}
-                      </div>
-                    </button>
-                  ))}
+              <datalist id="beef-lot-options">
+                {beefLots.map((lot) => (
+                  <option
+                    key={lot.id}
+                    value={formatLotOption(lot)}
+                    label={`Balance ${lot.current_balance} ${lot.unit}${lot.supplier_name ? ` - ${lot.supplier_name}` : ''}`}
+                  />
+                ))}
+              </datalist>
+              {selectedLot ? (
+                <div className="mt-2 text-xs text-gray-600">
+                  Balance: {selectedLot.current_balance} {selectedLot.unit}
+                  {selectedLot.supplier_name ? ` - Supplier: ${selectedLot.supplier_name}` : ''}
+                  {selectedLot.received_date ? ` - Received: ${new Date(selectedLot.received_date).toLocaleDateString()}` : ''}
+                </div>
+              ) : (
+                <div className="mt-2 text-xs text-gray-500">
+                  Choose a lot from the list to continue.
                 </div>
               )}
             </div>

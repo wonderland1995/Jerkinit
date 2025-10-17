@@ -22,6 +22,32 @@ interface QAStats {
   failed_checks: number;
 }
 
+type Stage = 'preparation' | 'mixing' | 'marination' | 'drying' | 'packaging' | 'final';
+
+const STAGE_LABELS: Record<Stage, string> = {
+  preparation: 'Preparation',
+  mixing: 'Mixing',
+  marination: 'Marination',
+  drying: 'Drying',
+  packaging: 'Packaging',
+  final: 'Final',
+};
+
+const STAGE_BADGE_CLASSES: Record<Stage, string> = {
+  preparation: 'bg-slate-100 text-slate-700 border-slate-200',
+  mixing: 'bg-blue-100 text-blue-700 border-blue-200',
+  marination: 'bg-amber-100 text-amber-700 border-amber-200',
+  drying: 'bg-orange-100 text-orange-700 border-orange-200',
+  packaging: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+  final: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+};
+
+interface BatchQaProgress {
+  current_stage: Stage;
+  percent_complete: number;
+  current_checkpoint?: { code?: string | null; name?: string | null } | null;
+}
+
 export default function QAPage() {
   const [batches, setBatches] = useState<Batch[]>([]);
   const [loading, setLoading] = useState(true);
@@ -219,6 +245,55 @@ interface BatchCardProps {
 }
 
 function BatchCard({ batch }: BatchCardProps) {
+  const [qaProgress, setQaProgress] = useState<{
+    label: string;
+    className: string;
+    percent: number;
+    checkpoint: string | null;
+    completed: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadProgress = async () => {
+      try {
+        const res = await fetch(`/api/batches/${batch.id}/qa/progress`, { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = (await res.json()) as BatchQaProgress;
+        if (cancelled) return;
+
+        const rawPercent = typeof data.percent_complete === 'number'
+          ? data.percent_complete
+          : Number(data.percent_complete ?? 0);
+        const percent = Number.isFinite(rawPercent) ? rawPercent : 0;
+        const stage = (data.current_stage ?? 'preparation') as Stage;
+        const completed = percent >= 100 || stage === 'final' && percent >= 100;
+        const label = completed ? 'QA Complete' : (STAGE_LABELS[stage] ?? 'QA in progress');
+        const className = completed
+          ? 'bg-green-100 text-green-800 border-green-200'
+          : (STAGE_BADGE_CLASSES[stage] ?? 'bg-gray-100 text-gray-800 border-gray-200');
+        const checkpointParts = data.current_checkpoint
+          ? [data.current_checkpoint.code, data.current_checkpoint.name].filter(
+              (part): part is string => typeof part === 'string' && part.trim().length > 0,
+            )
+          : [];
+        const checkpoint = checkpointParts.length > 0 ? checkpointParts.join(' - ') : null;
+
+        setQaProgress({ label, className, percent, checkpoint, completed });
+      } catch (err) {
+        if (!cancelled) {
+          console.warn('Failed to load QA progress for batch', batch.id, err);
+        }
+      }
+    };
+
+    loadProgress();
+    return () => {
+      cancelled = true;
+    };
+  }, [batch.id]);
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'completed':
@@ -241,6 +316,15 @@ function BatchCard({ batch }: BatchCardProps) {
     }
   };
 
+  const badgeClass = qaProgress ? qaProgress.className : getStatusColor(batch.status);
+  const badgeIcon = qaProgress
+    ? qaProgress.completed
+      ? <CheckCircle2 className="w-4 h-4" />
+      : <Clock className="w-4 h-4" />
+    : getStatusIcon(batch.status);
+  const badgeLabel = qaProgress ? qaProgress.label : batch.status.replace('_', ' ').toUpperCase();
+  const percentLabel = qaProgress ? `${Math.round(qaProgress.percent)}%` : '—';
+
   return (
     <Link
       href={`/qa/${batch.id}` as Route}
@@ -249,9 +333,9 @@ function BatchCard({ batch }: BatchCardProps) {
       <div className="bg-white rounded-2xl border-2 border-gray-200 shadow-sm hover:shadow-lg hover:border-blue-300 transition-all p-6">
         {/* Status Badge */}
         <div className="flex items-center justify-between mb-4">
-          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border ${getStatusColor(batch.status)}`}>
-            {getStatusIcon(batch.status)}
-            {batch.status.replace('_', ' ').toUpperCase()}
+          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border ${badgeClass}`}>
+            {badgeIcon}
+            {badgeLabel}
           </span>
           <Calendar className="w-4 h-4 text-gray-400" />
         </div>
@@ -262,9 +346,21 @@ function BatchCard({ batch }: BatchCardProps) {
         </h3>
 
         {/* Product Name */}
-        <p className="text-sm text-gray-600 mb-4">
+        <p className="text-sm text-gray-600">
           {batch.product?.name || 'Unknown Product'}
         </p>
+
+        <div className="mt-3 mb-4 space-y-1 text-xs text-gray-500">
+          <div className="flex items-center justify-between">
+            <span className="font-medium text-gray-700">QA Progress</span>
+            <span className="font-mono text-gray-900">{percentLabel}</span>
+          </div>
+          {qaProgress?.checkpoint && !qaProgress.completed && (
+            <div className="text-xs text-gray-500">
+              Next: {qaProgress.checkpoint}
+            </div>
+          )}
+        </div>
 
         {/* Date */}
         <div className="flex items-center justify-between text-xs text-gray-500 pt-4 border-t border-gray-100">

@@ -82,6 +82,42 @@ interface QaSummaryResp {
   current_checkpoint?: { id: string; code: string; name: string; stage: QaStage } | null;
 }
 
+type QaStatus = 'pending' | 'passed' | 'failed' | 'skipped' | 'conditional';
+
+interface QaCheckpointReport {
+  id: string;
+  code: string;
+  name: string;
+  stage: QaStage;
+  status: QaStatus;
+  last_checked_at: string | null;
+  temperature_c: number | null;
+  humidity_percent: number | null;
+  ph_level: number | null;
+  water_activity: number | null;
+  notes: string | null;
+  metadata: Record<string, unknown> | null;
+  description?: string | null;
+}
+
+interface BeefAllocationReport {
+  id: string;
+  lot_id: string;
+  quantity_used: number;
+  unit: string;
+  allocated_at: string;
+  lot?:
+    | {
+        lot_number?: string | null;
+        internal_lot_code?: string | null;
+        supplier?: { name?: string | null } | null;
+      }
+    | null;
+}
+
+type CoreTempReadingMeta = { tempC?: number | ''; minutes?: number | '' };
+type MarinationTimesMeta = { tempC?: number | ''; startISO?: string | null; endISO?: string | null };
+
 // Beef allocation types
 type BeefPick = {
   id: string;
@@ -115,6 +151,7 @@ export default function BatchDetailPage() {
   const [savedFlash, setSavedFlash] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const [qaSummary, setQaSummary] = useState<QaSummaryResp | null>(null);
   const [actualInputs, setActualInputs] = useState<Record<string, string>>({});
@@ -309,17 +346,335 @@ export default function BatchDetailPage() {
     const data = await res.json();
     if (!res.ok) {
       alert(data.error ?? 'Failed to add beef');
-    return;
-  }
+      return;
+    }
 
-  await Promise.all([loadBeefAllocations(), fetchBatch()]);
-  setSelectedLotId('');
-  setSelectedLot(null);
-  setBeefQty(0);
-  setBeefUnit('g');
-  setBeefQuery('');
-  await searchBeefLots('');
-};
+    await Promise.all([loadBeefAllocations(), fetchBatch()]);
+    setSelectedLotId('');
+    setSelectedLot(null);
+    setBeefQty(0);
+    setBeefUnit('g');
+    setBeefQuery('');
+    await searchBeefLots('');
+  };
+
+  const handleExportPdf = async () => {
+    if (!batch) return;
+
+    setExporting(true);
+
+    try {
+      const jsPDFModule = await import('jspdf');
+      const autoTableModule = await import('jspdf-autotable');
+
+      const { jsPDF } = jsPDFModule;
+      const autoTableFn = autoTableModule.default;
+
+      if (typeof autoTableFn !== 'function') {
+        throw new Error('PDF export module failed to load');
+      }
+
+      const [qaRes, beefRes] = await Promise.all([
+        fetch(`/api/batches/${batchId}/qa`),
+        fetch(`/api/batches/${batchId}/beef`),
+      ]);
+
+      if (!qaRes.ok) {
+        throw new Error('Unable to load QA data for export.');
+      }
+
+      if (!beefRes.ok) {
+        throw new Error('Unable to load beef allocation data for export.');
+      }
+
+      const qaJson = (await qaRes.json()) as { checkpoints?: QaCheckpointReport[] };
+      const beefJson = (await beefRes.json()) as {
+        allocations?: BeefAllocationReport[];
+        total_g?: number;
+      };
+
+      const qaCheckpoints = Array.isArray(qaJson.checkpoints) ? qaJson.checkpoints : [];
+      const beefAllocations = Array.isArray(beefJson.allocations) ? beefJson.allocations : [];
+      const recordedBeefTotal =
+        typeof beefJson.total_g === 'number' ? beefJson.total_g : beefTotalG;
+
+      const formatStatus = (value: BatchStatus) =>
+        value
+          .split('_')
+          .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+          .join(' ');
+
+      const formatDateTime = (value: string | null | undefined) => {
+        if (!value) return '—';
+        const dt = new Date(value);
+        return Number.isNaN(dt.getTime()) ? '—' : dt.toLocaleString();
+      };
+
+      const formatTemperatures = (checkpoint: QaCheckpointReport) => {
+        const parts: string[] = [];
+        if (checkpoint.temperature_c != null) {
+          parts.push(`${Number(checkpoint.temperature_c).toFixed(1)} deg C`);
+        }
+
+        const meta = checkpoint.metadata ?? null;
+        if (meta && typeof meta === 'object') {
+          const metaRecord = meta as Record<string, unknown>;
+
+          if ('tempC' in metaRecord && typeof metaRecord.tempC === 'number') {
+            parts.push(`${Number(metaRecord.tempC).toFixed(1)} deg C`);
+          }
+
+          if ('readings' in metaRecord && Array.isArray(metaRecord.readings)) {
+            const readings = metaRecord.readings as CoreTempReadingMeta[];
+            readings.forEach((reading, idx) => {
+              const tempValue =
+                typeof reading?.tempC === 'number' ? reading.tempC : null;
+              const holdValue =
+                typeof reading?.minutes === 'number' ? reading.minutes : null;
+              if (tempValue != null || holdValue != null) {
+                const labels: string[] = [];
+                if (tempValue != null) {
+                  labels.push(`${tempValue.toFixed(1)} deg C`);
+                }
+                if (holdValue != null) {
+                  labels.push(`${holdValue.toFixed(0)} min`);
+                }
+                if (labels.length > 0) {
+                  parts.push(`Probe ${idx + 1}: ${labels.join(' / ')}`);
+                }
+              }
+            });
+          }
+
+          const marMeta = metaRecord as MarinationTimesMeta;
+          if (typeof marMeta?.tempC === 'number') {
+            parts.push(`${marMeta.tempC.toFixed(1)} deg C`);
+          }
+        }
+
+        return parts.length ? parts.join('; ') : '—';
+      };
+
+      const formatOtherMeasurements = (checkpoint: QaCheckpointReport) => {
+        const metrics: string[] = [];
+        if (checkpoint.humidity_percent != null) {
+          metrics.push(`Humidity ${Number(checkpoint.humidity_percent).toFixed(1)} %`);
+        }
+        if (checkpoint.water_activity != null) {
+          metrics.push(`aw ${Number(checkpoint.water_activity).toFixed(3)}`);
+        }
+        if (checkpoint.ph_level != null) {
+          metrics.push(`pH ${Number(checkpoint.ph_level).toFixed(2)}`);
+        }
+
+        const meta = checkpoint.metadata ?? null;
+        if (meta && typeof meta === 'object') {
+          const metaRecord = meta as Record<string, unknown>;
+          if ('aw' in metaRecord && typeof metaRecord.aw === 'number') {
+            metrics.push(`aw ${Number(metaRecord.aw).toFixed(3)}`);
+          }
+
+          const marMeta = metaRecord as MarinationTimesMeta;
+          const startLabelRaw = marMeta.startISO ? formatDateTime(marMeta.startISO) : '';
+          const endLabelRaw = marMeta.endISO ? formatDateTime(marMeta.endISO) : '';
+          const startLabel = startLabelRaw === '—' ? '' : startLabelRaw;
+          const endLabel = endLabelRaw === '—' ? '' : endLabelRaw;
+          if (startLabel || endLabel) {
+            const windowLabel = [startLabel, endLabel].filter(Boolean).join(' -> ');
+            if (windowLabel) {
+              metrics.push(`Marination ${windowLabel}`);
+            }
+          }
+        }
+
+        return metrics.length ? metrics.join('; ') : '—';
+      };
+
+      const toQaRow = (checkpoint: QaCheckpointReport) => {
+        const checkpointLabel = [checkpoint.code, checkpoint.name]
+          .filter(Boolean)
+          .join(' - ');
+        return [
+          checkpointLabel || 'Checkpoint',
+          prettyStage(checkpoint.stage),
+          checkpoint.status ? checkpoint.status.toUpperCase() : 'PENDING',
+          formatTemperatures(checkpoint),
+          formatOtherMeasurements(checkpoint),
+          formatDateTime(checkpoint.last_checked_at),
+        ];
+      };
+
+      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+      const marginLeft = 14;
+      let cursorY = 18;
+
+      doc.setFontSize(16);
+      doc.text(`Batch ${batch.batch_number}`, marginLeft, cursorY);
+      cursorY += 6;
+
+      doc.setFontSize(10);
+      const summaryLines = [
+        `Recipe: ${batch.recipe?.name ?? 'N/A'}${
+          batch.recipe?.recipe_code ? ` (${batch.recipe.recipe_code})` : ''
+        }`,
+        `Production Date: ${formatDateTime(batch.production_date).split(',')[0]}`,
+        `Status: ${formatStatus(batch.status)}`,
+        `Scale: ${scale.toFixed(2)} x`,
+        `Beef Input: ${Number(batch.beef_weight_kg).toFixed(2)} kg`,
+        `Beef Recorded: ${Number(recordedBeefTotal).toFixed(0)} g`,
+      ];
+
+      if (qaSummary) {
+        summaryLines.push(
+          `QA Progress: ${prettyStage(qaSummary.current_stage)} at ${qaSummary.percent_complete.toFixed(0)}%`,
+        );
+      }
+
+      summaryLines.forEach((line) => {
+        doc.text(line, marginLeft, cursorY);
+        cursorY += 5;
+      });
+
+      cursorY += 4;
+      doc.setFontSize(12);
+      doc.text('Ingredients', marginLeft, cursorY);
+      cursorY += 2;
+
+      const ingredientRows = materials.map((material) => {
+        const actualRow = actuals[material.material_id];
+        const actualAmount = actualRow?.actual_amount ?? null;
+        const tolerance = actualRow?.tolerance_percentage ?? material.tolerance_percentage;
+        const actualUnit = actualRow?.unit ?? material.unit;
+
+        const actualLabel =
+          actualAmount == null
+            ? '—'
+            : `${Number(actualAmount).toFixed(2)} ${actualUnit}`;
+        const statusLabel =
+          actualRow?.in_tolerance === true
+            ? 'OK'
+            : actualRow?.in_tolerance === false
+            ? 'Out'
+            : actualAmount != null
+            ? 'Pending'
+            : 'Not recorded';
+
+        return [
+          material.material_name,
+          `${Number(material.target_amount).toFixed(2)} ${material.unit}`,
+          actualLabel,
+          `${Number(tolerance).toFixed(1)} %`,
+          material.is_critical ? 'Yes' : 'No',
+          statusLabel,
+        ];
+      });
+
+      autoTableFn(doc, {
+        startY: cursorY + 4,
+        head: [['Ingredient', 'Target', 'Actual', 'Tolerance', 'Critical', 'Status']],
+        body: ingredientRows,
+        styles: { fontSize: 9, cellPadding: 2.5 },
+        headStyles: { fillColor: [30, 41, 59], textColor: 255 },
+      });
+
+      const getLastTableBottom = () => {
+        const lastTable = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable;
+        return lastTable?.finalY ?? cursorY;
+      };
+
+      cursorY = getLastTableBottom() + 8;
+
+      doc.setFontSize(12);
+      doc.text('QA Measurements', marginLeft, cursorY);
+      cursorY += 4;
+
+      const qaRows = qaCheckpoints.map(toQaRow);
+
+      if (qaRows.length > 0) {
+        autoTableFn(doc, {
+          startY: cursorY,
+          head: [['Checkpoint', 'Stage', 'Status', 'Temperatures', 'Other Readings', 'Checked At']],
+          body: qaRows,
+          styles: { fontSize: 9, cellPadding: 2 },
+          headStyles: { fillColor: [30, 64, 175], textColor: 255 },
+        });
+        cursorY = getLastTableBottom() + 8;
+      } else {
+        doc.setFontSize(10);
+        doc.text('No QA measurements recorded.', marginLeft, cursorY);
+        cursorY += 8;
+      }
+
+      doc.setFontSize(12);
+      doc.text('Beef Allocations', marginLeft, cursorY);
+      cursorY += 4;
+
+      if (beefAllocations.length > 0) {
+        const beefRows = beefAllocations.map((allocation) => {
+          const lot = allocation.lot ?? null;
+          const supplier =
+            lot?.supplier && typeof lot.supplier === 'object'
+              ? (lot.supplier as { name?: string | null }).name ?? null
+              : null;
+          return [
+            lot?.lot_number ?? '—',
+            lot?.internal_lot_code ?? '—',
+            `${Number(allocation.quantity_used ?? 0).toFixed(0)} g`,
+            supplier ?? '—',
+            formatDateTime(allocation.allocated_at),
+          ];
+        });
+
+        autoTableFn(doc, {
+          startY: cursorY,
+          head: [['Lot Number', 'Internal Code', 'Quantity', 'Supplier', 'Allocated At']],
+          body: beefRows,
+          styles: { fontSize: 9, cellPadding: 2 },
+          headStyles: { fillColor: [22, 101, 52], textColor: 255 },
+        });
+        cursorY = getLastTableBottom() + 8;
+      } else {
+        doc.setFontSize(10);
+        doc.text('No beef allocations recorded.', marginLeft, cursorY);
+        cursorY += 8;
+      }
+
+      const beefQaCheckpoints = qaCheckpoints.filter((checkpoint) => {
+        const text = `${checkpoint.code ?? ''} ${checkpoint.name ?? ''}`.toLowerCase();
+        return text.includes('beef');
+      });
+
+      doc.setFontSize(12);
+      doc.text('Beef QA Checks', marginLeft, cursorY);
+      cursorY += 4;
+
+      if (beefQaCheckpoints.length > 0) {
+        const beefQaRows = beefQaCheckpoints.map(toQaRow);
+        autoTableFn(doc, {
+          startY: cursorY,
+          head: [['Checkpoint', 'Stage', 'Status', 'Temperatures', 'Other Readings', 'Checked At']],
+          body: beefQaRows,
+          styles: { fontSize: 9, cellPadding: 2 },
+          headStyles: { fillColor: [59, 7, 100], textColor: 255 },
+        });
+      } else {
+        doc.setFontSize(10);
+        doc.text('No beef-specific QA checkpoints recorded.', marginLeft, cursorY);
+      }
+
+      const filename = `${batch.batch_number}-batch-report.pdf`;
+      doc.save(filename);
+    } catch (error) {
+      console.error('Failed to export batch PDF', error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'An unexpected error occurred while exporting the PDF.',
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const isLocked =
     batch?.status === 'released' || batch?.status === 'completed';
@@ -789,6 +1144,21 @@ export default function BatchDetailPage() {
             className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700"
           >
             Print Batch Record
+          </button>
+
+          <button
+            onClick={() => void handleExportPdf()}
+            disabled={exporting}
+            className="inline-flex items-center gap-2 bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-60"
+          >
+            {exporting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Exporting...
+              </>
+            ) : (
+              'Export to PDF'
+            )}
           </button>
 
           {!isLocked ? (

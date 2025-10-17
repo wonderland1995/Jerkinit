@@ -1,7 +1,7 @@
 // src/app/batches/page.tsx
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Trash2, Eye, ClipboardCheck } from 'lucide-react';
@@ -48,6 +48,8 @@ interface QaStageSummary {
   badgeClass: string;
   percent: number;
   stage: Stage | null;
+  checkpoint: string | null;
+  completed: boolean;
 }
 
 export default function BatchHistoryPage() {
@@ -86,20 +88,27 @@ export default function BatchHistoryPage() {
             const percentRaw = typeof data.percent_complete === 'number' ? data.percent_complete : Number(data.percent_complete ?? 0);
             const percent = Number.isFinite(percentRaw) ? percentRaw : 0;
             const stage = (data.current_stage ?? null) as Stage | null;
-            const completed = percent >= 100;
+            const completed = percent >= 100 || stage === 'final';
+            const checkpointParts = data.current_checkpoint
+              ? [data.current_checkpoint.code, data.current_checkpoint.name].filter((part) => typeof part === 'string' && part.trim().length > 0)
+              : [];
+            const checkpoint = checkpointParts.length > 0 ? checkpointParts.join(' - ') : null;
             let label: string;
             let badgeClass: string;
             if (completed) {
               label = 'QA Complete';
               badgeClass = 'bg-green-100 text-green-800';
+            } else if (checkpoint) {
+              label = 'Next: ' + checkpoint;
+              badgeClass = stage ? (STAGE_BADGE_CLASSES[stage] ?? 'bg-gray-100 text-gray-700') : 'bg-yellow-100 text-yellow-800';
             } else if (stage) {
               label = STAGE_LABELS[stage] ?? stage;
               badgeClass = STAGE_BADGE_CLASSES[stage] ?? 'bg-gray-100 text-gray-700';
             } else {
-              label = data.status ? String(data.status).replace('_', ' ') : 'In progress';
+              label = 'QA in progress';
               badgeClass = 'bg-yellow-100 text-yellow-800';
             }
-            return [batch.id, { label, badgeClass, percent, stage }] as const;
+            return [batch.id, { label, badgeClass, percent, stage, checkpoint, completed }] as const;
           } catch (error) {
             console.warn('Failed to load QA progress for batch', batch.id, error);
             return [batch.id, null] as const;
@@ -146,11 +155,26 @@ export default function BatchHistoryPage() {
     setSelectedBatch(null);
   };
 
+  const getDerivedStatus = useCallback(
+    (batch: BatchSummary): BatchSummary['status'] => {
+      const qa = qaStages[batch.id];
+      if (batch.status === 'released' || batch.release_status === 'approved') {
+        return 'released';
+      }
+      if (qa) {
+        return qa.completed ? 'completed' : 'in_progress';
+      }
+      return batch.status;
+    },
+    [qaStages]
+  );
+
   const filteredBatches = useMemo(() => {
     return batches.filter((batch) => {
-      if (filter === 'in_progress' && batch.status !== 'in_progress') return false;
-      if (filter === 'completed' && batch.status !== 'completed') return false;
-      if (filter === 'released' && batch.release_status !== 'approved') return false;
+      const derivedStatus = getDerivedStatus(batch);
+      if (filter !== 'all' && derivedStatus !== filter) {
+        return false;
+      }
 
       if (searchTerm) {
         return (
@@ -161,7 +185,7 @@ export default function BatchHistoryPage() {
       }
       return true;
     });
-  }, [batches, filter, searchTerm]);
+  }, [batches, filter, searchTerm, getDerivedStatus]);
 
   function getComplianceColor(percent: number | null) {
     if (percent === null) return 'text-gray-400';
@@ -186,6 +210,11 @@ export default function BatchHistoryPage() {
     );
   }
 
+  function formatStatusLabel(status: BatchSummary['status']) {
+    const label = status.replace('_', ' ');
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  }
+
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -195,8 +224,8 @@ export default function BatchHistoryPage() {
   }
 
   const total = batches.length;
-  const inProgress = batches.filter((b) => b.status === 'in_progress').length;
-  const completed = batches.filter((b) => b.status === 'completed').length;
+  const inProgress = batches.filter((b) => getDerivedStatus(b) === 'in_progress').length;
+  const completed = batches.filter((b) => getDerivedStatus(b) === 'completed').length;
   const released = batches.filter((b) => b.release_status === 'approved').length;
 
   return (
@@ -273,12 +302,18 @@ export default function BatchHistoryPage() {
                     </div>
                     {(() => {
                       const summary = qaStages[batch.id];
-                      const label = summary?.label ?? batch.status.replace('_', ' ');
-                      const badge = summary?.badgeClass ?? (batch.status === 'completed'
-                        ? 'bg-blue-100 text-blue-800'
-                        : batch.status === 'released'
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-yellow-100 text-yellow-800');
+                      const derivedStatus = getDerivedStatus(batch);
+                      const fallbackLabel = formatStatusLabel(derivedStatus);
+                      const fallbackBadge =
+                        derivedStatus === 'completed'
+                          ? 'bg-green-100 text-green-800'
+                          : derivedStatus === 'released'
+                          ? 'bg-blue-100 text-blue-800'
+                          : derivedStatus === 'planned'
+                          ? 'bg-gray-100 text-gray-700'
+                          : 'bg-yellow-100 text-yellow-800';
+                      const label = summary?.label ?? fallbackLabel;
+                      const badge = summary?.badgeClass ?? fallbackBadge;
                       return (
                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${badge}`}>{label}</span>
                       );
@@ -364,17 +399,25 @@ export default function BatchHistoryPage() {
                       {typeof batch.beef_weight_kg === 'number' ? batch.beef_weight_kg.toFixed(3) : '-'}
                     </Td>
                     <Td align="center">
-                      <span
-                        className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                          batch.status === 'completed'
-                            ? 'bg-blue-100 text-blue-800'
-                            : batch.status === 'released'
+                      {(() => {
+                        const summary = qaStages[batch.id];
+                        const derivedStatus = getDerivedStatus(batch);
+                        const fallbackBadge =
+                          derivedStatus === 'completed'
                             ? 'bg-green-100 text-green-800'
-                            : 'bg-yellow-100 text-yellow-800'
-                        }`}
-                      >
-                        {batch.status.replace('_', ' ')}
-                      </span>
+                            : derivedStatus === 'released'
+                            ? 'bg-blue-100 text-blue-800'
+                            : derivedStatus === 'planned'
+                            ? 'bg-gray-100 text-gray-700'
+                            : 'bg-yellow-100 text-yellow-800';
+                        const label = summary?.label ?? formatStatusLabel(derivedStatus);
+                        const badgeClass = summary?.badgeClass ?? fallbackBadge;
+                        return (
+                          <span className={`px-2 py-1 text-xs font-semibold rounded-full ${badgeClass}`}>
+                            {label}
+                          </span>
+                        );
+                      })()}
                     </Td>
                     <Td align="center">
                       <span className={`font-semibold ${getComplianceColor(batch.tolerance_compliance_percent)}`}>

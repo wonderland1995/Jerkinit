@@ -268,17 +268,19 @@ function BatchCard({ batch }: BatchCardProps) {
           : Number(data.percent_complete ?? 0);
         const percent = Number.isFinite(rawPercent) ? rawPercent : 0;
         const stage = (data.current_stage ?? 'preparation') as Stage;
-        const completed = percent >= 100 || stage === 'final' && percent >= 100;
-        const label = completed ? 'QA Complete' : (STAGE_LABELS[stage] ?? 'QA in progress');
-        const className = completed
-          ? 'bg-green-100 text-green-800 border-green-200'
-          : (STAGE_BADGE_CLASSES[stage] ?? 'bg-gray-100 text-gray-800 border-gray-200');
+        const completed = percent >= 100 || stage === 'final';
         const checkpointParts = data.current_checkpoint
-          ? [data.current_checkpoint.code, data.current_checkpoint.name].filter(
-              (part): part is string => typeof part === 'string' && part.trim().length > 0,
-            )
+          ? [data.current_checkpoint.code, data.current_checkpoint.name].filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
           : [];
         const checkpoint = checkpointParts.length > 0 ? checkpointParts.join(' - ') : null;
+        const label = completed
+          ? 'QA Complete'
+          : checkpoint ?? (STAGE_LABELS[stage] ?? 'QA in progress');
+        const className = completed
+          ? 'bg-green-100 text-green-800 border-green-200'
+          : stage
+          ? STAGE_BADGE_CLASSES[stage] ?? 'bg-gray-100 text-gray-800 border-gray-200'
+          : 'bg-gray-100 text-gray-800 border-gray-200';
 
         setQaProgress({ label, className, percent, checkpoint, completed });
       } catch (err) {
@@ -322,8 +324,8 @@ function BatchCard({ batch }: BatchCardProps) {
       ? <CheckCircle2 className="w-4 h-4" />
       : <Clock className="w-4 h-4" />
     : getStatusIcon(batch.status);
-  const badgeLabel = qaProgress ? qaProgress.label : batch.status.replace('_', ' ').toUpperCase();
-  const percentLabel = qaProgress ? `${Math.round(qaProgress.percent)}%` : '—';
+  const badgeLabel = qaProgress ? (qaProgress.completed ? 'QA COMPLETE' : qaProgress.checkpoint ?? qaProgress.label) : batch.status.replace('_', ' ').toUpperCase();
+  const percentLabel = qaProgress ? `${Math.round(qaProgress.percent)}%` : '--';
 
   return (
     <Link

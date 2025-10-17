@@ -42,7 +42,7 @@ export async function GET(
   const { data: cpRows, error: cpErr } = await supabase
     .from('qa_checkpoints')
     .select('id, code, name, stage, required, active, display_order')
-    .eq('active', true)
+    .or('active.is.null,active.eq.true')
     .order('stage', { ascending: true })
     .order('display_order', { ascending: true });
 

@@ -29,21 +29,41 @@ export async function POST(
     return NextResponse.json({ ok: true, status: 'released' as BatchStatus });
   }
 
-  // Mark as released
-  const { data: updated, error: updErr } = await supabase
-    .from('batches')
-    .update({
-      status: 'released',
-      release_status: 'approved',
-      completed_at: new Date().toISOString(),
-    })
-    .eq('id', batchId)
-    .select('status')
-    .single();
+  const now = new Date().toISOString();
+
+  const attemptUpdate = async (payload: Record<string, unknown>) => {
+    return supabase
+      .from('batches')
+      .update(payload)
+      .eq('id', batchId)
+      .select('status')
+      .single();
+  };
+
+  // Try updating release-specific fields (if column exists). If that fails,
+  // fall back to only setting the status so we don't break installations
+  // without release-specific columns.
+  let { data: updated, error: updErr } = await attemptUpdate({
+    status: 'released',
+    release_status: 'approved',
+    completed_at: now,
+  });
+
+  if (updErr) {
+    const columnMissing = /\brelease_status\b/.test(updErr.message ?? '');
+    if (columnMissing) {
+      const fallback = await attemptUpdate({
+        status: 'released',
+        completed_at: now,
+      });
+      updated = fallback.data;
+      updErr = fallback.error;
+    }
+  }
 
   if (updErr || !updated) {
     return NextResponse.json(
-      { error: updErr?.message ?? 'Failed to complete batch' },
+      { error: updErr?.message ?? 'Failed to release batch' },
       { status: 400 }
     );
   }

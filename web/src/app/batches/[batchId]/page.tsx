@@ -422,17 +422,26 @@ export default function BatchDetailPage() {
     final: 'bg-emerald-100 text-emerald-700',
   };
 
+  const DEFAULT_STATUS_BADGES: Record<BatchStatus, { label: string; className: string }> = {
+    in_progress: { label: 'In progress', className: 'bg-yellow-100 text-yellow-700' },
+    completed: { label: 'Completed', className: 'bg-green-100 text-green-700' },
+    cancelled: { label: 'Cancelled', className: 'bg-red-100 text-red-700' },
+    released: { label: 'QA Complete', className: 'bg-green-100 text-green-700' },
+  };
+
   function qaBadge(summary: QaSummaryResp | null, status: BatchStatus) {
+    const checkpoint = summary?.current_checkpoint
+      ? [summary.current_checkpoint.code, summary.current_checkpoint.name]
+          .filter((part) => typeof part === 'string' && part.trim().length > 0)
+          .join(' - ')
+      : null;
+
     if (!summary) {
-      const fallback =
-        status === 'completed'
-          ? 'bg-green-100 text-green-700'
-          : status === 'released'
-          ? 'bg-blue-100 text-blue-700'
-          : status === 'cancelled'
-          ? 'bg-red-100 text-red-700'
-          : 'bg-yellow-100 text-yellow-700';
-      return { label: status.replace('_', ' '), className: fallback };
+      const fallback = DEFAULT_STATUS_BADGES[status] ?? {
+        label: status.replace('_', ' '),
+        className: 'bg-yellow-100 text-yellow-700',
+      };
+      return fallback;
     }
 
     const percent = Number.isFinite(summary.percent_complete)
@@ -444,9 +453,14 @@ export default function BatchDetailPage() {
     }
 
     const stage = summary.current_stage;
+    if (checkpoint) {
+      const className = stage ? (QA_STAGE_BADGE[stage] ?? 'bg-gray-100 text-gray-700') : 'bg-yellow-100 text-yellow-700';
+      return { label: `Next: ${checkpoint}`, className };
+    }
+
     if (stage) {
       const className = QA_STAGE_BADGE[stage] ?? 'bg-gray-100 text-gray-700';
-      return { label: `${prettyStage(stage)} stage`, className };
+      return { label: prettyStage(stage), className };
     }
 
     return { label: status.replace('_', ' '), className: 'bg-yellow-100 text-yellow-700' };

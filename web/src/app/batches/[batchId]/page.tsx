@@ -199,12 +199,26 @@ export default function BatchDetailPage() {
   };
 
   const formatLotOption = (lot: BeefPick) =>
-    `${lot.lot_number}${lot.internal_lot_code ? ` (${lot.internal_lot_code})` : ''}`;
+    `${lot.lot_number}${lot.internal_lot_code ? ` (${lot.internal_lot_code})` : ''}`.trim();
 
   const searchBeefLots = async (term: string) => {
-    const res = await fetch(`/api/lots?category=beef&q=${encodeURIComponent(term)}`);
-    const data = await res.json();
-    if (res.ok) {
+    const trimmed = term.trim();
+
+    if (trimmed.length === 0) {
+      // Clear list for very short searches to avoid hammering the API when it cannot filter
+      setBeefLots([]);
+      setSelectedLotId('');
+      setSelectedLot(null);
+      return [];
+    }
+
+    try {
+      const res = await fetch(`/api/lots?category=beef&q=${encodeURIComponent(trimmed)}`);
+      const data = await res.json();
+      if (!res.ok) {
+        console.error('Failed to load beef lots', data);
+        return [];
+      }
       const mapped: BeefPick[] = (data.lots ?? []).map((l: {
         id: string;
         lot_number: string;
@@ -232,17 +246,17 @@ export default function BatchDetailPage() {
         }
       }
       return mapped;
+    } catch (error) {
+      console.error('Error fetching beef lots', error);
+      return [];
     }
-    return [];
   };
 
   const handleLotInputChange = async (value: string) => {
     setBeefQuery(value);
 
     const normalized = value.trim().toLowerCase();
-    const localMatch = beefLots.find(
-      (lot) => formatLotOption(lot).toLowerCase() === normalized,
-    );
+    const localMatch = beefLots.find((lot) => formatLotOption(lot).toLowerCase() === normalized);
 
     if (localMatch) {
       setSelectedLotId(localMatch.id);

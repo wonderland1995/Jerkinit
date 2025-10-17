@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   let query = supabase
     .from('lots')
     .select(`
-      id, lot_number, internal_lot_code, current_balance, unit, received_date, expiry_date,
+      id, lot_number, internal_lot_code, current_balance, received_date, expiry_date,
       supplier:suppliers(name),
       material:materials(id, name, category, unit)
     `)
@@ -44,11 +44,17 @@ export async function GET(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Normalize Supabase nested relations (can return as arrays)
-  let lots = (data ?? []).map(item => ({
-    ...item,
-    supplier: Array.isArray(item.supplier) ? item.supplier[0] : item.supplier,
-    material: Array.isArray(item.material) ? item.material[0] : item.material,
-  })) as LotListItem[];
+  let lots = (data ?? []).map((item) => {
+    const supplier = Array.isArray(item.supplier) ? item.supplier[0] : item.supplier;
+    const material = Array.isArray(item.material) ? item.material[0] : item.material;
+    const unit = (material?.unit ?? 'kg') as LotListItem['unit'];
+    return {
+      ...item,
+      unit,
+      supplier,
+      material,
+    } as LotListItem;
+  });
 
   if (category) {
     const normalized = category.toLowerCase();

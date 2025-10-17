@@ -412,6 +412,45 @@ export default function BatchDetailPage() {
     'final',
   ];
 
+  const QA_STAGE_BADGE: Record<QaStage, string> = {
+    preparation: 'bg-slate-100 text-slate-700',
+    mixing: 'bg-blue-100 text-blue-700',
+    marination: 'bg-amber-100 text-amber-700',
+    drying: 'bg-orange-100 text-orange-700',
+    packaging: 'bg-indigo-100 text-indigo-700',
+    final: 'bg-emerald-100 text-emerald-700',
+  };
+
+  function qaBadge(summary: QaSummaryResp | null, status: BatchStatus) {
+    if (!summary) {
+      const fallback =
+        status === 'completed'
+          ? 'bg-green-100 text-green-700'
+          : status === 'released'
+          ? 'bg-blue-100 text-blue-700'
+          : status === 'cancelled'
+          ? 'bg-red-100 text-red-700'
+          : 'bg-yellow-100 text-yellow-700';
+      return { label: status.replace('_', ' ').toUpperCase(), className: fallback };
+    }
+
+    const percent = Number.isFinite(summary.percent_complete)
+      ? summary.percent_complete
+      : Number(summary.percent_complete ?? 0);
+
+    if (percent >= 100 || summary.current_stage === 'final') {
+      return { label: 'QA COMPLETE', className: 'bg-green-100 text-green-700' };
+    }
+
+    const stage = summary.current_stage;
+    if (stage) {
+      const className = QA_STAGE_BADGE[stage] ?? 'bg-gray-100 text-gray-700';
+      return { label: prettyStage(stage).toUpperCase(), className };
+    }
+
+    return { label: status.replace('_', ' ').toUpperCase(), className: 'bg-yellow-100 text-yellow-700' };
+  }
+
   function prettyStage(s: QaStage) {
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
@@ -453,19 +492,14 @@ export default function BatchDetailPage() {
             )}
           </div>
           <div className="flex items-center gap-3">
-            <span
-              className={`px-4 py-2 rounded-full text-sm font-medium ${
-                batch.status === 'completed'
-                  ? 'bg-green-100 text-green-800'
-                  : batch.status === 'in_progress'
-                  ? 'bg-yellow-100 text-yellow-800'
-                  : batch.status === 'released'
-                  ? 'bg-blue-100 text-blue-800'
-                  : 'bg-gray-100 text-gray-800'
-              }`}
-            >
-              {batch.status.replace('_', ' ').toUpperCase()}
-            </span>
+            {(() => {
+              const badge = qaBadge(qaSummary, batch.status);
+              return (
+                <span className={`px-4 py-2 rounded-full text-sm font-medium ${badge.className}`}>
+                  {badge.label}
+                </span>
+              );
+            })()}
           </div>
         </div>
 

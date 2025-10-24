@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import type { MaterialInventorySummary } from '@/types/inventory';
 import { formatQuantity } from '@/lib/utils';
@@ -80,6 +80,10 @@ export default function InventoryPage() {
   const [lotAllocations, setLotAllocations] = useState<Record<string, LotAllocation[]>>({});
   const [allocationLoadingLot, setAllocationLoadingLot] = useState<string | null>(null);
   const [lotAllocationErrors, setLotAllocationErrors] = useState<Record<string, string>>({});
+  const [searchTerm, setSearchTerm] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [lowStockOnly, setLowStockOnly] = useState(false);
+  const [sortOption, setSortOption] = useState<'name' | 'stock' | 'expiry'>('name');
 
   useEffect(() => {
     fetchInventorySummary();
@@ -119,6 +123,75 @@ export default function InventoryPage() {
       setLoadingBeefLots(false);
     }
   };
+
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    inventory.forEach((item) => {
+      const category = typeof item.material.category === 'string' ? item.material.category.trim() : '';
+      if (category.length > 0) {
+        set.add(category);
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [inventory]);
+
+  const inventoryStats = useMemo(() => {
+    const totalMaterials = inventory.length;
+    const lowStockCount = inventory.filter((item) => item.is_low_stock).length;
+    const totalLots = inventory.reduce((sum, item) => sum + item.lot_count, 0);
+    const now = new Date();
+    const horizon = new Date(now);
+    horizon.setDate(horizon.getDate() + 30);
+    const expiringSoon = inventory.filter((item) => {
+      if (!item.nearest_expiry_date) return false;
+      const exp = new Date(item.nearest_expiry_date);
+      if (Number.isNaN(exp.getTime())) return false;
+      return exp >= now && exp <= horizon;
+    }).length;
+
+    return { totalMaterials, lowStockCount, totalLots, expiringSoon };
+  }, [inventory]);
+
+  const filteredInventory = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    const normalizedCategory = categoryFilter.toLowerCase();
+
+    const filtered = inventory.filter((item) => {
+      const materialName = item.material.name ?? '';
+      const materialCode = item.material.material_code ?? '';
+      const materialCategory = item.material.category ?? '';
+
+      const matchesSearch =
+        term.length === 0 ||
+        [materialName, materialCode, materialCategory].some((value) => value.toLowerCase().includes(term));
+
+      const matchesCategory =
+        normalizedCategory === 'all' || materialCategory.toLowerCase() === normalizedCategory;
+
+      const matchesStock = !lowStockOnly || item.is_low_stock;
+
+      return matchesSearch && matchesCategory && matchesStock;
+    });
+
+    const sorted = [...filtered];
+    sorted.sort((a, b) => {
+      if (sortOption === 'stock') {
+        return Number(b.total_on_hand ?? 0) - Number(a.total_on_hand ?? 0);
+      }
+      if (sortOption === 'expiry') {
+        const aDate = a.nearest_expiry_date ? new Date(a.nearest_expiry_date).getTime() : Number.POSITIVE_INFINITY;
+        const bDate = b.nearest_expiry_date ? new Date(b.nearest_expiry_date).getTime() : Number.POSITIVE_INFINITY;
+        return aDate - bDate;
+      }
+      const aName = a.material.name ?? '';
+      const bName = b.material.name ?? '';
+      return aName.localeCompare(bName);
+    });
+
+    return sorted;
+  }, [inventory, searchTerm, categoryFilter, lowStockOnly, sortOption]);
+
+  const hasInventory = filteredInventory.length > 0;
 
   const ensureLotAllocations = async (lotId: string) => {
     if (lotAllocations[lotId] || allocationLoadingLot === lotId) {
@@ -234,50 +307,219 @@ export default function InventoryPage() {
         </button>
       </div>
 
+      {!loadingSummary && (
+        <>
+          <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <SummaryCard
+              label="Active Materials"
+              value={inventoryStats.totalMaterials}
+              accent="text-blue-600"
+              hint="Tracked across all categories"
+            />
+            <SummaryCard
+              label="Total Lots"
+              value={inventoryStats.totalLots}
+              accent="text-indigo-600"
+              hint="Open lots available for allocation"
+            />
+            <SummaryCard
+              label="Low Stock Alerts"
+              value={inventoryStats.lowStockCount}
+              accent="text-amber-600"
+              hint="Below configured reorder levels"
+            />
+            <SummaryCard
+              label="Expiring Soon"
+              value={inventoryStats.expiringSoon}
+              accent="text-rose-600"
+              hint="Within the next 30 days"
+            />
+          </div>
+
+          <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
+                <label className="relative flex-1">
+                  <span className="sr-only">Search inventory</span>
+                  <input
+                    type="search"
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    placeholder="Search by material, code, or category"
+                    className="w-full rounded-md border border-gray-200 bg-gray-50 px-4 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                </label>
+                <label className="flex-1 sm:max-w-xs">
+                  <span className="sr-only">Filter by category</span>
+                  <select
+                    value={categoryFilter}
+                    onChange={(event) => setCategoryFilter(event.target.value)}
+                    className="w-full rounded-md border border-gray-200 bg-white px-4 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  >
+                    <option value="all">All categories</option>
+                    {categories.map((category) => (
+                      <option key={category} value={category.toLowerCase()}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <label className="sm:max-w-[180px]">
+                  <span className="sr-only">Sort inventory</span>
+                  <select
+                    value={sortOption}
+                    onChange={(event) => setSortOption(event.target.value as typeof sortOption)}
+                    className="w-full rounded-md border border-gray-200 bg-white px-4 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  >
+                    <option value="name">Sort: A → Z</option>
+                    <option value="stock">Sort: Stock (High → Low)</option>
+                    <option value="expiry">Sort: Soonest Expiry</option>
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setLowStockOnly((prev) => !prev)}
+                  className={`inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition ${
+                    lowStockOnly
+                      ? 'bg-red-100 text-red-700 ring-2 ring-red-200'
+                      : 'border border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <span className="inline-block h-2 w-2 rounded-full bg-red-500" aria-hidden />
+                  Low stock only
+                </button>
+                {(searchTerm || categoryFilter !== 'all' || lowStockOnly || sortOption !== 'name') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchTerm('');
+                      setCategoryFilter('all');
+                      setLowStockOnly(false);
+                      setSortOption('name');
+                    }}
+                    className="text-sm font-medium text-blue-600 hover:text-blue-700"
+                  >
+                    Reset filters
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       {loadingSummary ? (
         <p>Loading inventory...</p>
       ) : (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <table className="min-w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Material</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">On Hand</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Lots</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Next Expiry</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {inventory.map((item) => (
-                <tr key={item.material.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4">
-                    <div>
-                      <div className="font-medium text-gray-900">{item.material.name}</div>
-                      <div className="text-sm text-gray-500">{item.material.material_code ?? '--'}</div>
+        <>
+          {hasInventory ? (
+            <div className="space-y-6">
+              <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm hidden md:block">
+                <table className="min-w-full">
+                  <thead className="bg-gray-50">
+                    <tr className="text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      <th className="px-6 py-3">Material</th>
+                      <th className="px-6 py-3">Category</th>
+                      <th className="px-6 py-3 text-right">On Hand</th>
+                      <th className="px-6 py-3 text-right">Lots</th>
+                      <th className="px-6 py-3">Status</th>
+                      <th className="px-6 py-3">Next Expiry</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
+                    {filteredInventory.map((item) => (
+                      <tr key={item.material.id} className="transition hover:bg-blue-50/40">
+                        <td className="px-6 py-4">
+                          <div className="font-semibold text-gray-900">{item.material.name}</div>
+                          <div className="text-xs uppercase tracking-wide text-gray-500">
+                            {item.material.material_code ?? 'No code'}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 capitalize text-gray-600">{item.material.category ?? '—'}</td>
+                        <td className="px-6 py-4 text-right">
+                          <span className={`font-semibold ${item.is_low_stock ? 'text-red-600' : 'text-gray-900'}`}>
+                            {formatQuantity(item.total_on_hand, item.material.unit)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right text-gray-600">{item.lot_count}</td>
+                        <td className="px-6 py-4">
+                          {item.is_low_stock ? (
+                            <span className="inline-flex items-center rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
+                              Low stock
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                              In range
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-gray-600">
+                          {item.nearest_expiry_date ? formatDate(item.nearest_expiry_date) : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="grid gap-4 md:hidden">
+                {filteredInventory.map((item) => (
+                  <div key={item.material.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-gray-500">{item.material.category ?? '—'}</p>
+                        <h3 className="text-lg font-semibold text-gray-900">{item.material.name}</h3>
+                        <p className="text-xs text-gray-500">{item.material.material_code ?? 'No code'}</p>
+                      </div>
+                      {item.is_low_stock ? (
+                        <span className="inline-flex items-center rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
+                          Low stock
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                          In range
+                        </span>
+                      )}
                     </div>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">{item.material.category}</td>
-                  <td className="px-6 py-4 text-right">
-                    <span className={`font-medium ${item.is_low_stock ? 'text-red-600' : 'text-gray-900'}`}>
-                      {formatQuantity(item.total_on_hand, item.material.unit)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right text-sm text-gray-500">{item.lot_count}</td>
-                  <td className="px-6 py-4">
-                    {item.is_low_stock && (
-                      <span className="px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded">Low Stock</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">
-                    {item.nearest_expiry_date ? formatDate(item.nearest_expiry_date) : '--'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-gray-600">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-gray-500">On hand</p>
+                        <p className="mt-1 font-semibold text-gray-900">
+                          {formatQuantity(item.total_on_hand, item.material.unit)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-gray-500">Lots</p>
+                        <p className="mt-1 font-medium text-gray-900">{item.lot_count}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-gray-500">Next expiry</p>
+                        <p className="mt-1 font-medium">
+                          {item.nearest_expiry_date ? formatDate(item.nearest_expiry_date) : '—'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-gray-500">Status</p>
+                        <p className="mt-1 font-medium text-gray-900">
+                          {item.is_low_stock ? 'Reorder soon' : 'Healthy'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-500">
+              <p className="font-medium text-gray-700">No inventory matches your current filters.</p>
+              <p className="mt-1">Try adjusting the search or reset your filters to see all materials.</p>
+            </div>
+          )}
+        </>
       )}
 
       <section className="mt-10">
@@ -405,6 +647,26 @@ export default function InventoryPage() {
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+function SummaryCard({
+  label,
+  value,
+  hint,
+  accent = 'text-gray-900',
+}: {
+  label: string;
+  value: number;
+  hint?: string;
+  accent?: string;
+}) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <p className="text-sm font-medium text-gray-500">{label}</p>
+      <p className={`mt-2 text-3xl font-semibold ${accent}`}>{value.toLocaleString()}</p>
+      {hint && <p className="mt-1 text-xs text-gray-400">{hint}</p>}
     </div>
   );
 }

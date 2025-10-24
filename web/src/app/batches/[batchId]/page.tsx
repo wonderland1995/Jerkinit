@@ -539,8 +539,10 @@ export default function BatchDetailPage() {
     }
   };
 
+  const lotHref = (lotId: string): `/lots/${string}` => `/lots/${lotId}`;
+
   const handleGoToLot = (lotId: string) => {
-    router.push(`/lots/${lotId}` as `/lots/${string}`);
+    router.push(lotHref(lotId));
   };
 
   const handleExportPdf = async () => {

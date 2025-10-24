@@ -37,7 +37,7 @@ type MaterialRel =
   | Array<{ id: string; name: string; unit?: Unit | string | null }>
   | null;
 
-interface RecipeIngredientRow {
+export interface RecipeIngredientRow {
   id?: string;
   material_id: string;
   quantity: number | string | null;
@@ -89,6 +89,7 @@ interface ActualRow {
   cure_status?: CureStatus | null;
   cure_required_grams?: number | null;
   cure_unit?: Unit;
+  cure_base_mass_grams?: number;
 }
 
 export async function GET(

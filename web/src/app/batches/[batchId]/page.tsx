@@ -93,7 +93,8 @@ type BatchStatus = 'in_progress' | 'completed' | 'cancelled' | 'released';
 
 interface BatchDetails {
   id: string;
-  batch_number: string;
+  batch_id: string;
+  batch_number?: string | null;
   recipe_id: string | null;
   beef_weight_kg: number;
   scaling_factor: number | null;
@@ -101,6 +102,9 @@ interface BatchDetails {
   status: BatchStatus;
   recipe?: { name: string; recipe_code: string };
 }
+
+const resolveBatchDisplayId = (batch: BatchDetails | null | undefined): string =>
+  batch?.batch_id ?? batch?.batch_number ?? batch?.id ?? 'Batch';
 
 interface BatchResp {
   batch?: BatchDetails;
@@ -695,8 +699,9 @@ export default function BatchDetailPage() {
       const marginLeft = 14;
       let cursorY = 18;
 
+      const batchLabel = resolveBatchDisplayId(batch);
       doc.setFontSize(16);
-      doc.text(`Batch ${batch.batch_number}`, marginLeft, cursorY);
+      doc.text(`Batch ${batchLabel}`, marginLeft, cursorY);
       cursorY += 6;
 
       doc.setFontSize(10);
@@ -849,7 +854,7 @@ export default function BatchDetailPage() {
         doc.text('No beef-specific QA checkpoints recorded.', marginLeft, cursorY);
       }
 
-      const filename = `${batch.batch_number}-batch-report.pdf`;
+      const filename = `${batchLabel}-batch-report.pdf`;
       doc.save(filename);
     } catch (error) {
       console.error('Failed to export batch PDF', error);
@@ -1165,6 +1170,8 @@ export default function BatchDetailPage() {
     );
   }
 
+  const batchDisplayId = resolveBatchDisplayId(batch);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-6xl mx-auto px-6 py-6">
@@ -1172,13 +1179,13 @@ export default function BatchDetailPage() {
           items={[
             { label: 'Dashboard', href: '/' },
             { label: 'Batches', href: '/batches' },
-            { label: batch.batch_number, href: `/batches/${batchId}` },
+            { label: batchDisplayId, href: `/batches/${batchId}` },
           ]}
         />
 
         <div className="flex justify-between items-start mb-6">
           <div>
-            <h1 className="text-3xl font-bold">{batch.batch_number}</h1>
+            <h1 className="text-3xl font-bold">{batchDisplayId}</h1>
             <div className="mt-2 space-y-1 text-sm text-gray-600">
               <p>
                 <span className="text-gray-500">Batch ID:</span>{' '}
@@ -1796,7 +1803,7 @@ export default function BatchDetailPage() {
           router.push('/batches');
         }}
         batchId={batch.id}
-        batchNumber={batch.batch_number}
+        batchNumber={batchDisplayId}
       />
     </div>
   );

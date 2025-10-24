@@ -540,7 +540,7 @@ export default function BatchDetailPage() {
   };
 
   const handleGoToLot = (lotId: string) => {
-    router.push(`/lots/${lotId}`);
+    router.push(`/lots/${lotId}` as `/lots/${string}`);
   };
 
   const handleExportPdf = async () => {

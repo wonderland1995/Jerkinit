@@ -224,15 +224,27 @@ export async function GET(
     console.warn('Failed to load cure settings; using defaults', err);
   }
 
-  // 5) Assemble materials (target / used / remaining + per-lot detail)
+  const weightUnits: ReadonlySet<Unit> = new Set(['g', 'kg']);
+  let nonCureMassGrams = 0;
+  for (const ri of ingredients) {
+    const unit: Unit = ri.unit ?? 'g';
+    if (!ri.is_cure && weightUnits.has(unit)) {
+      const qty = Number(ri.quantity) * scale;
+      nonCureMassGrams += convert(qty, unit, 'g');
+    }
+  }
+
   const batchBeefKg = Number(batch.beef_weight_kg) || 0;
-  const batchMassGrams =
-    batchBeefKg > 0
+  const baseMassForCure =
+    nonCureMassGrams > 0
+      ? nonCureMassGrams
+      : batchBeefKg > 0
       ? batchBeefKg * 1000
       : baseBeefG > 0
       ? baseBeefG * scale
       : 0;
 
+  // 5) Assemble materials (target / used / remaining + per-lot detail)
   const materials = ingredients.map((ri) => {
     const materialRel = ri.material;
     const materialObj = Array.isArray(materialRel) ? (materialRel[0] ?? null) : materialRel;
@@ -243,9 +255,9 @@ export async function GET(
     let cureRequiredGrams: number | null = null;
     let target = Number(ri.quantity) * scale;
 
-    if (ri.is_cure && cureType && batchMassGrams > 0) {
+    if (ri.is_cure && cureType && baseMassForCure > 0) {
       cureRequiredGrams = calculateRequiredCureGrams(
-        batchMassGrams,
+        baseMassForCure,
         cureType,
         cureSettings.cure_ppm_target
       );
@@ -293,6 +305,7 @@ export async function GET(
       cure_nitrite_percent: cureType ? CURE_BY_ID[cureType].nitritePercent : null,
       cure_required_grams: cureRequiredGrams,
       cure_ppm_target: cureSettings.cure_ppm_target,
+      cure_base_mass_grams: baseMassForCure,
       lots,
     };
   });
@@ -301,6 +314,8 @@ export async function GET(
     batch: { id: batch.id, recipe_id: batch.recipe_id, scale },
     materials,
     cure_settings: cureSettings,
+    cure_mass_basis_grams: baseMassForCure,
+    total_non_cure_mass_grams: nonCureMassGrams,
   });
 }
 

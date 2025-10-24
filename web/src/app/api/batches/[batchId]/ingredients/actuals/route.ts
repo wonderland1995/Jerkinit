@@ -94,7 +94,12 @@ export async function GET(
       unit,
       tolerance_percentage,
       in_tolerance,
-      measured_at
+      measured_at,
+      is_cure,
+      cure_required_grams,
+      cure_ppm,
+      cure_status,
+      cure_unit
     `
     )
     .eq('batch_id', batchId)
@@ -114,7 +119,9 @@ interface PostBody {
   actual_amount: number;
   unit: Unit;
   tolerance_percentage?: number; // optional override, defaults to recipe's value or 5
+  recorded_by?: string | null;
 }
+
 
 export async function POST(
   req: NextRequest,
@@ -132,7 +139,6 @@ export async function POST(
     return NextResponse.json({ error: 'material_id and positive actual_amount are required' }, { status: 400 });
   }
 
-  // 1) Load batch + recipe
   const { data: batch, error: bErr } = await supabase
     .from('batches')
     .select(
@@ -154,39 +160,30 @@ export async function POST(
     return NextResponse.json({ error: 'Batch has no recipe' }, { status: 400 });
   }
 
-  // batch has shape: { id, recipe_id, beef_weight_kg, scaling_factor, recipe: <unknown> }
-const recipeJoin = pickRecipe((batch as { recipe?: unknown }).recipe);
-if (!recipeJoin) {
-  return NextResponse.json({ error: 'Recipe join not found' }, { status: 400 });
-}
+  const recipeJoin = pickRecipe((batch as { recipe?: unknown }).recipe);
+  if (!recipeJoin) {
+    return NextResponse.json({ error: 'Recipe join not found' }, { status: 400 });
+  }
 
-const baseBeefG = Number(recipeJoin.base_beef_weight ?? 0);
+  const baseBeefG = Number(recipeJoin.base_beef_weight ?? 0);
 
-// prefer explicit scaling_factor if present; otherwise compute from beef_weight_kg (kg -> g)
-const explicitScale =
-  typeof batch.scaling_factor === 'number' && Number.isFinite(batch.scaling_factor)
-    ? batch.scaling_factor
-    : null;
+  const explicitScale =
+    typeof batch.scaling_factor === 'number' && Number.isFinite(batch.scaling_factor)
+      ? batch.scaling_factor
+      : null;
 
-const computedScale =
-  baseBeefG > 0
-    ? ((Number(batch.beef_weight_kg) || 0) * 1000) / baseBeefG
-    : 1;
+  const computedScale =
+    baseBeefG > 0
+      ? ((Number(batch.beef_weight_kg) || 0) * 1000) / baseBeefG
+      : 1;
 
-const scale = explicitScale && explicitScale > 0 ? explicitScale : computedScale;
-const batchBeefKg = Number(batch.beef_weight_kg) || 0;
-const batchMassGrams =
-  batchBeefKg > 0
-    ? batchBeefKg * 1000
-    : baseBeefG > 0
-    ? baseBeefG * scale
-    : 0;
+  const scale = explicitScale && explicitScale > 0 ? explicitScale : computedScale;
+  const batchBeefKg = Number(batch.beef_weight_kg) || 0;
 
-
-  // 2) Load recipe ingredient for this material
-  const { data: ri, error: riErr } = await supabase
+  const { data: ingredientsRaw, error: ingErr } = await supabase
     .from('recipe_ingredients')
     .select(`
+      material_id,
       quantity,
       unit,
       tolerance_percentage,
@@ -194,18 +191,18 @@ const batchMassGrams =
       notes,
       material:materials ( id, name, unit )
     `)
-    .eq('recipe_id', batch.recipe_id)
-    .eq('material_id', materialId)
-    .maybeSingle();
+    .eq('recipe_id', batch.recipe_id);
 
-  if (riErr) {
-    return NextResponse.json({ error: riErr.message }, { status: 400 });
+  if (ingErr) {
+    return NextResponse.json({ error: ingErr.message }, { status: 400 });
   }
+  const ingredients = (ingredientsRaw ?? []) as RecipeIngredientRow[];
+  const ri = ingredients.find((row) => row.material_id === materialId);
+
   if (!ri) {
     return NextResponse.json({ error: 'Material not part of the recipe' }, { status: 400 });
   }
 
-  // Normalize relation shapes
   const materialRel = Array.isArray(ri.material) ? ri.material[0] : ri.material;
   const materialName = materialRel?.name ?? 'Unknown';
   const recipeUnit = toUnit((ri.unit as string) ?? 'g', 'g');
@@ -238,36 +235,57 @@ const batchMassGrams =
     console.warn('Failed to load cure settings in actuals route; using defaults', err);
   }
 
-  // 3) Compute target in the UI-provided unit
-  let cureRequiredGrams: number | null = null;
-  let targetInRecipeUnit = Number(ri.quantity) * scale;
+  const weightUnits: ReadonlySet<Unit> = new Set(['g', 'kg']);
+  let nonCureMassGrams = 0;
+  for (const ing of ingredients) {
+    const ingUnit: Unit = toUnit((ing.unit as string) ?? 'g', 'g');
+    if (!ing.is_cure && weightUnits.has(ingUnit)) {
+      const scaledQty = Number(ing.quantity) * scale;
+      nonCureMassGrams += convert(scaledQty, ingUnit, 'g');
+    }
+  }
 
-  if (isCure && cureType && batchMassGrams > 0) {
+  const baseMassForCure =
+    nonCureMassGrams > 0
+      ? nonCureMassGrams
+      : batchBeefKg > 0
+      ? batchBeefKg * 1000
+      : baseBeefG > 0
+      ? baseBeefG * scale
+      : 0;
+
+  let cureRequiredGrams: number | null = null;
+  let targetInRecipeUnit: number;
+
+  if (isCure && cureType && baseMassForCure > 0) {
     cureRequiredGrams = calculateRequiredCureGrams(
-      batchMassGrams,
+      baseMassForCure,
       cureType,
       cureSettings.cure_ppm_target
     );
     targetInRecipeUnit = convert(cureRequiredGrams, 'g', recipeUnit);
+  } else {
+    targetInRecipeUnit = Number(ri.quantity) * scale;
   }
 
   const targetInUiUnit = convert(targetInRecipeUnit, recipeUnit, uiUnit);
 
-  // 4) Compute in_tolerance
   const diffPct =
     targetInUiUnit > 0 ? (Math.abs(actual - targetInUiUnit) / targetInUiUnit) * 100 : 0;
   const inTol = diffPct <= tolerance;
 
   const actualInRecipeUnit = convert(actual, uiUnit, recipeUnit);
   const actualInGrams = convert(actualInRecipeUnit, recipeUnit, 'g');
+  const totalMassForActual = baseMassForCure + actualInGrams;
   const curePpm =
-    isCure && cureType && actualInGrams > 0 && batchMassGrams > 0
-      ? calculatePpm(actualInGrams, batchMassGrams, cureType)
+    isCure && cureType && actualInGrams > 0 && totalMassForActual > 0
+      ? calculatePpm(actualInGrams, totalMassForActual, cureType)
       : null;
   const cureStatus =
     isCure && curePpm != null ? evaluateCureStatus(curePpm, cureSettings) : null;
 
-  // 5) Upsert into batch_ingredients (update existing row or insert new)
+  const measuredAt = new Date().toISOString();
+
   const { data: existing, error: exErr } = await supabase
     .from('batch_ingredients')
     .select('id')
@@ -279,21 +297,29 @@ const batchMassGrams =
     return NextResponse.json({ error: exErr.message }, { status: 400 });
   }
 
+  const measurementPayload = {
+    actual_amount: actual,
+    unit: uiUnit,
+    target_amount: targetInUiUnit,
+    tolerance_percentage: tolerance,
+    in_tolerance: inTol,
+    measured_at: measuredAt,
+    is_cure: isCure,
+    cure_required_grams: cureRequiredGrams,
+    cure_ppm: curePpm,
+    cure_status: cureStatus,
+    cure_unit: isCure ? recipeUnit : null,
+  };
+
+  let dbRow: ActualRow | null = null;
+  let statusCode = 200;
+
   if (existing?.id) {
     const { data: updated, error: uErr } = await supabase
       .from('batch_ingredients')
-      .update({
-        actual_amount: actual,
-        unit: uiUnit,
-        target_amount: targetInUiUnit,
-        tolerance_percentage: tolerance,
-        in_tolerance: inTol,
-        measured_at: new Date().toISOString(),
-        is_cure: isCure,
-      })
+      .update(measurementPayload)
       .eq('id', existing.id)
-      .select(
-        `
+      .select(`
         id,
         material_id,
         ingredient_name,
@@ -302,41 +328,31 @@ const batchMassGrams =
         unit,
         tolerance_percentage,
         in_tolerance,
-        measured_at
-      `
-      )
+        measured_at,
+        is_cure,
+        cure_required_grams,
+        cure_ppm,
+        cure_status,
+        cure_unit
+      `)
       .single();
 
     if (uErr) {
       return NextResponse.json({ error: uErr.message }, { status: 400 });
     }
-    const enriched: ActualRow = {
-      ...(updated as ActualRow),
-      is_cure: isCure,
-      cure_type: cureType,
-      cure_ppm: curePpm,
-      cure_status: cureStatus,
-      cure_required_grams: cureRequiredGrams,
-      cure_unit: recipeUnit,
-    };
-    return NextResponse.json({ actual: enriched });
+    dbRow = updated as ActualRow;
   } else {
+    const insertPayload = {
+      batch_id: batchId,
+      material_id: materialId,
+      ingredient_name: materialName,
+      ...measurementPayload,
+    };
+
     const { data: inserted, error: iErr } = await supabase
       .from('batch_ingredients')
-      .insert({
-        batch_id: batchId,
-        material_id: materialId,
-        ingredient_name: materialName,
-        target_amount: targetInUiUnit,
-        actual_amount: actual,
-        unit: uiUnit,
-        tolerance_percentage: tolerance,
-        in_tolerance: inTol,
-        measured_at: new Date().toISOString(),
-        is_cure: isCure,
-      })
-      .select(
-        `
+      .insert(insertPayload)
+      .select(`
         id,
         material_id,
         ingredient_name,
@@ -345,23 +361,64 @@ const batchMassGrams =
         unit,
         tolerance_percentage,
         in_tolerance,
-        measured_at
-      `
-      )
+        measured_at,
+        is_cure,
+        cure_required_grams,
+        cure_ppm,
+        cure_status,
+        cure_unit
+      `)
       .single();
 
     if (iErr) {
       return NextResponse.json({ error: iErr.message }, { status: 400 });
     }
-    const enriched: ActualRow = {
-      ...(inserted as ActualRow),
-      is_cure: isCure,
-      cure_type: cureType,
-      cure_ppm: curePpm,
-      cure_status: cureStatus,
-      cure_required_grams: cureRequiredGrams,
-      cure_unit: recipeUnit,
-    };
-    return NextResponse.json({ actual: enriched }, { status: 201 });
+    dbRow = inserted as ActualRow;
+    statusCode = 201;
   }
+
+  if (!dbRow) {
+    return NextResponse.json({ error: 'Failed to persist actual' }, { status: 500 });
+  }
+
+  const enriched: ActualRow = {
+    ...dbRow,
+    is_cure: isCure,
+    cure_type: cureType,
+    cure_required_grams: isCure
+      ? cureRequiredGrams ?? dbRow.cure_required_grams ?? null
+      : dbRow.cure_required_grams ?? null,
+    cure_ppm: isCure ? curePpm ?? dbRow.cure_ppm ?? null : dbRow.cure_ppm ?? null,
+    cure_status: isCure
+      ? cureStatus ?? dbRow.cure_status ?? null
+      : dbRow.cure_status ?? null,
+    cure_unit: isCure ? recipeUnit : dbRow.cure_unit ?? null,
+    cure_base_mass_grams: baseMassForCure,
+  };
+
+  if (isCure) {
+    const { error: auditErr } = await supabase
+      .from('batch_cure_audit')
+      .insert({
+        batch_id: batchId,
+        material_id: materialId,
+        actual_amount: actual,
+        unit: uiUnit,
+        cure_ppm: curePpm,
+        cure_status: cureStatus,
+        recorded_by: body.recorded_by ?? null,
+        metadata: {
+          target_grams: cureRequiredGrams,
+          target_unit: recipeUnit,
+          target_ppm: cureSettings.cure_ppm_target,
+          base_mass_grams: baseMassForCure,
+          tolerance_percentage: tolerance,
+        },
+      });
+    if (auditErr) {
+      console.warn('Failed to log cure audit', auditErr);
+    }
+  }
+
+  return NextResponse.json({ actual: enriched }, { status: statusCode });
 }

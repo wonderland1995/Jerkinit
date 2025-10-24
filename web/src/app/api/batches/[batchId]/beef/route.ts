@@ -197,3 +197,151 @@ export async function POST(
 
   return NextResponse.json({ ok: true }, { status: 201 });
 }
+
+export async function PATCH(
+  req: NextRequest,
+  props: { params: Promise<{ batchId: string }> }
+) {
+  const params = await props.params;
+  const { batchId } = params;
+  const supabase = createClient();
+
+  const body = (await req.json()) as {
+    usage_id?: string;
+    quantity?: number;
+    unit?: Unit;
+  };
+
+  const usageId = typeof body.usage_id === 'string' ? body.usage_id : null;
+  const quantity = Number(body.quantity ?? 0);
+  const unit: Unit = body.unit === 'kg' ? 'kg' : 'g';
+
+  if (!usageId || !(quantity > 0)) {
+    return NextResponse.json(
+      { error: 'usage_id, quantity, and unit are required' },
+      { status: 400 }
+    );
+  }
+
+  const newQuantityGrams = toGrams(quantity, unit);
+
+  const { data: usageRaw, error: usageErr } = await supabase
+    .from('batch_lot_usage')
+    .select(
+      `
+      id,
+      batch_id,
+      lot_id,
+      material_id,
+      quantity_used,
+      lot:lots (
+        id,
+        current_balance,
+        material:materials ( id, category, unit )
+      )
+    `
+    )
+    .eq('id', usageId)
+    .eq('batch_id', batchId)
+    .single();
+
+  if (usageErr || !usageRaw) {
+    return NextResponse.json(
+      { error: usageErr?.message ?? 'Allocation not found' },
+      { status: 404 }
+    );
+  }
+
+  const usage = usageRaw as {
+    id: string;
+    lot_id: string;
+    material_id: string;
+    quantity_used: number;
+    lot:
+      | {
+          id: string;
+          current_balance: number;
+          material:
+            | { id: string; category?: string | null; unit?: string | null }
+            | Array<{ id: string; category?: string | null; unit?: string | null }>
+            | null;
+        }
+      | Array<{
+          id: string;
+          current_balance: number;
+          material:
+            | { id: string; category?: string | null; unit?: string | null }
+            | Array<{ id: string; category?: string | null; unit?: string | null }>
+            | null;
+        }>
+      | null;
+  };
+
+  const lotRel = usage.lot;
+  const lotObj = Array.isArray(lotRel) ? (lotRel[0] ?? null) : lotRel;
+
+  if (!lotObj) {
+    return NextResponse.json({ error: 'Lot information missing' }, { status: 400 });
+  }
+
+  const matRel = lotObj.material;
+  const matObj = Array.isArray(matRel) ? (matRel[0] ?? null) : matRel;
+
+  if (!matObj || matObj.category !== 'beef') {
+    return NextResponse.json({ error: 'Allocation is not for a beef lot' }, { status: 400 });
+  }
+
+  const existingQuantityGrams = Number(usage.quantity_used ?? 0);
+  const lotBalanceGrams = Number(lotObj.current_balance ?? 0);
+  const newBalanceGrams = lotBalanceGrams + existingQuantityGrams - newQuantityGrams;
+
+  if (!Number.isFinite(newBalanceGrams) || newBalanceGrams < -1e-6) {
+    return NextResponse.json(
+      { error: 'Lot balance would become negative with the requested quantity' },
+      { status: 400 }
+    );
+  }
+
+  const { error: updateUsageErr } = await supabase
+    .from('batch_lot_usage')
+    .update({ quantity_used: newQuantityGrams, unit: 'g' })
+    .eq('id', usageId)
+    .eq('batch_id', batchId);
+
+  if (updateUsageErr) {
+    return NextResponse.json({ error: updateUsageErr.message }, { status: 400 });
+  }
+
+  const { error: updateLotErr } = await supabase
+    .from('lots')
+    .update({ current_balance: newBalanceGrams })
+    .eq('id', lotObj.id);
+
+  if (updateLotErr) {
+    // Attempt to revert usage update before returning error
+    await supabase
+      .from('batch_lot_usage')
+      .update({ quantity_used: existingQuantityGrams, unit: 'g' })
+      .eq('id', usageId)
+      .eq('batch_id', batchId);
+
+    return NextResponse.json({ error: updateLotErr.message }, { status: 400 });
+  }
+
+  const deltaGrams = newQuantityGrams - existingQuantityGrams;
+
+  const { error: eventErr } = await supabase.from('lot_events').insert({
+    lot_id: lotObj.id,
+    event_type: 'adjust',
+    quantity: deltaGrams,
+    balance_after: newBalanceGrams,
+    batch_id: batchId,
+    reason: 'Beef allocation adjusted',
+  });
+
+  if (eventErr) {
+    console.warn('Failed to record lot adjustment event', eventErr);
+  }
+
+  return NextResponse.json({ ok: true });
+}

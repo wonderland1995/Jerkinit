@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Check, Loader2, Trash2 } from 'lucide-react';
+import { AiFillEdit } from 'react-icons/ai';
+import { FaDeleteLeft } from 'react-icons/fa6';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import DeleteBatchModal from '@/components/DeleteBatchModal';
 import { formatQuantity } from '@/lib/utils';
@@ -176,6 +178,7 @@ interface BeefAllocationReport {
     | {
         lot_number?: string | null;
         internal_lot_code?: string | null;
+        unit?: string | null;
         supplier?: { name?: string | null } | null;
       }
     | null;
@@ -231,6 +234,11 @@ export default function BatchDetailPage() {
   const [beefQty, setBeefQty] = useState<number>(0);
   const [beefUnit, setBeefUnit] = useState<'g' | 'kg'>('g');
   const [beefTotalG, setBeefTotalG] = useState<number>(0);
+  const [beefAllocationRows, setBeefAllocationRows] = useState<BeefAllocationReport[]>([]);
+  const [editingBeefAllocationId, setEditingBeefAllocationId] = useState<string | null>(null);
+  const [editingBeefQuantity, setEditingBeefQuantity] = useState<string>('');
+  const [editingBeefUnit, setEditingBeefUnit] = useState<'g' | 'kg'>('g');
+  const [beefAllocationBusyId, setBeefAllocationBusyId] = useState<string | null>(null);
 
   const fetchBatch = async () => {
     const [bRes, tRes, aRes, qRes] = await Promise.all([
@@ -315,10 +323,24 @@ export default function BatchDetailPage() {
   };
 
   const loadBeefAllocations = async () => {
-    const res = await fetch(`/api/batches/${batchId}/beef`);
-    const data = await res.json();
-    if (res.ok) {
-      setBeefTotalG(Number(data.total_g || 0));
+    try {
+      const res = await fetch(`/api/batches/${batchId}/beef`);
+      const data = (await res.json().catch(() => ({}))) as {
+        allocations?: BeefAllocationReport[];
+        total_g?: number;
+        error?: string;
+      };
+
+      if (res.ok) {
+        setBeefTotalG(Number(data.total_g ?? 0));
+        setBeefAllocationRows(Array.isArray(data.allocations) ? data.allocations : []);
+      } else {
+        console.error('Failed to load beef allocations', data.error);
+        setBeefAllocationRows([]);
+      }
+    } catch (error) {
+      console.error('Error fetching beef allocations', error);
+      setBeefAllocationRows([]);
     }
   };
 
@@ -443,6 +465,82 @@ export default function BatchDetailPage() {
     setBeefUnit('g');
     setBeefQuery('');
     await searchBeefLots('');
+  };
+
+  const startEditingBeefAllocation = (allocation: BeefAllocationReport) => {
+    const defaultUnit: 'g' | 'kg' = allocation.quantity_used >= 1000 ? 'kg' : 'g';
+    const value =
+      defaultUnit === 'kg'
+        ? formatNumericInput(allocation.quantity_used / 1000, defaultUnit)
+        : formatNumericInput(allocation.quantity_used, defaultUnit);
+
+    setEditingBeefAllocationId(allocation.id);
+    setEditingBeefQuantity(value);
+    setEditingBeefUnit(defaultUnit);
+  };
+
+  const cancelEditingBeefAllocation = () => {
+    setEditingBeefAllocationId(null);
+    setEditingBeefQuantity('');
+    setEditingBeefUnit('g');
+  };
+
+  const submitBeefAllocationEdit = async () => {
+    if (!editingBeefAllocationId) return;
+    const nextQuantity = Number(editingBeefQuantity);
+    if (!Number.isFinite(nextQuantity) || nextQuantity <= 0) {
+      alert('Enter a positive quantity to update this allocation.');
+      return;
+    }
+
+    setBeefAllocationBusyId(editingBeefAllocationId);
+    try {
+      const res = await fetch(`/api/batches/${batchId}/beef`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          usage_id: editingBeefAllocationId,
+          quantity: nextQuantity,
+          unit: editingBeefUnit,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || data.ok !== true) {
+        alert(data.error ?? 'Failed to update beef allocation.');
+        return;
+      }
+      await Promise.all([loadBeefAllocations(), fetchBatch()]);
+      cancelEditingBeefAllocation();
+    } finally {
+      setBeefAllocationBusyId(null);
+    }
+  };
+
+  const handleDeleteBeefAllocation = async (allocation: BeefAllocationReport) => {
+    if (!confirm('Remove this beef allocation?')) return;
+
+    setBeefAllocationBusyId(allocation.id);
+    try {
+      const res = await fetch(
+        `/api/batches/${batchId}/traceability?usage_id=${allocation.id}`,
+        { method: 'DELETE' }
+      );
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || data.ok !== true) {
+        alert(data.error ?? 'Failed to remove beef allocation.');
+        return;
+      }
+      if (editingBeefAllocationId === allocation.id) {
+        cancelEditingBeefAllocation();
+      }
+      await Promise.all([loadBeefAllocations(), fetchBatch()]);
+    } finally {
+      setBeefAllocationBusyId(null);
+    }
+  };
+
+  const handleGoToLot = (lotId: string) => {
+    router.push(`/lots/${lotId}`);
   };
 
   const handleExportPdf = async () => {
@@ -1322,6 +1420,136 @@ export default function BatchDetailPage() {
             >
               Add Beef Allocation
             </button>
+          </div>
+
+          <div className="mt-6 border-t pt-4">
+            <h3 className="text-lg font-semibold text-gray-800">Recorded lots</h3>
+            {beefAllocationRows.length === 0 ? (
+              <p className="mt-2 text-sm text-gray-500">
+                No beef allocations recorded yet. Add a lot above to see it listed here.
+              </p>
+            ) : (
+              <div className="mt-3 space-y-3">
+                {beefAllocationRows.map((allocation) => {
+                  const lotName = allocation.lot?.lot_number ?? 'Lot';
+                  const lotCode = allocation.lot?.internal_lot_code ?? null;
+                  const supplierName = allocation.lot?.supplier?.name ?? null;
+                  const isEditing = editingBeefAllocationId === allocation.id;
+                  const isBusy = beefAllocationBusyId === allocation.id;
+                  const quantityLabel = formatQuantity(allocation.quantity_used, 'g');
+                  const quantityInKgLabel =
+                    allocation.quantity_used >= 1000
+                      ? formatQuantity(allocation.quantity_used, 'kg')
+                      : null;
+
+                  return (
+                    <div
+                      key={allocation.id}
+                      className="rounded-lg border border-slate-200 bg-slate-50/60 p-4"
+                    >
+                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => handleGoToLot(allocation.lot_id)}
+                            className="text-left text-sm font-semibold text-slate-800 hover:text-indigo-600"
+                          >
+                            {lotName}
+                            {lotCode ? ` · ${lotCode}` : ''}
+                          </button>
+                          <div className="mt-1 text-xs text-gray-500">
+                            {supplierName ? `${supplierName} • ` : ''}
+                            {quantityLabel}
+                            {quantityInKgLabel ? ` (${quantityInKgLabel})` : ''} •{' '}
+                            {formatLocalDateTime(allocation.allocated_at)}
+                          </div>
+                        </div>
+                        {!isEditing && (
+                          <div className="flex items-center gap-2 self-start md:self-center">
+                            <button
+                              type="button"
+                              onClick={() => startEditingBeefAllocation(allocation)}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100"
+                              aria-label="Edit allocation"
+                              disabled={isBusy}
+                            >
+                              <AiFillEdit className="h-5 w-5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteBeefAllocation(allocation)}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-rose-50 text-rose-600 hover:bg-rose-100 disabled:opacity-50"
+                              aria-label="Remove allocation"
+                              disabled={isBusy}
+                            >
+                              {isBusy ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <FaDeleteLeft className="h-5 w-5" />
+                              )}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {isEditing && (
+                        <div className="mt-3 flex flex-wrap items-end gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                              New amount
+                            </label>
+                            <input
+                              type="number"
+                              min={0}
+                              step={editingBeefUnit === 'kg' ? 0.001 : 1}
+                              value={editingBeefQuantity}
+                              onChange={(e) => setEditingBeefQuantity(e.target.value)}
+                              className="w-32 rounded border px-3 py-2 text-sm"
+                              disabled={isBusy}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                              Unit
+                            </label>
+                            <select
+                              value={editingBeefUnit}
+                              onChange={(e) =>
+                                setEditingBeefUnit(e.target.value === 'kg' ? 'kg' : 'g')
+                              }
+                              className="rounded border px-3 py-2 text-sm"
+                              disabled={isBusy}
+                            >
+                              <option value="g">g</option>
+                              <option value="kg">kg</option>
+                            </select>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={submitBeefAllocationEdit}
+                              disabled={isBusy}
+                              className="inline-flex items-center gap-2 rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                            >
+                              {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelEditingBeefAllocation}
+                              disabled={isBusy}
+                              className="rounded px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-50"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 

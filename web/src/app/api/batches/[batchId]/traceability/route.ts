@@ -23,6 +23,11 @@ function convert(value: number, from: Unit, to: Unit): number {
   return value;
 }
 
+const VALID_UNITS: ReadonlySet<Unit> = new Set(['g', 'kg', 'ml', 'L', 'units']);
+const toUnit = (x: unknown, fallback: Unit): Unit =>
+  typeof x === 'string' && VALID_UNITS.has(x as Unit) ? (x as Unit) : fallback;
+const WEIGHT_UNITS: ReadonlySet<Unit> = new Set(['g', 'kg']);
+
 /* ===========================
    Types for row shapes we use
    =========================== */
@@ -80,11 +85,18 @@ interface RecipeIngredientRow {
   material: MaterialRel;
 }
 
+interface BatchIngredientActualRow {
+  material_id: string | null;
+  actual_amount: number | string | null;
+  unit: Unit | string | null;
+  is_cure: boolean | null;
+}
+
 interface UsageRow {
   id: string;
   material_id: string;
   quantity_used: number;
-  unit: Unit;
+  unit: Unit | string | null;
   lot_id: string;
   lot: LotRel;
 }
@@ -164,6 +176,26 @@ export async function GET(
   }
   const ingredients = (ingRaw ?? []) as RecipeIngredientRow[];
 
+  const actualsByMaterial = new Map<string, { amount: number; unit: Unit }>();
+  const { data: actualRowsRaw, error: actualRowsErr } = await supabase
+    .from('batch_ingredients')
+    .select('material_id, actual_amount, unit, is_cure')
+    .eq('batch_id', batchId);
+
+  if (actualRowsErr) {
+    console.warn('Failed to load batch ingredient actuals for traceability', actualRowsErr);
+  } else if (Array.isArray(actualRowsRaw)) {
+    for (const row of actualRowsRaw as BatchIngredientActualRow[]) {
+      const materialId = typeof row.material_id === 'string' ? row.material_id : null;
+      if (!materialId) continue;
+      const amount = Number(row.actual_amount ?? 0);
+      if (!Number.isFinite(amount) || amount <= 0) continue;
+      const normalizedUnit = toUnit((row.unit as string) ?? 'g', 'g');
+      if (!WEIGHT_UNITS.has(normalizedUnit)) continue;
+      actualsByMaterial.set(materialId, { amount, unit: normalizedUnit });
+    }
+  }
+
   // 3) Existing allocations for this batch
   const { data: useRaw, error: uErr } = await supabase
     .from('batch_lot_usage')
@@ -224,36 +256,119 @@ export async function GET(
     console.warn('Failed to load cure settings; using defaults', err);
   }
 
-  const weightUnits: ReadonlySet<Unit> = new Set(['g', 'kg']);
+  const usageMassByMaterialGrams = new Map<string, number>();
+  for (const usage of usages) {
+    const usageUnit = toUnit((usage.unit as string) ?? 'g', 'g');
+    if (!WEIGHT_UNITS.has(usageUnit)) continue;
+    const qty = Number(usage.quantity_used ?? 0);
+    if (!Number.isFinite(qty) || qty <= 0) continue;
+    const grams = convert(qty, usageUnit, 'g');
+    usageMassByMaterialGrams.set(
+      usage.material_id,
+      (usageMassByMaterialGrams.get(usage.material_id) ?? 0) + grams
+    );
+  }
+
   let nonCureMassGrams = 0;
+  let actualNonCureMassGrams = 0;
+  let targetNonCureMassGrams = 0;
+
   for (const ri of ingredients) {
-    const unit: Unit = ri.unit ?? 'g';
-    if (!ri.is_cure && weightUnits.has(unit)) {
-      const qty = Number(ri.quantity) * scale;
-      nonCureMassGrams += convert(qty, unit, 'g');
+    const unit = toUnit((ri.unit as string) ?? 'g', 'g');
+    const isCureIngredient = Boolean(ri.is_cure);
+
+    const qtyRaw = Number(ri.quantity ?? 0);
+    const targetScaled =
+      Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw * scale : 0;
+    const targetMass =
+      targetScaled > 0 && WEIGHT_UNITS.has(unit)
+        ? convert(targetScaled, unit, 'g')
+        : 0;
+
+    if (!isCureIngredient && targetMass > 0) {
+      targetNonCureMassGrams += targetMass;
+    }
+
+    if (isCureIngredient) {
+      continue;
+    }
+
+    let contribution = targetMass;
+
+    const actualRecord = actualsByMaterial.get(ri.material_id);
+    if (actualRecord) {
+      const actualMass = convert(actualRecord.amount, actualRecord.unit, 'g');
+      if (Number.isFinite(actualMass) && actualMass > 0) {
+        contribution = actualMass;
+        actualNonCureMassGrams += actualMass;
+      }
+    } else {
+      const usageMass = usageMassByMaterialGrams.get(ri.material_id) ?? 0;
+      if (usageMass > 0) {
+        contribution = usageMass;
+      }
+    }
+
+    if (contribution > 0) {
+      nonCureMassGrams += contribution;
     }
   }
 
+  if (nonCureMassGrams <= 0) {
+    nonCureMassGrams = targetNonCureMassGrams;
+  }
+
   const batchBeefKg = Number(batch.beef_weight_kg) || 0;
-  const baseMassForCure =
-    nonCureMassGrams > 0
-      ? nonCureMassGrams
-      : batchBeefKg > 0
+  let beefActualMassGrams = 0;
+  try {
+    const { data: beefMaterialsRaw, error: beefMaterialsErr } = await supabase
+      .from('materials')
+      .select('id')
+      .eq('category', 'beef');
+
+    if (beefMaterialsErr) {
+      console.warn('Failed to load beef material ids for traceability', beefMaterialsErr);
+    } else if (Array.isArray(beefMaterialsRaw)) {
+      const beefIds = beefMaterialsRaw
+        .map((row) => (row && typeof row.id === 'string' ? row.id : null))
+        .filter((id): id is string => Boolean(id));
+      if (beefIds.length > 0) {
+        const beefSet = new Set(beefIds);
+        for (const [materialId, grams] of usageMassByMaterialGrams.entries()) {
+          if (beefSet.has(materialId) && Number.isFinite(grams) && grams > 0) {
+            beefActualMassGrams += grams;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to derive beef usage mass for traceability', err);
+  }
+
+  const fallbackBeefMassGrams =
+    batchBeefKg > 0
       ? batchBeefKg * 1000
       : baseBeefG > 0
       ? baseBeefG * scale
       : 0;
+
+  const beefMassGramsUsed =
+    beefActualMassGrams > 0 ? beefActualMassGrams : fallbackBeefMassGrams;
+
+  const baseMassForCure = nonCureMassGrams + beefMassGramsUsed;
 
   // 5) Assemble materials (target / used / remaining + per-lot detail)
   const materials = ingredients.map((ri) => {
     const materialRel = ri.material;
     const materialObj = Array.isArray(materialRel) ? (materialRel[0] ?? null) : materialRel;
 
-    const unit: Unit = ri.unit ?? 'g';
+    const unit = toUnit((ri.unit as string) ?? 'g', 'g');
 
     const cureType = parseCureNote(ri.notes ?? null);
     let cureRequiredGrams: number | null = null;
-    let target = Number(ri.quantity) * scale;
+    const quantityRaw = Number(ri.quantity ?? 0);
+    let target =
+      Number.isFinite(quantityRaw) && quantityRaw > 0 ? quantityRaw * scale : 0;
 
     if (ri.is_cure && cureType && baseMassForCure > 0) {
       cureRequiredGrams = calculateRequiredCureGrams(
@@ -266,9 +381,10 @@ export async function GET(
 
     const rows = usages.filter((u) => u.material_id === ri.material_id);
     const used = rows.reduce((sum, u) => {
-      const uv = Number(u.quantity_used) || 0;
-      const uUnit: Unit = u.unit ?? unit;
-      return sum + convert(uv, uUnit, unit);
+      const uv = Number(u.quantity_used ?? 0);
+      if (!Number.isFinite(uv) || uv <= 0) return sum;
+      const usageUnit = toUnit((u.unit as string) ?? unit, unit);
+      return sum + convert(uv, usageUnit, unit);
     }, 0);
 
     const lots = rows.map((u) => {
@@ -284,7 +400,7 @@ export async function GET(
         lot_number: lotObj?.lot_number ?? '',
         internal_lot_code: lotObj?.internal_lot_code ?? '',
         quantity_used: Number(u.quantity_used) || 0,
-        unit: (u.unit ?? unit) as Unit,
+        unit: toUnit((u.unit as string) ?? unit, unit),
         supplier_name: supplierObj?.name ?? null,
         received_date: lotObj?.received_date ?? null,
         expiry_date: lotObj?.expiry_date ?? null,
@@ -316,6 +432,11 @@ export async function GET(
     cure_settings: cureSettings,
     cure_mass_basis_grams: baseMassForCure,
     total_non_cure_mass_grams: nonCureMassGrams,
+    target_non_cure_mass_grams: targetNonCureMassGrams,
+    actual_non_cure_mass_grams: actualNonCureMassGrams > 0 ? actualNonCureMassGrams : null,
+    actual_beef_mass_grams: beefActualMassGrams > 0 ? beefActualMassGrams : null,
+    beef_mass_grams_used: beefMassGramsUsed,
+    fallback_beef_mass_grams: fallbackBeefMassGrams,
   });
 }
 

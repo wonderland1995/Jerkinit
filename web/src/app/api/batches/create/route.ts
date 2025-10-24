@@ -20,6 +20,21 @@ const convert = (value: number, from: Unit, to: Unit): number => {
   return value;
 };
 
+const resolveProductionDate = (value: unknown): string => {
+  if (typeof value === 'string') {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString();
+  }
+
+  return new Date().toISOString();
+};
+
 export async function POST(request: Request) {
   const supabase = createClient();
   const body = await request.json();
@@ -31,6 +46,7 @@ export async function POST(request: Request) {
     batch_number, // Optional, if you want to override auto-generation
     created_by,
     notes,
+    production_date,
   } = body;
 
   const cureSettings: CurePpmSettings = { ...DEFAULT_CURE_SETTINGS };
@@ -119,6 +135,8 @@ export async function POST(request: Request) {
     }
 
     // 3. Create batch
+    const productionDateIso = resolveProductionDate(production_date);
+
     const { data: batch, error: batchError } = await supabase
       .from('batches')
       .insert({
@@ -130,6 +148,7 @@ export async function POST(request: Request) {
         status: 'in_progress',
         created_by,
         notes,
+        production_date: productionDateIso,
       })
       .select()
       .single();

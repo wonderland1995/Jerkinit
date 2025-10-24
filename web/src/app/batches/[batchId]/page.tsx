@@ -80,6 +80,11 @@ interface TraceResp {
   cure_settings?: Partial<CurePpmSettings> | null;
   cure_mass_basis_grams?: number | null;
   total_non_cure_mass_grams?: number | null;
+  target_non_cure_mass_grams?: number | null;
+  actual_non_cure_mass_grams?: number | null;
+  actual_beef_mass_grams?: number | null;
+  beef_mass_grams_used?: number | null;
+  fallback_beef_mass_grams?: number | null;
 }
 
 type BatchStatus = 'in_progress' | 'completed' | 'cancelled' | 'released';

@@ -168,11 +168,19 @@ const explicitScale =
     ? batch.scaling_factor
     : null;
 
-const computedScale = baseBeefG > 0
-  ? (Number(batch.beef_weight_kg) * 1000) / baseBeefG
-  : 1;
+const computedScale =
+  baseBeefG > 0
+    ? ((Number(batch.beef_weight_kg) || 0) * 1000) / baseBeefG
+    : 1;
 
 const scale = explicitScale && explicitScale > 0 ? explicitScale : computedScale;
+const batchBeefKg = Number(batch.beef_weight_kg) || 0;
+const batchMassGrams =
+  batchBeefKg > 0
+    ? batchBeefKg * 1000
+    : baseBeefG > 0
+    ? baseBeefG * scale
+    : 0;
 
 
   // 2) Load recipe ingredient for this material
@@ -234,9 +242,9 @@ const scale = explicitScale && explicitScale > 0 ? explicitScale : computedScale
   let cureRequiredGrams: number | null = null;
   let targetInRecipeUnit = Number(ri.quantity) * scale;
 
-  if (isCure && cureType && baseBeefG > 0) {
+  if (isCure && cureType && batchMassGrams > 0) {
     cureRequiredGrams = calculateRequiredCureGrams(
-      baseBeefG,
+      batchMassGrams,
       cureType,
       cureSettings.cure_ppm_target
     );
@@ -253,8 +261,8 @@ const scale = explicitScale && explicitScale > 0 ? explicitScale : computedScale
   const actualInRecipeUnit = convert(actual, uiUnit, recipeUnit);
   const actualInGrams = convert(actualInRecipeUnit, recipeUnit, 'g');
   const curePpm =
-    isCure && cureType && actualInGrams > 0 && baseBeefG > 0
-      ? calculatePpm(actualInGrams, baseBeefG, cureType)
+    isCure && cureType && actualInGrams > 0 && batchMassGrams > 0
+      ? calculatePpm(actualInGrams, batchMassGrams, cureType)
       : null;
   const cureStatus =
     isCure && curePpm != null ? evaluateCureStatus(curePpm, cureSettings) : null;

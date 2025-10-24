@@ -225,6 +225,14 @@ export async function GET(
   }
 
   // 5) Assemble materials (target / used / remaining + per-lot detail)
+  const batchBeefKg = Number(batch.beef_weight_kg) || 0;
+  const batchMassGrams =
+    batchBeefKg > 0
+      ? batchBeefKg * 1000
+      : baseBeefG > 0
+      ? baseBeefG * scale
+      : 0;
+
   const materials = ingredients.map((ri) => {
     const materialRel = ri.material;
     const materialObj = Array.isArray(materialRel) ? (materialRel[0] ?? null) : materialRel;
@@ -235,9 +243,9 @@ export async function GET(
     let cureRequiredGrams: number | null = null;
     let target = Number(ri.quantity) * scale;
 
-    if (ri.is_cure && cureType && baseBeefG > 0) {
+    if (ri.is_cure && cureType && batchMassGrams > 0) {
       cureRequiredGrams = calculateRequiredCureGrams(
-        baseBeefG,
+        batchMassGrams,
         cureType,
         cureSettings.cure_ppm_target
       );

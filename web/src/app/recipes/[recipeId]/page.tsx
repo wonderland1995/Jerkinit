@@ -3,7 +3,19 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Breadcrumbs from '@/components/Breadcrumbs';
-import type { Recipe } from '@/types/inventory';
+import type { Recipe, RecipeIngredient, Material } from '@/types/inventory';
+
+type RecipeIngredientPayload = {
+  id: string;
+  recipe_id?: string;
+  material_id: string;
+  quantity: number;
+  unit: string;
+  is_critical?: boolean;
+  notes?: string | null;
+  created_at?: string;
+  material?: Material | Material[] | null;
+};
 
 export default function RecipeDetailPage() {
   const params = useParams();
@@ -17,10 +29,60 @@ export default function RecipeDetailPage() {
   }, [recipeId]);
 
   const fetchRecipe = async () => {
-    const res = await fetch(`/api/recipes/${recipeId}`);
-    const data = await res.json();
-    setRecipe(data.recipe);
-    setLoading(false);
+    try {
+      const res = await fetch(`/api/recipes/${recipeId}`);
+      if (!res.ok) {
+        throw new Error('Failed to load recipe');
+      }
+      const data = await res.json();
+      const raw = data.recipe;
+      if (!raw) {
+        setRecipe(null);
+        return;
+      }
+
+      const items: RecipeIngredientPayload[] = Array.isArray(raw.recipe_ingredients)
+        ? (raw.recipe_ingredients as RecipeIngredientPayload[])
+        : [];
+
+      const ingredients: RecipeIngredient[] = items.map((item) => {
+            const material = Array.isArray(item.material) ? item.material[0] : item.material ?? null;
+            return {
+              id: item.id,
+              recipe_id: item.recipe_id ?? raw.id,
+              material_id: item.material_id,
+              quantity: item.quantity,
+              unit: item.unit,
+              is_critical: Boolean(item.is_critical),
+              notes: item.notes ?? null,
+              created_at: item.created_at ?? '',
+              material: material ?? undefined,
+            };
+          });
+
+      const normalized: Recipe = {
+        id: raw.id,
+        name: raw.name,
+        recipe_code: raw.recipe_code,
+        product_category: raw.product_category ?? null,
+        base_beef_weight: raw.base_beef_weight,
+        target_yield_weight: raw.target_yield_weight ?? null,
+        description: raw.description ?? null,
+        instructions: raw.instructions ?? null,
+        version: raw.version ?? 1,
+        is_active: raw.is_active ?? true,
+        created_at: raw.created_at ?? '',
+        updated_at: raw.updated_at ?? '',
+        ingredients,
+      };
+
+      setRecipe(normalized);
+    } catch (error) {
+      console.error('Failed to load recipe', error);
+      setRecipe(null);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (loading) {

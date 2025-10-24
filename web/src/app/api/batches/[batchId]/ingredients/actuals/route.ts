@@ -26,6 +26,8 @@ const validUnits: ReadonlySet<Unit> = new Set(['g', 'kg', 'ml', 'L', 'units']);
 const toUnit = (x: unknown, fallback: Unit): Unit =>
   typeof x === 'string' && validUnits.has(x as Unit) ? (x as Unit) : fallback;
 
+const WEIGHT_UNITS: ReadonlySet<Unit> = new Set(['g', 'kg']);
+
 type RecipeJoin = { id: string; base_beef_weight: number };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -46,6 +48,13 @@ export interface RecipeIngredientRow {
   is_cure: boolean | null;
   notes: string | null;
   material: MaterialRel;
+}
+
+interface BatchIngredientActualRow {
+  material_id: string | null;
+  actual_amount: number | string | null;
+  unit: Unit | string | null;
+  is_cure: boolean | null;
 }
 
 function pickRecipe(obj: unknown): RecipeJoin | null {
@@ -214,6 +223,58 @@ export async function POST(
     return NextResponse.json({ error: ingErr.message }, { status: 400 });
   }
   const ingredients = (ingredientsRaw ?? []) as RecipeIngredientRow[];
+
+  const actualsByMaterial = new Map<string, { amount: number; unit: Unit }>();
+  const { data: existingActualsRaw, error: existingActualsErr } = await supabase
+    .from('batch_ingredients')
+    .select('material_id, actual_amount, unit, is_cure')
+    .eq('batch_id', batchId);
+
+  if (existingActualsErr) {
+    console.warn('Failed to load batch ingredient actuals for cure calculations', existingActualsErr);
+  } else if (Array.isArray(existingActualsRaw)) {
+    for (const row of existingActualsRaw as BatchIngredientActualRow[]) {
+      const materialId = typeof row.material_id === 'string' ? row.material_id : null;
+      if (!materialId) continue;
+      const normalizedUnit = toUnit((row.unit as string) ?? 'g', 'g');
+      if (!WEIGHT_UNITS.has(normalizedUnit)) continue;
+      const amount = Number(row.actual_amount ?? 0);
+      if (!Number.isFinite(amount) || amount <= 0) continue;
+      actualsByMaterial.set(materialId, { amount, unit: normalizedUnit });
+    }
+  }
+
+  let beefActualMassGrams = 0;
+  const { data: beefMaterialsRaw, error: beefMaterialsErr } = await supabase
+    .from('materials')
+    .select('id')
+    .eq('category', 'beef');
+
+  if (beefMaterialsErr) {
+    console.warn('Failed to load beef material ids for cure calculations', beefMaterialsErr);
+  } else {
+    const beefMaterialIds = (beefMaterialsRaw ?? [])
+      .map((row) => (row && typeof row.id === 'string' ? row.id : null))
+      .filter((id): id is string => Boolean(id));
+
+    if (beefMaterialIds.length > 0) {
+      const { data: beefUsageRaw, error: beefUsageErr } = await supabase
+        .from('batch_lot_usage')
+        .select('quantity_used, material_id')
+        .eq('batch_id', batchId)
+        .in('material_id', beefMaterialIds);
+
+      if (beefUsageErr) {
+        console.warn('Failed to load beef allocations for cure calculations', beefUsageErr);
+      } else if (Array.isArray(beefUsageRaw)) {
+        beefActualMassGrams = beefUsageRaw.reduce((sum: number, row) => {
+          const qty = Number(row?.quantity_used ?? 0);
+          return Number.isFinite(qty) ? sum + qty : sum;
+        }, 0);
+      }
+    }
+  }
+
   const ri = ingredients.find((row) => row.material_id === materialId);
 
   if (!ri) {
@@ -252,23 +313,61 @@ export async function POST(
     console.warn('Failed to load cure settings in actuals route; using defaults', err);
   }
 
-  const weightUnits: ReadonlySet<Unit> = new Set(['g', 'kg']);
   let nonCureMassGrams = 0;
+  let actualNonCureMassGrams = 0;
+  let targetNonCureMassGrams = 0;
+
   for (const ing of ingredients) {
     const ingUnit: Unit = toUnit((ing.unit as string) ?? 'g', 'g');
-    if (!ing.is_cure && weightUnits.has(ingUnit)) {
-      const scaledQty = Number(ing.quantity) * scale;
-      nonCureMassGrams += convert(scaledQty, ingUnit, 'g');
+    const isCureIngredient = Boolean(ing.is_cure);
+
+    const quantityRaw = Number(ing.quantity ?? 0);
+    const targetScaled =
+      Number.isFinite(quantityRaw) && quantityRaw > 0 ? quantityRaw * scale : 0;
+    const targetMass =
+      targetScaled > 0 && WEIGHT_UNITS.has(ingUnit)
+        ? convert(targetScaled, ingUnit, 'g')
+        : 0;
+
+    if (!isCureIngredient && targetMass > 0) {
+      targetNonCureMassGrams += targetMass;
+    }
+
+    if (isCureIngredient || !WEIGHT_UNITS.has(ingUnit)) {
+      continue;
+    }
+
+    let contribution = targetMass;
+
+    const actualRecord = actualsByMaterial.get(ing.material_id);
+    if (actualRecord) {
+      const actualMass = convert(actualRecord.amount, actualRecord.unit, 'g');
+      if (Number.isFinite(actualMass) && actualMass > 0) {
+        contribution = actualMass;
+        actualNonCureMassGrams += actualMass;
+      }
+    }
+
+    if (contribution > 0) {
+      nonCureMassGrams += contribution;
     }
   }
 
-  const beefMassGrams =
+  if (nonCureMassGrams <= 0) {
+    nonCureMassGrams = targetNonCureMassGrams;
+  }
+
+  const fallbackBeefMassGrams =
     batchBeefKg > 0
       ? batchBeefKg * 1000
       : baseBeefG > 0
       ? baseBeefG * scale
       : 0;
-  const baseMassForCure = nonCureMassGrams + beefMassGrams;
+
+  const beefMassGramsUsed =
+    beefActualMassGrams > 0 ? beefActualMassGrams : fallbackBeefMassGrams;
+
+  const baseMassForCure = nonCureMassGrams + beefMassGramsUsed;
 
   let cureRequiredGrams: number | null = null;
   let targetInRecipeUnit: number;
@@ -428,6 +527,11 @@ export async function POST(
           target_unit: recipeUnit,
           target_ppm: cureSettings.cure_ppm_target,
           base_mass_grams: baseMassForCure,
+          non_cure_mass_grams: nonCureMassGrams,
+          target_non_cure_mass_grams: targetNonCureMassGrams,
+          actual_non_cure_mass_grams: actualNonCureMassGrams,
+          beef_mass_grams_used: beefMassGramsUsed,
+          actual_beef_mass_grams: beefActualMassGrams,
           tolerance_percentage: tolerance,
         },
       });

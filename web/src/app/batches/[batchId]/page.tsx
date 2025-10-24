@@ -90,7 +90,7 @@ interface BatchDetails {
   recipe_id: string | null;
   beef_weight_kg: number;
   scaling_factor: number | null;
-  production_date: string;
+  production_date: string | null;
   status: BatchStatus;
   recipe?: { name: string; recipe_code: string };
 }
@@ -1032,6 +1032,12 @@ export default function BatchDetailPage() {
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
 
+  const formatLocalDate = (value: string | null | undefined) => {
+    if (!value) return '—';
+    const dt = new Date(value);
+    return Number.isNaN(dt.getTime()) ? '—' : dt.toLocaleDateString();
+  };
+
   const formatLocalDateTime = (value: string | null | undefined) => {
     if (!value) return '—';
     const dt = new Date(value);
@@ -1068,11 +1074,22 @@ export default function BatchDetailPage() {
         <div className="flex justify-between items-start mb-6">
           <div>
             <h1 className="text-3xl font-bold">{batch.batch_number}</h1>
-            {batch.recipe && (
-              <p className="text-gray-600 mt-1">
-                Recipe: {batch.recipe.name} ({batch.recipe.recipe_code})
+            <div className="mt-2 space-y-1 text-sm text-gray-600">
+              <p>
+                <span className="text-gray-500">Batch ID:</span>{' '}
+                <span className="font-mono text-gray-700">{batch.id}</span>
               </p>
-            )}
+              <p>
+                <span className="text-gray-500">Production Date:</span>{' '}
+                {formatLocalDate(batch.production_date)}
+              </p>
+              {batch.recipe && (
+                <p>
+                  <span className="text-gray-500">Recipe:</span>{' '}
+                  {batch.recipe.name} ({batch.recipe.recipe_code})
+                </p>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-3">
             {(() => {
@@ -1088,12 +1105,14 @@ export default function BatchDetailPage() {
 
         {/* Batch + Stage Info */}
         <div className="bg-white rounded-xl shadow p-6 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="p-4 rounded-lg bg-gray-50">
+              <p className="text-xs text-gray-500">Batch ID</p>
+              <p className="font-mono font-semibold mt-1 break-all">{batch.id}</p>
+            </div>
             <div className="p-4 rounded-lg bg-gray-50">
               <p className="text-xs text-gray-500">Production Date</p>
-              <p className="font-semibold mt-1">
-                {new Date(batch.production_date).toLocaleDateString()}
-              </p>
+              <p className="font-semibold mt-1">{formatLocalDate(batch.production_date)}</p>
             </div>
             <div className="p-4 rounded-lg bg-gray-50">
               <p className="text-xs text-gray-500">Beef Input Weight</p>

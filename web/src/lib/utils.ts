@@ -84,3 +84,42 @@ export function formatDateTime(date: string | Date | null | undefined): string {
 export function formatNumber(num: number, decimals: number = 2): string {
   return num.toFixed(decimals);
 }
+
+export function normalizeQuantityForUnit(quantity: number, unit: string | null | undefined): number {
+  if (!Number.isFinite(quantity)) {
+    return 0;
+  }
+
+  const normalizedUnit = typeof unit === 'string' ? unit.trim().toLowerCase() : '';
+  switch (normalizedUnit) {
+    case 'kg':
+    case 'kilogram':
+      return quantity / 1000;
+    case 'l':
+    case 'liter':
+    case 'litre':
+      return quantity / 1000;
+    default:
+      return quantity;
+  }
+}
+
+export function formatQuantity(
+  quantity: number,
+  unit: string | null | undefined,
+  options: Intl.NumberFormatOptions = {}
+): string {
+  if (!Number.isFinite(quantity)) {
+    return '--';
+  }
+
+  const normalized = normalizeQuantityForUnit(quantity, unit);
+  const formatter = new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: normalized < 1 ? 3 : 2,
+    minimumFractionDigits: 0,
+    ...options,
+  });
+
+  const unitLabel = typeof unit === 'string' && unit.trim().length > 0 ? unit : '';
+  return unitLabel ? `${formatter.format(normalized)} ${unitLabel}` : formatter.format(normalized);
+}

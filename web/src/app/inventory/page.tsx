@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useState } from 'react';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import type { MaterialInventorySummary } from '@/types/inventory';
+import { formatQuantity } from '@/lib/utils';
 
 type BeefLot = {
   id: string;
@@ -68,9 +69,6 @@ const formatDate = (value: string | null, withTime = false) => {
   }
   return withTime ? parsed.toLocaleString() : parsed.toLocaleDateString();
 };
-
-const formatQuantity = (quantity: number, unit: string) =>
-  `${Number(quantity).toLocaleString(undefined, { maximumFractionDigits: 2 })} ${unit}`;
 
 export default function InventoryPage() {
   const [inventory, setInventory] = useState<MaterialInventorySummary[]>([]);
@@ -263,7 +261,7 @@ export default function InventoryPage() {
                   <td className="px-6 py-4 text-sm text-gray-500">{item.material.category}</td>
                   <td className="px-6 py-4 text-right">
                     <span className={`font-medium ${item.is_low_stock ? 'text-red-600' : 'text-gray-900'}`}>
-                      {item.total_on_hand.toFixed(0)} {item.material.unit}
+                      {formatQuantity(item.total_on_hand, item.material.unit)}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-right text-sm text-gray-500">{item.lot_count}</td>

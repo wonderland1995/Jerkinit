@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Check, Loader2, Trash2 } from 'lucide-react';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import DeleteBatchModal from '@/components/DeleteBatchModal';
+import { formatQuantity } from '@/lib/utils';
 
 /* =========================================
    Types
@@ -958,13 +959,15 @@ export default function BatchDetailPage() {
                   <option
                     key={lot.id}
                     value={formatLotOption(lot)}
-                    label={`Balance ${lot.current_balance} ${lot.unit}${lot.supplier_name ? ` - ${lot.supplier_name}` : ''}`}
+                    label={`Balance ${formatQuantity(lot.current_balance, lot.unit)}${
+                      lot.supplier_name ? ` - ${lot.supplier_name}` : ''
+                    }`}
                   />
                 ))}
               </datalist>
               {selectedLot ? (
                 <div className="mt-2 text-xs text-gray-600">
-                  Balance: {selectedLot.current_balance} {selectedLot.unit}
+                  Balance: {formatQuantity(selectedLot.current_balance, selectedLot.unit)}
                   {selectedLot.supplier_name ? ` - Supplier: ${selectedLot.supplier_name}` : ''}
                   {selectedLot.received_date ? ` - Received: ${new Date(selectedLot.received_date).toLocaleDateString()}` : ''}
                 </div>

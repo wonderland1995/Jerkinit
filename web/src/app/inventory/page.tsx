@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import type { MaterialInventorySummary } from '@/types/inventory';
 import { formatQuantity } from '@/lib/utils';
+import { Loader2, Trash2 } from 'lucide-react';
 
 type BeefLot = {
   id: string;
@@ -84,6 +85,8 @@ export default function InventoryPage() {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [sortOption, setSortOption] = useState<'name' | 'stock' | 'expiry'>('name');
+  const [deletingLotId, setDeletingLotId] = useState<string | null>(null);
+  const [deleteLotError, setDeleteLotError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchInventorySummary();
@@ -286,16 +289,48 @@ export default function InventoryPage() {
     void ensureLotAllocations(lotId);
   };
 
+  const handleDeleteLot = async (lotId: string, lotLabel: string) => {
+    const confirmed = window.confirm(`Delete lot "${lotLabel}"? This action cannot be undone.`);
+    if (!confirmed) return;
+
+    setDeletingLotId(lotId);
+    setDeleteLotError(null);
+    try {
+      const res = await fetch(`/api/lots/${lotId}`, { method: 'DELETE' });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setDeleteLotError(data.error ?? 'Failed to delete lot.');
+        return;
+      }
+
+      setExpandedLotId((prev) => (prev === lotId ? null : prev));
+      setLotAllocations((prev) => {
+        if (!(lotId in prev)) return prev;
+        const next = { ...prev };
+        delete next[lotId];
+        return next;
+      });
+      setLoadingBeefLots(true);
+      await fetchBeefLots();
+    } catch (error) {
+      console.error('Failed to delete lot', error);
+      setDeleteLotError('Unexpected error deleting lot.');
+    } finally {
+      setDeletingLotId(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <Breadcrumbs
-        items={[
-          { label: 'Dashboard', href: '/' },
-          { label: 'Inventory', href: '/inventory' },
-        ]}
-      />
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <Breadcrumbs
+          items={[
+            { label: 'Dashboard', href: '/' },
+            { label: 'Inventory', href: '/inventory' },
+          ]}
+        />
 
-      <div className="mb-6 flex justify-between items-center">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-3xl font-bold">Ingredient Inventory</h1>
         <button
           onClick={() => {
@@ -457,7 +492,7 @@ export default function InventoryPage() {
                           )}
                         </td>
                         <td className="px-6 py-4 text-gray-600">
-                          {item.nearest_expiry_date ? formatDate(item.nearest_expiry_date) : '—'}
+                          {item.nearest_expiry_date ? formatDate(item.nearest_expiry_date) : '--'}
                         </td>
                       </tr>
                     ))}
@@ -499,7 +534,7 @@ export default function InventoryPage() {
                       <div>
                         <p className="text-xs uppercase tracking-wide text-gray-500">Next expiry</p>
                         <p className="mt-1 font-medium">
-                          {item.nearest_expiry_date ? formatDate(item.nearest_expiry_date) : '—'}
+                          {item.nearest_expiry_date ? formatDate(item.nearest_expiry_date) : '--'}
                         </p>
                       </div>
                       <div>
@@ -524,6 +559,11 @@ export default function InventoryPage() {
 
       <section className="mt-10">
         <h2 className="text-2xl font-semibold mb-4">Beef Lot Allocations</h2>
+        {deleteLotError && (
+          <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {deleteLotError}
+          </div>
+        )}
         {loadingBeefLots ? (
           <p>Loading beef lots...</p>
         ) : (
@@ -566,12 +606,26 @@ export default function InventoryPage() {
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-500">{supplierName}</td>
                           <td className="px-6 py-4 text-sm">
-                            <button
-                              onClick={() => toggleLotAllocations(lot.id)}
-                              className="text-blue-600 hover:text-blue-800"
-                            >
-                              {expandedLotId === lot.id ? 'Hide Allocations' : 'View Allocations'}
-                            </button>
+                            <div className="flex flex-wrap items-center gap-3">
+                              <button
+                                onClick={() => toggleLotAllocations(lot.id)}
+                                className="text-blue-600 hover:text-blue-800"
+                              >
+                                {expandedLotId === lot.id ? 'Hide Allocations' : 'View Allocations'}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteLot(lot.id, lot.lot_number)}
+                                disabled={deletingLotId === lot.id}
+                                className="inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-1 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-60"
+                              >
+                                {deletingLotId === lot.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                                Delete
+                              </button>
+                            </div>
                           </td>
                         </tr>
                         {expandedLotId === lot.id && (
@@ -647,6 +701,7 @@ export default function InventoryPage() {
           </div>
         )}
       </section>
+      </div>
     </div>
   );
 }
@@ -670,3 +725,6 @@ function SummaryCard({
     </div>
   );
 }
+
+
+

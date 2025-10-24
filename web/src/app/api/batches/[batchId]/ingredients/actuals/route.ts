@@ -262,14 +262,13 @@ export async function POST(
     }
   }
 
-  const baseMassForCure =
-    nonCureMassGrams > 0
-      ? nonCureMassGrams
-      : batchBeefKg > 0
+  const beefMassGrams =
+    batchBeefKg > 0
       ? batchBeefKg * 1000
       : baseBeefG > 0
       ? baseBeefG * scale
       : 0;
+  const baseMassForCure = nonCureMassGrams + beefMassGrams;
 
   let cureRequiredGrams: number | null = null;
   let targetInRecipeUnit: number;

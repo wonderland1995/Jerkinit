@@ -1,5 +1,24 @@
 import { createClient } from '@/lib/db';
 import { NextResponse } from 'next/server';
+import {
+  DEFAULT_CURE_SETTINGS,
+  calculateRequiredCureGrams,
+  parseCureNote,
+  type CurePpmSettings,
+  type CureType,
+} from '@/lib/cure';
+
+type Unit = 'g' | 'kg' | 'ml' | 'L' | 'units';
+
+const convert = (value: number, from: Unit, to: Unit): number => {
+  if (!Number.isFinite(value)) return 0;
+  if (from === to) return value;
+  if (from === 'kg' && to === 'g') return value * 1000;
+  if (from === 'g' && to === 'kg') return value / 1000;
+  if (from === 'L' && to === 'ml') return value * 1000;
+  if (from === 'ml' && to === 'L') return value / 1000;
+  return value;
+};
 
 export async function POST(request: Request) {
   const supabase = createClient();
@@ -13,6 +32,31 @@ export async function POST(request: Request) {
     created_by,
     notes,
   } = body;
+
+  const cureSettings: CurePpmSettings = { ...DEFAULT_CURE_SETTINGS };
+  try {
+    const { data: settingsData, error: settingsError } = await supabase
+      .from('project_settings')
+      .select('key,value')
+      .in('key', ['cure_ppm_min', 'cure_ppm_target', 'cure_ppm_max']);
+
+    if (!settingsError && Array.isArray(settingsData)) {
+      for (const row of settingsData) {
+        const key = row?.key;
+        const val = row?.value;
+        if (typeof key === 'string' && typeof val === 'string') {
+          const parsed = Number.parseFloat(val);
+          if (Number.isFinite(parsed)) {
+            if (key === 'cure_ppm_min') cureSettings.cure_ppm_min = parsed;
+            if (key === 'cure_ppm_target') cureSettings.cure_ppm_target = parsed;
+            if (key === 'cure_ppm_max') cureSettings.cure_ppm_max = parsed;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to load cure settings for batch creation; using defaults', err);
+  }
 
   try {
     // 1. Get or generate batch_id
@@ -96,16 +140,48 @@ export async function POST(request: Request) {
 
     // 4. Create batch_ingredients records (for your existing system)
     if (recipeIngredients.length > 0) {
-      interface RecipeIngredientForBatch { material_id: string; quantity: number; unit: string; tolerance_percentage: number | null; is_cure: boolean | null; material: { name: string }; }
-      const ingredientRecords = recipeIngredients.map((ing: RecipeIngredientForBatch) => ({
-        batch_id: batch.id,
-        material_id: ing.material_id,
-        ingredient_name: ing.material.name,
-target_amount: ing.quantity * (scaling_factor || 1),
-        unit: ing.unit,
-        tolerance_percentage: ing.tolerance_percentage,
-        is_cure: ing.is_cure,
-      }));
+      interface RecipeIngredientForBatch {
+        material_id: string;
+        quantity: number;
+        unit: string;
+        tolerance_percentage: number | null;
+        is_cure: boolean | null;
+        notes?: string | null;
+        cure_type?: string | null;
+        material: { name: string };
+      }
+      const batchBeefGrams = Number(beef_weight_kg ?? 0) * 1000;
+      const scaleMultiplier =
+        typeof scaling_factor === 'number' && Number.isFinite(scaling_factor)
+          ? scaling_factor
+          : 1;
+
+      const ingredientRecords = recipeIngredients.map((ing: RecipeIngredientForBatch) => {
+        const unit = (ing.unit || 'g') as Unit;
+        let targetAmount = Number(ing.quantity) * scaleMultiplier;
+
+        if (ing.is_cure) {
+          const cureType = (ing.cure_type as CureType | null) ?? parseCureNote(ing.notes ?? null);
+          if (cureType && batchBeefGrams > 0) {
+            const requiredGrams = calculateRequiredCureGrams(
+              batchBeefGrams,
+              cureType,
+              cureSettings.cure_ppm_target
+            );
+            targetAmount = convert(requiredGrams, 'g', unit);
+          }
+        }
+
+        return {
+          batch_id: batch.id,
+          material_id: ing.material_id,
+          ingredient_name: ing.material.name,
+          target_amount: targetAmount,
+          unit,
+          tolerance_percentage: ing.tolerance_percentage,
+          is_cure: ing.is_cure,
+        };
+      });
 
       const { error: ingredientsError } = await supabase
         .from('batch_ingredients')

@@ -1,5 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/db';
+import {
+  DEFAULT_CURE_SETTINGS,
+  calculatePpm,
+  calculateRequiredCureGrams,
+  evaluateCureStatus,
+  parseCureNote,
+  type CurePpmSettings,
+  type CureStatus,
+  type CureType,
+} from '@/lib/cure';
 
 type Unit = 'g' | 'kg' | 'ml' | 'L' | 'units';
 
@@ -57,6 +67,12 @@ interface ActualRow {
   tolerance_percentage: number;
   in_tolerance: boolean | null;
   measured_at: string | null;
+  is_cure?: boolean | null;
+  cure_type?: CureType | null;
+  cure_ppm?: number | null;
+  cure_status?: CureStatus | null;
+  cure_required_grams?: number | null;
+  cure_unit?: Unit;
 }
 
 export async function GET(
@@ -166,6 +182,8 @@ const scale = explicitScale && explicitScale > 0 ? explicitScale : computedScale
       quantity,
       unit,
       tolerance_percentage,
+      is_cure,
+      notes,
       material:materials ( id, name, unit )
     `)
     .eq('recipe_id', batch.recipe_id)
@@ -184,15 +202,62 @@ const scale = explicitScale && explicitScale > 0 ? explicitScale : computedScale
   const materialName = materialRel?.name ?? 'Unknown';
   const recipeUnit = toUnit((ri.unit as string) ?? 'g', 'g');
   const tolerance = body.tolerance_percentage ?? Number(ri.tolerance_percentage ?? 5);
+  const isCure = Boolean(ri.is_cure);
+  const cureType = parseCureNote(ri.notes ?? null);
+
+  const cureSettings: CurePpmSettings = { ...DEFAULT_CURE_SETTINGS };
+  try {
+    const { data: settingsData, error: settingsError } = await supabase
+      .from('project_settings')
+      .select('key,value')
+      .in('key', ['cure_ppm_min', 'cure_ppm_target', 'cure_ppm_max']);
+
+    if (!settingsError && Array.isArray(settingsData)) {
+      for (const row of settingsData) {
+        const key = row?.key;
+        const val = row?.value;
+        if (typeof key === 'string' && typeof val === 'string') {
+          const parsed = Number.parseFloat(val);
+          if (Number.isFinite(parsed)) {
+            if (key === 'cure_ppm_min') cureSettings.cure_ppm_min = parsed;
+            if (key === 'cure_ppm_target') cureSettings.cure_ppm_target = parsed;
+            if (key === 'cure_ppm_max') cureSettings.cure_ppm_max = parsed;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to load cure settings in actuals route; using defaults', err);
+  }
 
   // 3) Compute target in the UI-provided unit
-  const targetInRecipeUnit = Number(ri.quantity) * scale;
+  let cureRequiredGrams: number | null = null;
+  let targetInRecipeUnit = Number(ri.quantity) * scale;
+
+  if (isCure && cureType && baseBeefG > 0) {
+    cureRequiredGrams = calculateRequiredCureGrams(
+      baseBeefG,
+      cureType,
+      cureSettings.cure_ppm_target
+    );
+    targetInRecipeUnit = convert(cureRequiredGrams, 'g', recipeUnit);
+  }
+
   const targetInUiUnit = convert(targetInRecipeUnit, recipeUnit, uiUnit);
 
   // 4) Compute in_tolerance
   const diffPct =
     targetInUiUnit > 0 ? (Math.abs(actual - targetInUiUnit) / targetInUiUnit) * 100 : 0;
   const inTol = diffPct <= tolerance;
+
+  const actualInRecipeUnit = convert(actual, uiUnit, recipeUnit);
+  const actualInGrams = convert(actualInRecipeUnit, recipeUnit, 'g');
+  const curePpm =
+    isCure && cureType && actualInGrams > 0 && baseBeefG > 0
+      ? calculatePpm(actualInGrams, baseBeefG, cureType)
+      : null;
+  const cureStatus =
+    isCure && curePpm != null ? evaluateCureStatus(curePpm, cureSettings) : null;
 
   // 5) Upsert into batch_ingredients (update existing row or insert new)
   const { data: existing, error: exErr } = await supabase
@@ -216,6 +281,7 @@ const scale = explicitScale && explicitScale > 0 ? explicitScale : computedScale
         tolerance_percentage: tolerance,
         in_tolerance: inTol,
         measured_at: new Date().toISOString(),
+        is_cure: isCure,
       })
       .eq('id', existing.id)
       .select(
@@ -236,7 +302,16 @@ const scale = explicitScale && explicitScale > 0 ? explicitScale : computedScale
     if (uErr) {
       return NextResponse.json({ error: uErr.message }, { status: 400 });
     }
-    return NextResponse.json({ actual: updated });
+    const enriched: ActualRow = {
+      ...(updated as ActualRow),
+      is_cure: isCure,
+      cure_type: cureType,
+      cure_ppm: curePpm,
+      cure_status: cureStatus,
+      cure_required_grams: cureRequiredGrams,
+      cure_unit: recipeUnit,
+    };
+    return NextResponse.json({ actual: enriched });
   } else {
     const { data: inserted, error: iErr } = await supabase
       .from('batch_ingredients')
@@ -249,8 +324,8 @@ const scale = explicitScale && explicitScale > 0 ? explicitScale : computedScale
         unit: uiUnit,
         tolerance_percentage: tolerance,
         in_tolerance: inTol,
-        is_cure: false,
         measured_at: new Date().toISOString(),
+        is_cure: isCure,
       })
       .select(
         `
@@ -270,6 +345,15 @@ const scale = explicitScale && explicitScale > 0 ? explicitScale : computedScale
     if (iErr) {
       return NextResponse.json({ error: iErr.message }, { status: 400 });
     }
-    return NextResponse.json({ actual: inserted }, { status: 201 });
+    const enriched: ActualRow = {
+      ...(inserted as ActualRow),
+      is_cure: isCure,
+      cure_type: cureType,
+      cure_ppm: curePpm,
+      cure_status: cureStatus,
+      cure_required_grams: cureRequiredGrams,
+      cure_unit: recipeUnit,
+    };
+    return NextResponse.json({ actual: enriched }, { status: 201 });
   }
 }

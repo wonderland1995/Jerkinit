@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/db';
+import {
+  CURE_BY_ID,
+  DEFAULT_CURE_SETTINGS,
+  calculateRequiredCureGrams,
+  parseCureNote,
+} from '@/lib/cure';
+import type { CurePpmSettings } from '@/lib/cure';
 
 // Keep unit handling tight and explicit
 type Unit = 'g' | 'kg' | 'ml' | 'L' | 'units';
@@ -68,6 +75,8 @@ interface RecipeIngredientRow {
   is_critical: boolean | null;
   tolerance_percentage: number | null;
   display_order: number | null;
+  is_cure: boolean | null;
+  notes: string | null;
   material: MaterialRel;
 }
 
@@ -141,7 +150,9 @@ export async function GET(
       unit,
       is_critical,
       tolerance_percentage,
+      is_cure,
       display_order,
+      notes,
       material:materials ( id, name )
     `
     )
@@ -188,13 +199,50 @@ export async function GET(
     baseBeefG > 0 ? ((Number(batch.beef_weight_kg) || 0) * 1000) / baseBeefG : 1;
   const scale = explicitScale && explicitScale > 0 ? explicitScale : computedScale;
 
+  const cureSettings: CurePpmSettings = { ...DEFAULT_CURE_SETTINGS };
+  try {
+    const { data: settingsData, error: settingsError } = await supabase
+      .from('project_settings')
+      .select('key,value')
+      .in('key', ['cure_ppm_min', 'cure_ppm_target', 'cure_ppm_max']);
+
+    if (!settingsError && Array.isArray(settingsData)) {
+      for (const row of settingsData) {
+        const key = row?.key;
+        const val = row?.value;
+        if (typeof key === 'string' && typeof val === 'string') {
+          const parsed = Number.parseFloat(val);
+          if (Number.isFinite(parsed)) {
+            if (key === 'cure_ppm_min') cureSettings.cure_ppm_min = parsed;
+            if (key === 'cure_ppm_target') cureSettings.cure_ppm_target = parsed;
+            if (key === 'cure_ppm_max') cureSettings.cure_ppm_max = parsed;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to load cure settings; using defaults', err);
+  }
+
   // 5) Assemble materials (target / used / remaining + per-lot detail)
   const materials = ingredients.map((ri) => {
     const materialRel = ri.material;
     const materialObj = Array.isArray(materialRel) ? (materialRel[0] ?? null) : materialRel;
 
     const unit: Unit = ri.unit ?? 'g';
-    const target = Number(ri.quantity) * scale;
+
+    const cureType = parseCureNote(ri.notes ?? null);
+    let cureRequiredGrams: number | null = null;
+    let target = Number(ri.quantity) * scale;
+
+    if (ri.is_cure && cureType && baseBeefG > 0) {
+      cureRequiredGrams = calculateRequiredCureGrams(
+        baseBeefG,
+        cureType,
+        cureSettings.cure_ppm_target
+      );
+      target = convert(cureRequiredGrams, 'g', unit);
+    }
 
     const rows = usages.filter((u) => u.material_id === ri.material_id);
     const used = rows.reduce((sum, u) => {
@@ -232,6 +280,11 @@ export async function GET(
       remaining_amount: Math.max(0, target - used),
       is_critical: !!ri.is_critical,
       tolerance_percentage: Number(ri.tolerance_percentage ?? 5),
+      is_cure: Boolean(ri.is_cure),
+      cure_type: cureType,
+      cure_nitrite_percent: cureType ? CURE_BY_ID[cureType].nitritePercent : null,
+      cure_required_grams: cureRequiredGrams,
+      cure_ppm_target: cureSettings.cure_ppm_target,
       lots,
     };
   });
@@ -239,6 +292,7 @@ export async function GET(
   return NextResponse.json({
     batch: { id: batch.id, recipe_id: batch.recipe_id, scale },
     materials,
+    cure_settings: cureSettings,
   });
 }
 
@@ -435,3 +489,5 @@ export async function DELETE(
 
   return NextResponse.json({ ok: true });
 }
+
+

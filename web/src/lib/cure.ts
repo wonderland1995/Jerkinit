@@ -16,6 +16,18 @@ export const CURE_BY_ID: Record<CureType, CureOption> = {
   prague1: CURE_OPTIONS[1],
 };
 
+export interface CurePpmSettings {
+  cure_ppm_min: number;
+  cure_ppm_target: number;
+  cure_ppm_max: number;
+}
+
+export const DEFAULT_CURE_SETTINGS: CurePpmSettings = {
+  cure_ppm_min: 110,
+  cure_ppm_target: 125,
+  cure_ppm_max: 125,
+};
+
 const NOTE_KEY = 'cure_type';
 
 export function encodeCureNote(cureType: CureType | null | undefined): string | null {
@@ -51,4 +63,40 @@ export function parseCureNote(note: unknown): CureType | null {
   }
 
   return null;
+}
+
+export function calculateRequiredCureGrams(
+  baseMassGrams: number,
+  cureType: CureType,
+  targetPpm: number
+): number {
+  if (!Number.isFinite(baseMassGrams) || baseMassGrams <= 0) return 0;
+  const option = CURE_BY_ID[cureType];
+  const nitriteFraction = option.nitritePercent / 100;
+  const targetFraction = targetPpm / 1_000_000;
+  if (nitriteFraction <= targetFraction) return 0;
+  const required = (targetFraction * baseMassGrams) / (nitriteFraction - targetFraction);
+  return Number.isFinite(required) && required > 0 ? required : 0;
+}
+
+export function calculatePpm(
+  cureGrams: number,
+  totalMassGrams: number,
+  cureType: CureType
+): number {
+  if (!Number.isFinite(cureGrams) || cureGrams <= 0) return 0;
+  if (!Number.isFinite(totalMassGrams) || totalMassGrams <= 0) return 0;
+  const option = CURE_BY_ID[cureType];
+  const nitriteFraction = option.nitritePercent / 100;
+  const nitriteGrams = cureGrams * nitriteFraction;
+  return (nitriteGrams / totalMassGrams) * 1_000_000;
+}
+
+export type CureStatus = 'LOW' | 'OK' | 'HIGH';
+
+export function evaluateCureStatus(ppm: number, settings: CurePpmSettings): CureStatus {
+  if (!Number.isFinite(ppm)) return 'LOW';
+  if (ppm < settings.cure_ppm_min) return 'LOW';
+  if (ppm > settings.cure_ppm_max) return 'HIGH';
+  return 'OK';
 }

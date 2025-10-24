@@ -164,7 +164,17 @@ export async function PUT(
         .eq('recipe_id', recipeId);
       if (delErr) return NextResponse.json({ error: delErr.message }, { status: 400 });
 
-      const rows = clean.map(({ cure_type: _cureType, ...rest }) => ({ ...rest }));
+      const rows = clean.map((row) => ({
+        recipe_id: row.recipe_id,
+        material_id: row.material_id,
+        quantity: row.quantity,
+        unit: row.unit,
+        tolerance_percentage: row.tolerance_percentage,
+        is_critical: row.is_critical,
+        is_cure: row.is_cure,
+        display_order: row.display_order,
+        notes: row.is_cure ? encodeCureNote(row.cure_type ?? null) : row.notes ?? null,
+      }));
 
       const { error: insErr } = await supabase.from('recipe_ingredients').insert(rows);
       if (insErr) return NextResponse.json({ error: insErr.message }, { status: 400 });
@@ -176,4 +186,6 @@ export async function PUT(
     return NextResponse.json({ error: 'Failed to update recipe' }, { status: 500 });
   }
 }
+
+
 

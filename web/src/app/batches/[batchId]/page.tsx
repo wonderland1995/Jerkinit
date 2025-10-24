@@ -1,16 +1,44 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Check, Loader2, Trash2 } from 'lucide-react';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import DeleteBatchModal from '@/components/DeleteBatchModal';
 import { formatQuantity } from '@/lib/utils';
+import {
+  CURE_BY_ID,
+  DEFAULT_CURE_SETTINGS,
+  calculatePpm,
+  calculateRequiredCureGrams,
+  evaluateCureStatus,
+  type CurePpmSettings,
+  type CureStatus,
+  type CureType,
+} from '@/lib/cure';
 
 /* =========================================
    Types
    ========================================= */
 type Unit = 'g' | 'kg' | 'ml' | 'L' | 'units';
+
+const toGrams = (value: number, unit: Unit): number => {
+  if (!Number.isFinite(value)) return 0;
+  if (unit === 'kg') return value * 1000;
+  return value;
+};
+
+const fromGrams = (value: number, unit: Unit): number => {
+  if (!Number.isFinite(value)) return 0;
+  if (unit === 'kg') return value / 1000;
+  return value;
+};
+
+const CURE_STATUS_BADGES: Record<CureStatus, { label: string; className: string }> = {
+  LOW: { label: 'Low ppm', className: 'bg-amber-100 text-amber-700' },
+  OK: { label: 'Within spec', className: 'bg-emerald-100 text-emerald-700' },
+  HIGH: { label: 'High ppm', className: 'bg-rose-100 text-rose-700' },
+};
 
 interface MaterialTraceRow {
   material_id: string;
@@ -21,12 +49,18 @@ interface MaterialTraceRow {
   remaining_amount: number;
   is_critical: boolean;
   tolerance_percentage: number;
+  is_cure?: boolean | null;
+  cure_type?: CureType | null;
+  cure_nitrite_percent?: number | null;
+  cure_required_grams?: number | null;
+  cure_ppm_target?: number | null;
   lots: unknown[];
 }
 
 interface TraceResp {
   batch?: { id?: string; recipe_id?: string | null; scale?: number };
   materials?: MaterialTraceRow[];
+  cure_settings?: Partial<CurePpmSettings> | null;
 }
 
 type BatchStatus = 'in_progress' | 'completed' | 'cancelled' | 'released';
@@ -56,6 +90,12 @@ interface ActualRow {
   tolerance_percentage: number;
   in_tolerance: boolean | null;
   measured_at: string | null;
+  is_cure?: boolean | null;
+  cure_type?: CureType | null;
+  cure_ppm?: number | null;
+  cure_status?: CureStatus | null;
+  cure_required_grams?: number | null;
+  cure_unit?: Unit;
 }
 
 interface ActualsResp {
@@ -153,6 +193,7 @@ export default function BatchDetailPage() {
   const [loading, setLoading] = useState(true);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [cureSettings, setCureSettings] = useState<CurePpmSettings>(DEFAULT_CURE_SETTINGS);
 
   const [qaSummary, setQaSummary] = useState<QaSummaryResp | null>(null);
   const [actualInputs, setActualInputs] = useState<Record<string, string>>({});
@@ -165,6 +206,7 @@ export default function BatchDetailPage() {
   const [beefQty, setBeefQty] = useState<number>(0);
   const [beefUnit, setBeefUnit] = useState<'g' | 'kg'>('g');
   const [beefTotalG, setBeefTotalG] = useState<number>(0);
+  const autoSavedCureKeyRef = useRef<string | null>(null);
 
   const fetchBatch = async () => {
     const [bRes, tRes, aRes, qRes] = await Promise.all([
@@ -190,9 +232,25 @@ export default function BatchDetailPage() {
         typeof traceJson?.batch?.scale === 'number' ? Number(traceJson.batch?.scale) : 1;
       setScale(nextScale);
       setMaterials(traceMaterials);
+      const overrides = traceJson?.cure_settings ?? {};
+      const normalized: CurePpmSettings = { ...DEFAULT_CURE_SETTINGS };
+      (['cure_ppm_min', 'cure_ppm_target', 'cure_ppm_max'] as const).forEach((key) => {
+        const raw = overrides?.[key];
+        const parsed =
+          typeof raw === 'number'
+            ? raw
+            : typeof raw === 'string'
+            ? Number.parseFloat(raw)
+            : null;
+        if (parsed != null && Number.isFinite(parsed)) {
+          normalized[key] = parsed;
+        }
+      });
+      setCureSettings(normalized);
     } else {
       setScale(1);
       setMaterials([]);
+      setCureSettings(DEFAULT_CURE_SETTINGS);
     }
 
     if (isOkResponse(aRes)) {
@@ -676,6 +734,63 @@ export default function BatchDetailPage() {
   const isLocked =
     batch?.status === 'released' || batch?.status === 'completed';
 
+  const cureMaterial = useMemo(
+    () => materials.find((m) => m.is_cure),
+    [materials]
+  );
+
+  const baseBeefGrams = useMemo(() => {
+    if (!batch) return 0;
+    const beefKg = Number(batch.beef_weight_kg);
+    return Number.isFinite(beefKg) ? beefKg * 1000 : 0;
+  }, [batch]);
+
+  const cureSummary = useMemo(() => {
+    if (!cureMaterial || !cureMaterial.cure_type || baseBeefGrams <= 0) {
+      return null;
+    }
+
+    const ppmTarget = Number(
+      cureMaterial.cure_ppm_target ??
+        cureSettings.cure_ppm_target ??
+        DEFAULT_CURE_SETTINGS.cure_ppm_target
+    );
+
+    const requiredGramsRaw =
+      typeof cureMaterial.cure_required_grams === 'number' &&
+      Number.isFinite(cureMaterial.cure_required_grams)
+        ? cureMaterial.cure_required_grams
+        : calculateRequiredCureGrams(baseBeefGrams, cureMaterial.cure_type, ppmTarget);
+    const requiredGrams = requiredGramsRaw > 0 ? requiredGramsRaw : 0;
+    const requiredInUnit = fromGrams(requiredGrams, cureMaterial.unit);
+
+    const actualRow = actuals[cureMaterial.material_id];
+    const actualAmount = actualRow?.actual_amount ?? null;
+    const actualUnit = actualRow?.unit ?? cureMaterial.unit;
+    const actualInGrams =
+      actualAmount != null ? toGrams(actualAmount, actualUnit) : null;
+    const ppm =
+      actualInGrams != null
+        ? calculatePpm(actualInGrams, baseBeefGrams, cureMaterial.cure_type)
+        : null;
+    const status = ppm != null ? evaluateCureStatus(ppm, cureSettings) : null;
+
+    return {
+      materialId: cureMaterial.material_id,
+      materialName: cureMaterial.material_name,
+      cureType: cureMaterial.cure_type,
+      requiredGrams,
+      requiredInUnit,
+      unit: cureMaterial.unit,
+      ppm,
+      status,
+      actualAmount,
+      actualUnit,
+      lastMeasuredAt: actualRow?.measured_at ?? null,
+      targetPpm: ppmTarget,
+    };
+  }, [cureMaterial, baseBeefGrams, cureSettings, actuals]);
+
   const rows = useMemo(() => {
     return materials.map((m) => {
       const a = actuals[m.material_id];
@@ -685,7 +800,10 @@ export default function BatchDetailPage() {
       const actualVal =
         raw !== undefined && raw !== '' ? Number(raw) : a?.actual_amount ?? null;
 
-      const target = m.target_amount;
+      const target =
+        m.is_cure && cureSummary && cureSummary.materialId === m.material_id
+          ? cureSummary.requiredInUnit
+          : m.target_amount;
       const diffPct =
         actualVal != null && target > 0
           ? (Math.abs(actualVal - target) / target) * 100
@@ -700,7 +818,51 @@ export default function BatchDetailPage() {
         inTol,
       };
     });
-  }, [materials, actuals, actualInputs]);
+  }, [materials, actuals, actualInputs, cureSummary]);
+
+  const saveActual = useCallback(
+    async (
+      material_id: string,
+      unit: Unit,
+      opts?: { overrideAmount?: number; silent?: boolean }
+    ) => {
+      const rawFromState = actualInputs[material_id];
+      const hasOverride = typeof opts?.overrideAmount === 'number';
+      const amt = hasOverride ? Number(opts?.overrideAmount) : Number(rawFromState);
+      if (!Number.isFinite(amt) || amt <= 0) {
+        if (!opts?.silent) {
+          alert('Please enter a positive number.');
+        }
+        return;
+      }
+
+      setSaving((s) => ({ ...s, [material_id]: true }));
+      try {
+        const res = await fetch(`/api/batches/${batchId}/ingredients/actuals`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ material_id, actual_amount: amt, unit }),
+        });
+        const j = (await res.json().catch(() => ({}))) as { actual?: ActualRow; error?: string };
+        if (!res.ok || !j.actual) {
+          if (!opts?.silent) {
+            alert(j.error ?? 'Failed to save actual');
+          } else {
+            console.error('Failed to save cure actual', j.error);
+          }
+          return;
+        }
+        setActuals((prev) => ({ ...prev, [material_id]: j.actual! }));
+        setSavedFlash((f) => ({ ...f, [material_id]: true }));
+        setTimeout(() => {
+          setSavedFlash((f) => ({ ...f, [material_id]: false }));
+        }, 1200);
+      } finally {
+        setSaving((s) => ({ ...s, [material_id]: false }));
+      }
+    },
+    [actualInputs, batchId]
+  );
 
   const allCriticalOk = useMemo(() => {
     if (rows.length === 0) return false;
@@ -709,36 +871,43 @@ export default function BatchDetailPage() {
     return criticals.every((r) => r.inTol === true);
   }, [rows]);
 
-  async function saveActual(material_id: string, unit: Unit) {
-    const raw = actualInputs[material_id];
-    const amt = Number(raw);
-    if (!Number.isFinite(amt) || amt <= 0) {
-      alert('Please enter a positive number.');
+  useEffect(() => {
+    if (!cureSummary || !cureSummary.materialId) return;
+    if (!Number.isFinite(cureSummary.requiredInUnit) || cureSummary.requiredInUnit <= 0) return;
+    const nextValue = cureSummary.requiredInUnit.toFixed(2);
+    setActualInputs((prev) => {
+      if (prev[cureSummary.materialId] === nextValue) {
+        return prev;
+      }
+      return { ...prev, [cureSummary.materialId]: nextValue };
+    });
+  }, [cureSummary]);
+
+  useEffect(() => {
+    if (!cureSummary || !cureSummary.materialId) return;
+    if (isLocked) return;
+    if (!Number.isFinite(cureSummary.requiredInUnit) || cureSummary.requiredInUnit <= 0) return;
+    const actualRow = actuals[cureSummary.materialId];
+    const existing = actualRow?.actual_amount ?? null;
+    if (existing != null && Math.abs(existing - cureSummary.requiredInUnit) < 0.01) {
       return;
     }
 
-    setSaving((s) => ({ ...s, [material_id]: true }));
-    try {
-      const res = await fetch(`/api/batches/${batchId}/ingredients/actuals`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ material_id, actual_amount: amt, unit }),
-      });
-      const j = (await res.json().catch(() => ({}))) as { actual?: ActualRow; error?: string };
-      if (!res.ok || !j.actual) {
-        alert(j.error ?? 'Failed to save actual');
-        return;
-      }
-      setActuals((prev) => ({ ...prev, [material_id]: j.actual! }));
-      setSavedFlash((f) => ({ ...f, [material_id]: true }));
-      setTimeout(() => {
-        setSavedFlash((f) => ({ ...f, [material_id]: false }));
-      }, 1200);
-    } finally {
-      setSaving((s) => ({ ...s, [material_id]: false }));
+    const key = `${cureSummary.materialId}:${cureSummary.requiredInUnit.toFixed(2)}`;
+    if (autoSavedCureKeyRef.current === key) {
+      return;
     }
-  }
 
+    autoSavedCureKeyRef.current = key;
+    void saveActual(cureSummary.materialId, cureSummary.unit, {
+      overrideAmount: cureSummary.requiredInUnit,
+      silent: true,
+    }).finally(() => {
+      setTimeout(() => {
+        autoSavedCureKeyRef.current = null;
+      }, 1500);
+    });
+  }, [cureSummary, actuals, isLocked, saveActual]);
   async function releaseBatch() {
     if (!batch) return;
     if (!allCriticalOk) {
@@ -821,6 +990,12 @@ export default function BatchDetailPage() {
   function prettyStage(s: QaStage) {
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
+
+  const formatLocalDateTime = (value: string | null | undefined) => {
+    if (!value) return '—';
+    const dt = new Date(value);
+    return Number.isNaN(dt.getTime()) ? '—' : dt.toLocaleString();
+  };
 
   if (loading) {
     return (
@@ -933,6 +1108,70 @@ export default function BatchDetailPage() {
               </div>
             </div>
           )}
+
+          {cureSummary && (
+            <div className="mt-6 border-t pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold">Cure Status</h3>
+                <span
+                  className={`px-3 py-1.5 rounded-full text-sm font-medium ${
+                    cureSummary.status
+                      ? CURE_STATUS_BADGES[cureSummary.status]?.className ??
+                        'bg-gray-100 text-gray-700'
+                      : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  {cureSummary.status
+                    ? CURE_STATUS_BADGES[cureSummary.status]?.label ?? cureSummary.status
+                    : 'Awaiting measurement'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+                <div className="p-4 rounded-lg bg-purple-50">
+                  <p className="text-xs uppercase text-purple-600">Cure</p>
+                  <p className="mt-1 font-semibold text-purple-900">
+                    {CURE_BY_ID[cureSummary.cureType]?.label ?? cureSummary.cureType?.toUpperCase()}
+                  </p>
+                  <p className="text-xs text-purple-700 mt-1">
+                    Target {Number(cureSummary.targetPpm).toFixed(0)} ppm
+                  </p>
+                </div>
+                <div className="p-4 rounded-lg bg-slate-50">
+                  <p className="text-xs uppercase text-slate-500">Required</p>
+                  <p className="mt-1 font-semibold text-slate-900">
+                    {cureSummary.requiredInUnit.toFixed(2)} {cureSummary.unit}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {cureSummary.requiredGrams.toFixed(2)} g total
+                  </p>
+                </div>
+                <div className="p-4 rounded-lg bg-slate-50">
+                  <p className="text-xs uppercase text-slate-500">Actual</p>
+                  <p className="mt-1 font-semibold text-slate-900">
+                    {cureSummary.actualAmount != null
+                      ? `${Number(cureSummary.actualAmount).toFixed(2)} ${cureSummary.actualUnit}`
+                      : 'Auto-saving…'}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Last entry:{' '}
+                    {cureSummary.lastMeasuredAt
+                      ? formatLocalDateTime(cureSummary.lastMeasuredAt)
+                      : '—'}
+                  </p>
+                </div>
+                <div className="p-4 rounded-lg bg-slate-50">
+                  <p className="text-xs uppercase text-slate-500">Calculated PPM</p>
+                  <p className="mt-1 font-semibold text-slate-900">
+                    {cureSummary.ppm != null ? cureSummary.ppm.toFixed(0) : '—'}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Beef mass: {(baseBeefGrams / 1000).toFixed(2)} kg
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Beef used (traceability link) */}
@@ -1041,88 +1280,121 @@ export default function BatchDetailPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {rows.map((r) => (
-                    <tr key={r.material_id} className="align-middle">
-                      <td className="py-3 px-4">
-                        <div className="font-medium">{r.material_name}</div>
-                        {r.is_critical && (
-                          <div className="text-[11px] text-red-600 mt-0.5">Critical</div>
-                        )}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="inline-flex items-center gap-2">
-                          <span className="font-semibold">{r.target_amount.toFixed(2)}</span>
-                          <span className="text-gray-600">{r.unit}</span>
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex gap-2 items-center">
-                          <input
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            value={actualInputs[r.material_id] ?? ''}
-                            onChange={(e) =>
-                              setActualInputs((prev) => ({
-                                ...prev,
-                                [r.material_id]: e.target.value,
-                              }))
-                            }
-                            placeholder="0.00"
-                            className="w-36 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 disabled:bg-gray-100"
-                            disabled={isLocked}
-                          />
-                          <span className="text-gray-600">{r.unit}</span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">{r.tol}</td>
-                      <td className="py-3 px-4">
-                        {r.actualVal == null || r.actualVal === 0 ? (
-                          <span className="text-gray-400">—</span>
-                        ) : r.inTol ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5">
-                            <Check className="w-3 h-3" />
-                            OK
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 px-2 py-0.5">
-                            Out
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4">
-                        <button
-                          type="button"
-                          onClick={() => saveActual(r.material_id, r.unit)}
-                          disabled={
-                            isLocked ||
-                            saving[r.material_id] === true ||
-                            (actualInputs[r.material_id] ?? '') === ''
-                          }
-                          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg ${
-                            saving[r.material_id]
-                              ? 'bg-indigo-300 text-white'
-                              : 'bg-indigo-600 text-white hover:bg-indigo-700'
-                          } disabled:opacity-50`}
-                          title="Save"
-                        >
-                          {saving[r.material_id] ? (
-                            <>
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              Saving…
-                            </>
-                          ) : savedFlash[r.material_id] ? (
-                            <>
-                              <Check className="w-4 h-4" />
-                              Saved
-                            </>
-                          ) : (
-                            'Save'
+                  {rows.map((r) => {
+                    const isCureRow = Boolean(r.is_cure);
+                    const cureRowMatch =
+                      isCureRow && cureSummary?.materialId === r.material_id;
+                    const displayValue = cureRowMatch && Number.isFinite(cureSummary?.requiredInUnit)
+                      ? (cureSummary?.requiredInUnit ?? 0).toFixed(2)
+                      : actualInputs[r.material_id] ?? '';
+                    const disableInput = isLocked || isCureRow;
+                    const disableSave =
+                      disableInput ||
+                      saving[r.material_id] === true ||
+                      (displayValue ?? '') === '';
+                    const cureStatus = cureRowMatch ? cureSummary?.status ?? null : null;
+                    const targetUnitLabel = cureRowMatch ? cureSummary?.unit ?? r.unit : r.unit;
+                    const targetAmountDisplay = cureRowMatch && Number.isFinite(cureSummary?.requiredInUnit)
+                      ? (cureSummary?.requiredInUnit ?? 0).toFixed(2)
+                      : r.target_amount.toFixed(2);
+                    return (
+                      <tr key={r.material_id} className="align-middle">
+                        <td className="py-3 px-4">
+                          <div className="font-medium">{r.material_name}</div>
+                          {r.is_critical && (
+                            <div className="text-[11px] text-red-600 mt-0.5">Critical</div>
                           )}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                          {isCureRow && r.cure_type && (
+                            <div className="text-[11px] text-purple-700 mt-0.5">
+                              Cure: {CURE_BY_ID[r.cure_type]?.label ?? r.cure_type.toUpperCase()}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="inline-flex items-center gap-2">
+                            <span className="font-semibold">{targetAmountDisplay}</span>
+                            <span className="text-gray-600">{targetUnitLabel}</span>
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex gap-2 items-center">
+                            <input
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              value={displayValue}
+                              onChange={(e) =>
+                                setActualInputs((prev) => ({
+                                  ...prev,
+                                  [r.material_id]: e.target.value,
+                                }))
+                              }
+                              placeholder="0.00"
+                              className="w-36 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 disabled:bg-gray-100"
+                              disabled={disableInput}
+                            />
+                            <span className="text-gray-600">{targetUnitLabel}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">{r.tol}</td>
+                        <td className="py-3 px-4">
+                          {cureStatus ? (
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ${
+                                CURE_STATUS_BADGES[cureStatus]?.className ??
+                                'bg-gray-100 text-gray-700'
+                              }`}
+                            >
+                              {CURE_STATUS_BADGES[cureStatus]?.label ?? cureStatus}
+                            </span>
+                          ) : r.actualVal == null || r.actualVal === 0 ? (
+                            <span className="text-gray-400">—</span>
+                          ) : r.inTol ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5">
+                              <Check className="w-3 h-3" />
+                              OK
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 px-2 py-0.5">
+                              Out
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4">
+                          <button
+                            type="button"
+                            onClick={() => saveActual(r.material_id, r.unit)}
+                            disabled={disableSave}
+                            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg ${
+                              saving[r.material_id]
+                                ? 'bg-indigo-300 text-white'
+                                : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                            } disabled:opacity-50`}
+                            title={isCureRow ? 'Automatically saved' : 'Save'}
+                          >
+                            {saving[r.material_id] ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                Saving…
+                              </>
+                            ) : isCureRow ? (
+                              <>
+                                <Check className="w-4 h-4" />
+                                Auto
+                              </>
+                            ) : savedFlash[r.material_id] ? (
+                              <>
+                                <Check className="w-4 h-4" />
+                                Saved
+                              </>
+                            ) : (
+                              'Save'
+                            )}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

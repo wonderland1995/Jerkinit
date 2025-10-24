@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { Trash2, Eye, ClipboardCheck } from 'lucide-react';
 import DeleteBatchModal from '@/components/DeleteBatchModal';
 import type { Route } from 'next';
+import { formatDate } from '@/lib/utils';
 
 interface BatchSummary {
   id: string;
@@ -296,7 +297,7 @@ export default function BatchHistoryPage() {
                       <div className="font-mono text-sm font-semibold text-gray-900">{batch.batch_id}</div>
                       <div className="text-sm text-gray-600">{batch.product_name ?? '-'}</div>
                       <div className="mt-1 text-xs text-gray-500">
-                        Created {new Date(batch.created_at).toLocaleDateString()}
+                        Created {formatDate(batch.created_at)}
                         {batch.created_by ? ` - ${batch.created_by}` : ''}
                       </div>
                     </div>
@@ -436,7 +437,7 @@ export default function BatchHistoryPage() {
                       <ReleaseStatusBadge status={batch.release_status} />
                     </Td>
                     <Td>
-                      <div>{new Date(batch.created_at).toLocaleDateString()}</div>
+                      <div>{formatDate(batch.created_at)}</div>
                       <div className="text-xs text-gray-500">{batch.created_by ?? 'System'}</div>
                     </Td>
                     <Td align="center">

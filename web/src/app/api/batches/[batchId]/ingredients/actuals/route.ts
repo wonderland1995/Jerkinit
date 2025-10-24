@@ -32,6 +32,22 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null;
 }
 
+type MaterialRel =
+  | { id: string; name: string; unit?: Unit | string | null }
+  | Array<{ id: string; name: string; unit?: Unit | string | null }>
+  | null;
+
+interface RecipeIngredientRow {
+  id?: string;
+  material_id: string;
+  quantity: number | string | null;
+  unit: Unit | string | null;
+  tolerance_percentage: number | null;
+  is_cure: boolean | null;
+  notes: string | null;
+  material: MaterialRel;
+}
+
 function pickRecipe(obj: unknown): RecipeJoin | null {
   // handle array shape
   if (Array.isArray(obj)) {

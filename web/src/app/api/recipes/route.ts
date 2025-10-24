@@ -1,6 +1,8 @@
 // src/app/api/recipes/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/db';
+import { encodeCureNote } from '@/lib/cure';
+import type { CureType } from '@/lib/cure';
 
 type Unit = 'g' | 'kg' | 'ml' | 'L' | 'units';
 type IngredientInput = {
@@ -9,6 +11,8 @@ type IngredientInput = {
   unit: Unit;
   is_critical: boolean;
   notes: string | null;
+  is_cure?: boolean;
+  cure_type?: CureType | null;
 };
 type PostBody = {
   product_id?: string;
@@ -47,12 +51,38 @@ export async function POST(req: NextRequest) {
   }
 
   // validate ingredients (must be at least one valid row)
-  const ingredients = (Array.isArray(body.ingredients) ? body.ingredients : [])
-    .filter(i => i.material_id && Number(i.quantity) > 0 && i.unit) as IngredientInput[];
+  const rawIngredients = Array.isArray(body.ingredients) ? body.ingredients : [];
+  const ingredients = rawIngredients
+    .filter((i) => i.material_id && Number.isFinite(Number(i.quantity)) && i.unit)
+    .map((i) => ({
+      ...i,
+      quantity: Number(i.quantity),
+    })) as IngredientInput[];
 
   if (ingredients.length === 0) {
     return NextResponse.json({ error: 'At least one valid ingredient is required' }, { status: 400 });
   }
+
+  const cureCount = ingredients.filter((ing) => ing.is_cure).length;
+  if (cureCount > 1) {
+    return NextResponse.json({ error: 'Only one cure ingredient can be defined per recipe.' }, { status: 400 });
+  }
+  if (ingredients.some((ing) => ing.is_cure && !ing.cure_type)) {
+    return NextResponse.json({ error: 'Cure ingredients must specify a cure_type.' }, { status: 400 });
+  }
+
+  const normalizedIngredients = ingredients.map((ing, idx) => ({
+    recipe_id: '',
+    material_id: ing.material_id,
+    quantity: ing.quantity,
+    unit: ing.unit,
+    tolerance_percentage: 5.0,
+    is_critical: Boolean(ing.is_critical),
+    is_cure: Boolean(ing.is_cure),
+    cure_type: ing.cure_type ?? null,
+    display_order: idx,
+    notes: ing.notes ?? null,
+  }));
 
   // optional: auto-create/reuse product if not provided
   let productId = body.product_id;
@@ -97,17 +127,25 @@ export async function POST(req: NextRequest) {
   }
 
   // 2) Insert ingredients
-  const rows = ingredients.map((ing, idx) => ({
+  const rows = normalizedIngredients.map((ing) => ({
     recipe_id: recipe.id,
     material_id: ing.material_id,
     quantity: ing.quantity,
     unit: ing.unit,
     tolerance_percentage: 5.0,
-    is_critical: !!ing.is_critical,
-    is_cure: false,
-    display_order: idx,
-    notes: ing.notes ?? null,
+    is_critical: ing.is_critical,
+    is_cure: ing.is_cure,
+    display_order: ing.display_order,
+    notes: ing.is_cure ? encodeCureNote(ing.cure_type ?? null) : ing.notes ?? null,
   }));
+
+  const hasMeasurable = normalizedIngredients.some((ing) => ing.is_cure || ing.quantity > 0);
+  if (!hasMeasurable) {
+    return NextResponse.json(
+      { error: 'At least one ingredient must have a quantity greater than 0.' },
+      { status: 400 }
+    );
+  }
 
   const { error: iErr } = await supabase.from('recipe_ingredients').insert(rows);
   if (iErr) {

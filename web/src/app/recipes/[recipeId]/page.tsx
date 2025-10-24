@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import type { Recipe, RecipeIngredient, Material } from '@/types/inventory';
+import { CURE_BY_ID, type CureType, parseCureNote } from '@/lib/cure';
 
 type RecipeIngredientPayload = {
   id: string;
@@ -15,6 +16,8 @@ type RecipeIngredientPayload = {
   notes?: string | null;
   created_at?: string;
   material?: Material | Material[] | null;
+  is_cure?: boolean;
+  cure_type?: CureType | null;
 };
 
 export default function RecipeDetailPage() {
@@ -46,19 +49,21 @@ export default function RecipeDetailPage() {
         : [];
 
       const ingredients: RecipeIngredient[] = items.map((item) => {
-            const material = Array.isArray(item.material) ? item.material[0] : item.material ?? null;
-            return {
-              id: item.id,
-              recipe_id: item.recipe_id ?? raw.id,
-              material_id: item.material_id,
-              quantity: item.quantity,
-              unit: item.unit,
-              is_critical: Boolean(item.is_critical),
-              notes: item.notes ?? null,
-              created_at: item.created_at ?? '',
-              material: material ?? undefined,
-            };
-          });
+        const material = Array.isArray(item.material) ? item.material[0] : item.material ?? null;
+        return {
+          id: item.id,
+          recipe_id: item.recipe_id ?? raw.id,
+          material_id: item.material_id,
+          quantity: item.quantity,
+          unit: item.unit,
+          is_critical: Boolean(item.is_critical),
+          notes: item.notes ?? null,
+          created_at: item.created_at ?? '',
+          is_cure: Boolean(item.is_cure),
+          cure_type: item.cure_type ?? parseCureNote(item.notes ?? null),
+          material: material ?? undefined,
+        };
+      });
 
       const normalized: Recipe = {
         id: raw.id,
@@ -182,7 +187,7 @@ export default function RecipeDetailPage() {
                       Quantity
                     </th>
                     <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">
-                      Critical
+                      Flags
                     </th>
                   </tr>
                 </thead>
@@ -198,10 +203,18 @@ export default function RecipeDetailPage() {
                       <td className="px-4 py-3 text-right font-medium">
                         {ing.quantity} {ing.unit}
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-4 py-3 text-center space-x-2">
                         {ing.is_critical && (
                           <span className="px-2 py-1 text-xs bg-red-100 text-red-800 rounded">
                             Critical
+                          </span>
+                        )}
+                        {ing.is_cure && (
+                          <span className="px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded">
+                            Cure
+                            {ing.cure_type && CURE_BY_ID[ing.cure_type]
+                              ? ` (${CURE_BY_ID[ing.cure_type].label})`
+                              : ''}
                           </span>
                         )}
                       </td>
@@ -216,3 +229,4 @@ export default function RecipeDetailPage() {
     </div>
   );
 }
+

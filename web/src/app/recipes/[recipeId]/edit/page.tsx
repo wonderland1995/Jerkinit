@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, ChangeEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { CURE_OPTIONS, type CureType, parseCureNote } from '@/lib/cure';
 
 type Unit = 'g' | 'kg' | 'ml' | 'L' | 'units';
 
@@ -18,6 +19,8 @@ type IngredientRow = {
   unit: Unit;
   is_critical: boolean;
   notes: string | null;
+  is_cure: boolean;
+  cure_type: CureType | null;
 };
 
 type RecipeIngredient = {
@@ -29,6 +32,8 @@ type RecipeIngredient = {
   notes: string | null;
   display_order: number;
   material?: Material;
+  is_cure?: boolean;
+  cure_type?: CureType | null;
 };
 
 type Recipe = {
@@ -106,6 +111,8 @@ export default function EditRecipePage() {
           unit: ri.unit,
           is_critical: Boolean(ri.is_critical),
           notes: ri.notes ?? null,
+          is_cure: Boolean(ri.is_cure),
+          cure_type: ri.cure_type ?? parseCureNote(ri.notes ?? null),
         }));
       setRows(mapped);
       setLoading(false);
@@ -119,9 +126,7 @@ export default function EditRecipePage() {
   const canSave = useMemo(() => {
     // need name + at least one ingredient with qty > 0
     if (!name.trim()) return false;
-    const validCount = rows.filter(
-      (r) => r.material_id && Number(r.quantity) > 0 && r.unit
-    ).length;
+    const validCount = rows.filter((r) => r.material_id && (r.is_cure || Number(r.quantity) > 0) && r.unit).length;
     return validCount > 0;
   }, [name, rows]);
 
@@ -138,6 +143,8 @@ export default function EditRecipePage() {
         unit: defaultUnit,
         is_critical: false,
         notes: null,
+        is_cure: false,
+        cure_type: null,
       },
     ]);
   };
@@ -147,11 +154,31 @@ export default function EditRecipePage() {
     key: K,
     value: IngredientRow[K]
   ) => {
-    setRows((prev) => {
-      const next = [...prev];
-      next[idx] = { ...next[idx], [key]: value };
-      return next;
-    });
+    setRows((prev) =>
+      prev.map((row, rowIdx) => {
+        if (rowIdx !== idx) {
+          if (key === 'is_cure' && value) {
+            return { ...row, is_cure: false, cure_type: null };
+          }
+          return row;
+        }
+
+        if (key === 'is_cure') {
+          const checked = Boolean(value);
+          return {
+            ...row,
+            is_cure: checked,
+            cure_type: checked ? row.cure_type ?? 'denkurit' : null,
+          };
+        }
+
+        if (key === 'cure_type') {
+          return { ...row, cure_type: value as CureType };
+        }
+
+        return { ...row, [key]: value };
+      })
+    );
   };
 
   const removeRow = (idx: number) => {
@@ -180,8 +207,10 @@ export default function EditRecipePage() {
             unit: r.unit,
             is_critical: Boolean(r.is_critical),
             notes: r.notes && r.notes.trim() ? r.notes.trim() : null,
+            is_cure: r.is_cure,
+            cure_type: r.cure_type,
           }))
-          .filter((i) => i.material_id && i.quantity > 0),
+          .filter((ing) => ing.material_id && (ing.is_cure || ing.quantity > 0)),
       };
 
       const res = await fetch(`/api/recipes/${recipeId}`, {
@@ -311,7 +340,8 @@ export default function EditRecipePage() {
                   <th className="p-2">Material</th>
                   <th className="p-2 w-28">Qty</th>
                   <th className="p-2 w-24">Unit</th>
-                  <th className="p-2 w-24">Critical</th>
+                  <th className="p-2 w-20">Critical</th>
+                  <th className="p-2 w-32">Cure</th>
                   <th className="p-2">Notes</th>
                   <th className="p-2 w-16"></th>
                 </tr>
@@ -323,7 +353,14 @@ export default function EditRecipePage() {
                       <select
                         className="w-full rounded border px-2 py-1.5"
                         value={r.material_id}
-                        onChange={(e) => updateRow(idx, 'material_id', e.currentTarget.value)}
+                        onChange={(e) => {
+                          const id = e.currentTarget.value;
+                          const mat = materials.find((m) => m.id === id);
+                          updateRow(idx, 'material_id', id);
+                          if (mat) {
+                            updateRow(idx, 'unit', mat.unit as Unit);
+                          }
+                        }}
                         required
                       >
                         <option value="">Select material…</option>
@@ -342,7 +379,7 @@ export default function EditRecipePage() {
                         className="w-full rounded border px-2 py-1.5"
                         value={r.quantity}
                         onChange={(e) => updateRow(idx, 'quantity', Number(e.currentTarget.value || 0))}
-                        required
+                        required={!r.is_cure}
                       />
                     </td>
                     <td className="p-2">
@@ -364,6 +401,31 @@ export default function EditRecipePage() {
                         checked={r.is_critical}
                         onChange={(e) => updateRow(idx, 'is_critical', e.currentTarget.checked)}
                       />
+                    </td>
+                    <td className="p-2">
+                      <div className="flex flex-col gap-2 text-sm">
+                        <label className="inline-flex items-center gap-2 text-purple-700">
+                          <input
+                            type="checkbox"
+                            checked={r.is_cure}
+                            onChange={(e) => updateRow(idx, 'is_cure', e.currentTarget.checked)}
+                          />
+                          Cure
+                        </label>
+                        {r.is_cure && (
+                          <select
+                            value={r.cure_type ?? 'denkurit'}
+                            onChange={(e) => updateRow(idx, 'cure_type', e.currentTarget.value as CureType)}
+                            className="rounded border border-purple-200 px-2 py-1.5 text-sm"
+                          >
+                            {CURE_OPTIONS.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.label} ({option.nitritePercent}%)
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
                     </td>
                     <td className="p-2">
                       <input
@@ -411,3 +473,10 @@ export default function EditRecipePage() {
     </div>
   );
 }
+
+
+
+
+
+
+

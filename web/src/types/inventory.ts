@@ -1,3 +1,5 @@
+import type { CureType } from '@/lib/cure';
+
 // ============================================
 // CORE TYPES
 // ============================================
@@ -102,6 +104,8 @@ export interface RecipeIngredient {
   is_critical: boolean;
   notes: string | null;
   created_at: string;
+  is_cure?: boolean;
+  cure_type?: CureType | null;
   
   // Joined
   material?: Material;
@@ -151,6 +155,8 @@ export interface CreateRecipeRequest {
     unit: string;
     is_critical: boolean;
     notes: string | null;
+    is_cure?: boolean;
+    cure_type?: CureType | null;
   }>;
 }
 

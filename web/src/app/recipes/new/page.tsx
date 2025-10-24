@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Layout from '@/components/Layout';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import type { Material, CreateRecipeRequest } from '@/types/inventory';
+import { CURE_OPTIONS, type CureType } from '@/lib/cure';
 
 export default function CreateRecipePage() {
   const [materials, setMaterials] = useState<Material[]>([]);
@@ -15,9 +16,17 @@ export default function CreateRecipePage() {
     target_yield_weight: null,
     description: '',
     instructions: '',
-      ingredients: [
-    { material_id: '', quantity: 0, unit: 'g', is_critical: false, notes: null },
-  ],
+    ingredients: [
+      {
+        material_id: '',
+        quantity: 0,
+        unit: 'g',
+        is_critical: false,
+        notes: null,
+        is_cure: false,
+        cure_type: null,
+      },
+    ],
   });
   const [saving, setSaving] = useState(false);
 
@@ -34,7 +43,9 @@ const [newMat, setNewMat] = useState({
   unit: "g",         // matches your DB enum
 });
 
-const hasValid = formData.ingredients.some(ing => ing.material_id && Number(ing.quantity) > 0);
+const hasValid = formData.ingredients.some(
+  (ing) => ing.material_id && (ing.is_cure || Number(ing.quantity) > 0)
+);
 
 
 useEffect(() => {
@@ -84,7 +95,15 @@ const quickCreateMaterial = async () => {
   setFormData(prev => {
     const next = { ...prev };
     if (next.ingredients.length === 0) {
-      next.ingredients = [{ material_id: "", quantity: 0, unit: "g", is_critical: false, notes: null }];
+      next.ingredients = [{
+        material_id: "",
+        quantity: 0,
+        unit: "g",
+        is_critical: false,
+        notes: null,
+        is_cure: false,
+        cure_type: null,
+      }];
     }
     const firstEmpty = next.ingredients.findIndex(r => !r.material_id);
     const idx = firstEmpty === -1 ? 0 : firstEmpty;
@@ -102,30 +121,62 @@ const quickCreateMaterial = async () => {
 
 
   const addIngredient = () => {
-    setFormData({
-      ...formData,
+    setFormData((prev) => ({
+      ...prev,
       ingredients: [
-        ...formData.ingredients,
+        ...prev.ingredients,
         {
           material_id: '',
           quantity: 0,
           unit: 'g',
           is_critical: false,
           notes: null,
+          is_cure: false,
+          cure_type: null,
         },
       ],
+    }));
+  };
+
+  const updateIngredient = <K extends keyof CreateRecipeRequest['ingredients'][number]>(
+    index: number,
+    field: K,
+    value: CreateRecipeRequest['ingredients'][number][K]
+  ) => {
+    setFormData((prev) => {
+      const updated = prev.ingredients.map((row, idx) => {
+        if (idx !== index) {
+          if (field === 'is_cure' && value) {
+            return { ...row, is_cure: false, cure_type: null };
+          }
+          return row;
+        }
+
+        if (field === 'is_cure') {
+          const checked = Boolean(value);
+          return {
+            ...row,
+            is_cure: checked,
+            cure_type: checked ? (row.cure_type ?? 'denkurit') : null,
+          };
+        }
+
+        if (field === 'cure_type') {
+          return { ...row, cure_type: value as CureType };
+        }
+
+        return { ...row, [field]: value };
+      });
+
+      return { ...prev, ingredients: updated };
     });
   };
 
-  const updateIngredient = (index: number, field: string, value: string | number | boolean) => {
-    const updated = [...formData.ingredients];
-    updated[index] = { ...updated[index], [field]: value };
-    setFormData({ ...formData, ingredients: updated });
-  };
-
   const removeIngredient = (index: number) => {
-    const updated = formData.ingredients.filter((_, i) => i !== index);
-    setFormData({ ...formData, ingredients: updated });
+    setFormData((prev) => ({
+      ...prev,
+      ingredients: prev.ingredients.filter((_, i) => i !== index),
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -133,7 +184,7 @@ const quickCreateMaterial = async () => {
   setSaving(true);
 
   const validIngredients = formData.ingredients
-    .filter(ing => ing.material_id && Number(ing.quantity) > 0 && ing.unit);
+    .filter((ing) => ing.material_id && ing.unit && (ing.is_cure || Number(ing.quantity) > 0));
 
   if (validIngredients.length === 0) {
     alert('Please add at least one ingredient with a material and a quantity > 0.');
@@ -372,67 +423,50 @@ const quickCreateMaterial = async () => {
             ) : (
               <div className="space-y-3">
                 {formData.ingredients.map((ingredient, index) => (
-                  <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded">
-                    <div className="flex-1">
-<select
-  required
-  value={ingredient.material_id}
-  onChange={(e) => {
-    const id = e.currentTarget.value;
-    const mat = materials.find(m => m.id === id);
-
-    // update this row only
-    setFormData(prev => {
-      const next = { ...prev };
-      const rows = next.ingredients.slice();
-      const row = { ...rows[index] };
-
-      row.material_id = id;
-      if (mat) row.unit = mat.unit; // auto-fill unit from material
-
-      rows[index] = row;
-      next.ingredients = rows;
-      return next;
-    });
-  }}
-  className="w-full border border-gray-300 rounded px-3 py-2"
->
-  <option value="">Select material...</option>
-  {materials.map((mat) => (
-    <option key={mat.id} value={mat.id}>
-      {mat.name} ({mat.material_code})
-    </option>
-  ))}
-</select>
-
-
+                  <div key={index} className="flex flex-wrap items-center gap-3 rounded bg-gray-50 p-3">
+                    <div className="flex-1 min-w-[200px]">
+                      <label className="block text-xs font-semibold uppercase text-gray-500">Material</label>
+                      <select
+                        required
+                        value={ingredient.material_id}
+                        onChange={(e) => {
+                          const id = e.currentTarget.value;
+                          const mat = materials.find((m) => m.id === id);
+                          updateIngredient(index, 'material_id', id);
+                          if (mat) {
+                            updateIngredient(index, 'unit', mat.unit as CreateRecipeRequest['ingredients'][number]['unit']);
+                          }
+                        }}
+                        className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+                      >
+                        <option value="">Select material...</option>
+                        {materials.map((mat) => (
+                          <option key={mat.id} value={mat.id}>
+                            {mat.name} ({mat.material_code})
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
-                    <div className="w-32">
+                    <div className="w-28">
+                      <label className="block text-xs font-semibold uppercase text-gray-500">Quantity</label>
                       <input
-  type="number"
-  min="0"
-  step="0.01"
-  value={ingredient.quantity}
-  onChange={(e) => {
-    const v = Number.isNaN(e.currentTarget.valueAsNumber) ? 0 : e.currentTarget.valueAsNumber;
-    setFormData(prev => {
-      const next = { ...prev };
-      const rows = next.ingredients.slice();
-      rows[index] = { ...rows[index], quantity: v };
-      next.ingredients = rows;
-      return next;
-    });
-  }}
-  className="w-full border border-gray-300 rounded px-3 py-2"
-/>
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={ingredient.quantity}
+                        onChange={(e) => updateIngredient(index, 'quantity', Number(e.currentTarget.value || 0))}
+                        className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+                        required={!ingredient.is_cure}
+                      />
                     </div>
 
-                    <div className="w-20">
+                    <div className="w-24">
+                      <label className="block text-xs font-semibold uppercase text-gray-500">Unit</label>
                       <select
                         value={ingredient.unit}
-                        onChange={(e) => updateIngredient(index, 'unit', e.target.value)}
-                        className="w-full border border-gray-300 rounded px-3 py-2"
+                        onChange={(e) => updateIngredient(index, 'unit', e.currentTarget.value as CreateRecipeRequest['ingredients'][number]['unit'])}
+                        className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
                       >
                         <option value="g">g</option>
                         <option value="kg">kg</option>
@@ -442,29 +476,54 @@ const quickCreateMaterial = async () => {
                       </select>
                     </div>
 
-                    <label className="flex items-center">
+                    <div className="flex flex-col gap-2 px-2">
+                      <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={ingredient.is_critical}
+                          onChange={(e) => updateIngredient(index, 'is_critical', e.currentTarget.checked)}
+                        />
+                        Critical
+                      </label>
+                      <div className="flex flex-col gap-2">
+                        <label className="inline-flex items-center gap-2 text-sm text-purple-700">
+                          <input
+                            type="checkbox"
+                            checked={ingredient.is_cure ?? false}
+                            onChange={(e) => updateIngredient(index, 'is_cure', e.currentTarget.checked)}
+                          />
+                          Cure
+                        </label>
+                        {ingredient.is_cure && (
+                          <select
+                            value={ingredient.cure_type ?? 'denkurit'}
+                            onChange={(e) => updateIngredient(index, 'cure_type', e.currentTarget.value as CureType)}
+                            className="w-40 rounded border border-purple-200 px-2 py-1.5 text-sm"
+                          >
+                            {CURE_OPTIONS.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.label} ({option.nitritePercent}%)
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex-1 min-w-[160px]">
+                      <label className="block text-xs font-semibold uppercase text-gray-500">Notes</label>
                       <input
-  type="checkbox"
-  checked={ingredient.is_critical}
-  onChange={(e) => {
-    const v = e.currentTarget.checked;
-    setFormData(prev => {
-      const next = { ...prev };
-      const rows = next.ingredients.slice();
-      rows[index] = { ...rows[index], is_critical: v };
-      next.ingredients = rows;
-      return next;
-    });
-  }}
-  className="mr-2"
-/>
-                      <span className="text-sm">Critical</span>
-                    </label>
+                        value={ingredient.notes ?? ''}
+                        onChange={(e) => updateIngredient(index, 'notes', e.currentTarget.value || null)}
+                        placeholder="Optional..."
+                        className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+                      />
+                    </div>
 
                     <button
                       type="button"
                       onClick={() => removeIngredient(index)}
-                      className="text-red-600 hover:text-red-800"
+                      className="ml-auto text-sm font-medium text-red-600 hover:text-red-800"
                     >
                       Remove
                     </button>
@@ -496,3 +555,4 @@ const quickCreateMaterial = async () => {
     </Layout>
   );
 }
+

@@ -1,4 +1,6 @@
 import { createClient } from '@/lib/db';
+import { parseCureNote, encodeCureNote } from '@/lib/cure';
+import type { CureType } from '@/lib/cure';
 import { NextRequest, NextResponse } from 'next/server';
 
 type Unit = 'g' | 'kg' | 'ml' | 'L' | 'units';
@@ -9,6 +11,8 @@ type PutIngredient = {
   unit: Unit;
   is_critical: boolean;
   notes: string | null;
+  is_cure?: boolean;
+  cure_type?: CureType | null;
 };
 
 type PutBody = {
@@ -67,7 +71,22 @@ export async function GET(
 
     if (error) throw error;
 
-    return NextResponse.json({ recipe });
+    const normalized =
+      recipe?.recipe_ingredients?.map((row) => ({
+        ...row,
+        cure_type: parseCureNote(row.notes ?? null),
+      })) ?? null;
+
+    return NextResponse.json(
+      recipe
+        ? {
+            recipe: {
+              ...recipe,
+              recipe_ingredients: normalized,
+            },
+          }
+        : { recipe: null }
+    );
   } catch (err) {
     console.error('Error fetching recipe:', err);
     return NextResponse.json({ error: 'Failed to fetch recipe' }, { status: 500 });
@@ -100,19 +119,37 @@ export async function PUT(
 
     // 2) replace ingredients if provided
     if (Array.isArray(body.ingredients)) {
-      const clean = body.ingredients
-        .map((ing, idx) => ({
-          recipe_id: recipeId,
-          material_id: ing.material_id,
-          quantity: Number(ing.quantity),
-          unit: ing.unit,
-          tolerance_percentage: 5.0,
-          is_critical: Boolean(ing.is_critical),
-          is_cure: false,
-          display_order: idx,
-          notes: ing.notes ?? null,
-        }))
-        .filter((row) => row.material_id && row.quantity > 0 && row.unit);
+      const mapped = body.ingredients.map((ing, idx) => ({
+        recipe_id: recipeId,
+        material_id: ing.material_id,
+        quantity: Number(ing.quantity),
+        unit: ing.unit,
+        tolerance_percentage: 5.0,
+        is_critical: Boolean(ing.is_critical),
+        is_cure: Boolean(ing.is_cure),
+        cure_type: ing.cure_type ?? null,
+        display_order: idx,
+        notes: ing.is_cure ? encodeCureNote(ing.cure_type ?? null) : ing.notes ?? null,
+      }));
+
+      const cureCount = mapped.filter((row) => row.is_cure).length;
+      if (cureCount > 1) {
+        return NextResponse.json(
+          { error: 'Only one cure ingredient can be defined per recipe.' },
+          { status: 400 }
+        );
+      }
+
+      if (mapped.some((row) => row.is_cure && !row.cure_type)) {
+        return NextResponse.json(
+          { error: 'Cure ingredients must specify a cure_type.' },
+          { status: 400 }
+        );
+      }
+
+      const clean = mapped.filter(
+        (row) => row.material_id && row.unit && (row.is_cure || row.quantity > 0)
+      );
 
       if (clean.length === 0) {
         return NextResponse.json(
@@ -127,7 +164,9 @@ export async function PUT(
         .eq('recipe_id', recipeId);
       if (delErr) return NextResponse.json({ error: delErr.message }, { status: 400 });
 
-      const { error: insErr } = await supabase.from('recipe_ingredients').insert(clean);
+      const rows = clean.map(({ cure_type: _cureType, ...rest }) => ({ ...rest }));
+
+      const { error: insErr } = await supabase.from('recipe_ingredients').insert(rows);
       if (insErr) return NextResponse.json({ error: insErr.message }, { status: 400 });
     }
 
@@ -137,3 +176,4 @@ export async function PUT(
     return NextResponse.json({ error: 'Failed to update recipe' }, { status: 500 });
   }
 }
+

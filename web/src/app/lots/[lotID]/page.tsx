@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { createClient } from '@/lib/db';
+import { createServerClient } from '@/lib/db';
 import { formatDate, formatDateTime, formatQuantity } from '@/lib/utils';
 
 type Unit = 'g' | 'kg' | 'ml' | 'L' | 'units';
@@ -41,7 +41,7 @@ export default async function LotDetailPage({
   params: Promise<{ lotID: string }>;
 }) {
   const { lotID } = await params;
-  const supabase = createClient();
+  const supabase = createServerClient();
 
   const { data: lotRaw, error: lotError } = await supabase
     .from('lots')

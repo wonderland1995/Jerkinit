@@ -102,8 +102,13 @@ export async function POST(request: Request) {
           .insert({ date: today, counter: 1 });
       }
       
-      const dateStr = today.replace(/-/g, '');
-      finalBatchId = `B${dateStr}-${String(nextCounter).padStart(3, '0')}`;
+      const dateDigits = today.replace(/-/g, '');
+      const parsedDateNumber = Number.parseInt(dateDigits, 10);
+      const base36Code = Number.isFinite(parsedDateNumber)
+        ? parsedDateNumber.toString(36).toUpperCase()
+        : dateDigits.toUpperCase();
+      const dailySequence = String(nextCounter).padStart(3, '0');
+      finalBatchId = `JI-${base36Code}-${dailySequence}`;
     }
 
     // 2. Get recipe with ingredients if recipe_id provided

@@ -1059,21 +1059,22 @@ export default function BatchDetailPage() {
     });
   }, [cureSummary, actuals]);
 
-  async function releaseBatch() {
+  async function completeBatch() {
     if (!batch) return;
     if (!allCriticalOk) {
       const proceed = confirm(
-        'Some critical ingredients are missing or out of tolerance. Release anyway?'
+        'Some critical ingredients are missing or out of tolerance. Complete anyway?'
       );
       if (!proceed) return;
     }
     const res = await fetch(`/api/batches/${batchId}/complete`, { method: 'POST' });
     const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; status?: BatchStatus };
     if (!res.ok || j.ok !== true) {
-      alert(j.error ?? 'Failed to release batch');
+      alert(j.error ?? 'Failed to complete batch');
       return;
     }
-    setBatch((b) => (b ? { ...b, status: j.status ?? 'released' } : b));
+    const nextStatus = j.status === 'released' ? 'completed' : j.status ?? 'completed';
+    setBatch((b) => (b ? { ...b, status: nextStatus } : b));
   }
 
   const stageOrder: QaStage[] = [
@@ -1567,7 +1568,11 @@ export default function BatchDetailPage() {
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-xl font-semibold">Recipe Targets & Actuals</h2>
             {isLocked && (
-              <span className="text-sm text-gray-500">This batch is released — editing disabled.</span>
+              <span className="text-sm text-gray-500">
+                {batch.status === 'completed'
+                  ? 'This batch is completed — editing disabled.'
+                  : 'This batch is released — editing disabled.'}
+              </span>
             )}
           </div>
 
@@ -1768,7 +1773,7 @@ export default function BatchDetailPage() {
 
           {!isLocked ? (
             <button
-              onClick={releaseBatch}
+              onClick={completeBatch}
               className={`px-6 py-2 rounded-lg text-white ${
                 allCriticalOk
                   ? 'bg-emerald-600 hover:bg-emerald-700'
@@ -1776,11 +1781,11 @@ export default function BatchDetailPage() {
               }`}
               title={
                 allCriticalOk
-                  ? 'Release batch'
+                  ? 'Complete batch'
                   : 'Some critical ingredients are missing or out of tolerance'
               }
             >
-              Release Batch
+              Complete Batch
             </button>
           ) : null}
 

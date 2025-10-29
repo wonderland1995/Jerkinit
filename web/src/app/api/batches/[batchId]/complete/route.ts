@@ -24,12 +24,13 @@ export async function POST(
     );
   }
 
-  // If already released, just return ok
-  if (existing.status === 'released') {
-    return NextResponse.json({ ok: true, status: 'released' as BatchStatus });
+  // If already recorded as completed, just return success
+  if (existing.status === 'completed') {
+    return NextResponse.json({ ok: true, status: 'completed' as BatchStatus });
   }
 
   const now = new Date().toISOString();
+  const targetStatus: BatchStatus = 'completed';
 
   const attemptUpdate = async (payload: Record<string, unknown>) => {
     return supabase
@@ -44,7 +45,7 @@ export async function POST(
   // fall back to only setting the status so we don't break installations
   // without release-specific columns.
   let { data: updated, error: updErr } = await attemptUpdate({
-    status: 'released',
+    status: targetStatus,
     release_status: 'approved',
     completed_at: now,
   });
@@ -53,7 +54,7 @@ export async function POST(
     const columnMissing = /\brelease_status\b/.test(updErr.message ?? '');
     if (columnMissing) {
       const fallback = await attemptUpdate({
-        status: 'released',
+        status: targetStatus,
         completed_at: now,
       });
       updated = fallback.data;
@@ -63,10 +64,13 @@ export async function POST(
 
   if (updErr || !updated) {
     return NextResponse.json(
-      { error: updErr?.message ?? 'Failed to release batch' },
+      { error: updErr?.message ?? 'Failed to complete batch' },
       { status: 400 }
     );
   }
 
-  return NextResponse.json({ ok: true, status: updated.status as BatchStatus });
+  const responseStatus =
+    (updated.status as BatchStatus | null) === 'released' ? targetStatus : (updated.status as BatchStatus);
+
+  return NextResponse.json({ ok: true, status: responseStatus });
 }

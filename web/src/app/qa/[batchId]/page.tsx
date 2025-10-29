@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useToast } from '@/components/ToastProvider';
 
 // ---------- Types that match your DB ----------
 type Stage =
@@ -56,6 +57,7 @@ export default function BatchQAPage() {
   const params = useParams();
   const router = useRouter();
   const batchId = params.batchId as string;
+  const toast = useToast();
 
   const [batch, setBatch] = useState<BatchDetails | null>(null);
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
@@ -307,22 +309,28 @@ export default function BatchQAPage() {
                 checkpoint={cp}
                 check={qaChecks[cp.id]}
                 onChange={async (status, data) => {
-                  const res = await fetch('/api/qa/checkpoint', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      batch_id: batchId,
-                      checkpoint_id: cp.id,
-                      status,
-                      ...data,
-                      checked_by: 'Operator',
-                    }),
-                  });
-                  if (!res.ok) {
-                    const j = (await res.json()) as { error?: string };
-                    alert(j.error ?? 'Failed to update checkpoint');
-                  } else {
+                  try {
+                    const res = await fetch('/api/qa/checkpoint', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        batch_id: batchId,
+                        checkpoint_id: cp.id,
+                        status,
+                        ...data,
+                        checked_by: 'Operator',
+                      }),
+                    });
+                    if (!res.ok) {
+                      const j = (await res.json().catch(() => ({}))) as { error?: string };
+                      toast.error(j.error ?? 'Failed to update checkpoint');
+                      return;
+                    }
+                    toast.success('Checkpoint updated.');
                     await fetchData();
+                  } catch (error) {
+                    console.error('Failed to update checkpoint', error);
+                    toast.error('Failed to update checkpoint');
                   }
                 }}
               />
@@ -428,6 +436,7 @@ function getFieldFlags(cp: Checkpoint): FieldFlags {
 }
 
 function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
+  const toast = useToast();
   const fields = getFieldFlags(checkpoint);
   const [expanded, setExpanded] = useState(() => Boolean(fields.temperature || fields.humidity || fields.ph || fields.aw));
 
@@ -464,7 +473,7 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
   const save = () => {
     const err = validateIfPassing(status);
     if (err) {
-      alert(err);
+      toast.error(err);
       setExpanded(true);
       return;
     }

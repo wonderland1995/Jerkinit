@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState, ChangeEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useToast } from '@/components/ToastProvider';
 import { CURE_OPTIONS, type CureType, parseCureNote } from '@/lib/cure';
 
 type Unit = 'g' | 'kg' | 'ml' | 'L' | 'units';
@@ -54,6 +55,7 @@ type PutResponse = { ok: true } | { error: string };
 export default function EditRecipePage() {
   const { recipeId } = useParams<{ recipeId: string }>();
   const router = useRouter();
+  const toast = useToast();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -188,7 +190,7 @@ export default function EditRecipePage() {
   const save = async () => {
     if (!recipe) return;
     if (!canSave) {
-      alert('Please add at least one valid ingredient.');
+      toast.error('Please add at least one valid ingredient.');
       return;
     }
     setSaving(true);
@@ -219,16 +221,18 @@ export default function EditRecipePage() {
         body: JSON.stringify(payload),
       });
 
-      const data = (await res.json()) as PutResponse;
+      const data = (await res.json().catch(() => ({} as PutResponse))) as PutResponse;
       if (!res.ok || 'error' in data) {
-        alert(('error' in data && data.error) || 'Failed to update recipe');
+        toast.error(('error' in data && data.error) || 'Failed to update recipe');
         setSaving(false);
         return;
         }
 
+      toast.success('Recipe updated successfully.');
       router.push(`/recipes/${recipeId}`);
-    } catch {
-      alert('Failed to update recipe');
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to update recipe');
     } finally {
       setSaving(false);
     }

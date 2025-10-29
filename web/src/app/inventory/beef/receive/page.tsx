@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Breadcrumbs from '@/components/Breadcrumbs';
+import { useToast } from '@/components/ToastProvider';
 import type { Material, Supplier } from '@/types/inventory';
 
 type Unit = 'g' | 'kg';
@@ -28,6 +29,7 @@ type BeefReceiveForm = {
 
 export default function BeefReceivePage() {
   const router = useRouter();
+  const toast = useToast();
   const [materials, setMaterials] = useState<Material[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [saving, setSaving] = useState(false);
@@ -103,7 +105,7 @@ export default function BeefReceivePage() {
 
       if (!res.ok && res.status !== 207) {
         const errJson = (await res.json().catch(() => ({ error: 'Failed' }))) as { error?: string };
-        alert(errJson.error ?? 'Failed to receive beef');
+        toast.error(errJson.error ?? 'Failed to receive beef');
         setSaving(false);
         return;
       }
@@ -113,11 +115,13 @@ export default function BeefReceivePage() {
         console.warn(okJson.warning);
       }
 
-      alert(`Beef lot received: ${okJson.internal_lot_code ?? ''}`);
+      toast.success('Beef lot received', {
+        description: okJson.internal_lot_code ? `Internal code: ${okJson.internal_lot_code}` : undefined,
+      });
       router.push('/inventory'); // tweak destination as you like
     } catch (err) {
       console.error(err);
-      alert('Failed to receive beef');
+      toast.error('Failed to receive beef');
     } finally {
       setSaving(false);
     }

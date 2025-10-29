@@ -1,12 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Layout from '@/components/Layout';
 import Breadcrumbs from '@/components/Breadcrumbs';
+import { useToast } from '@/components/ToastProvider';
 import type { Material, CreateRecipeRequest } from '@/types/inventory';
 import { CURE_OPTIONS, type CureType } from '@/lib/cure';
 
 export default function CreateRecipePage() {
+  const router = useRouter();
+  const toast = useToast();
   const [materials, setMaterials] = useState<Material[]>([]);
   const [formData, setFormData] = useState<CreateRecipeRequest>({
     name: '',
@@ -65,7 +69,7 @@ const fetchMaterials = async () => {
 const quickCreateMaterial = async () => {
   // light validation
   if (!newMat.name.trim() || !newMat.material_code.trim()) {
-    alert("Please enter a name and a code");
+    toast.error("Please enter a name and a code");
     return;
   }
 
@@ -82,7 +86,7 @@ const quickCreateMaterial = async () => {
 
   const json: { material?: Material; error?: string } = await res.json();
   if (!res.ok || !json.material) {
-    alert(json.error ?? "Failed to create material");
+    toast.error(json.error ?? "Failed to create material");
     return;
   }
 
@@ -117,6 +121,7 @@ const quickCreateMaterial = async () => {
   // 3) Reset and hide the quick add panel
   setNewMat({ name: "", material_code: "", category: "spice", unit: "g" });
   setShowQuickAdd(false);
+  toast.success('Material created.');
 };
 
 
@@ -187,7 +192,7 @@ const quickCreateMaterial = async () => {
     .filter((ing) => ing.material_id && ing.unit && (ing.is_cure || Number(ing.quantity) > 0));
 
   if (validIngredients.length === 0) {
-    alert('Please add at least one ingredient with a material and a quantity > 0.');
+    toast.error('Please add at least one ingredient with a material and a quantity > 0.');
     setSaving(false);
     return;
   }
@@ -202,12 +207,14 @@ const quickCreateMaterial = async () => {
 
     const data: { id?: string; error?: string } = await res.json().catch(() => ({} as never));
     if (!res.ok || !data.id) {
-      alert(data.error ?? 'Failed to create recipe');
+      toast.error(data.error ?? 'Failed to create recipe');
       return;
     }
-    window.location.href = `/recipes/${data.id}`;
+    toast.success('Recipe created successfully.');
+    router.push(`/recipes/${data.id}`);
   } catch (_err) {
-    alert('Failed to create recipe');
+    console.error(_err);
+    toast.error('Failed to create recipe');
   } finally {
     setSaving(false);
   }

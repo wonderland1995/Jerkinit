@@ -7,6 +7,7 @@ import { AiFillEdit } from 'react-icons/ai';
 import { FaDeleteLeft } from 'react-icons/fa6';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import DeleteBatchModal from '@/components/DeleteBatchModal';
+import { useToast } from '@/components/ToastProvider';
 import { formatQuantity } from '@/lib/utils';
 import {
   CURE_BY_ID,
@@ -215,6 +216,7 @@ export default function BatchDetailPage() {
   const params = useParams<{ batchId: string }>();
   const router = useRouter();
   const batchId = params.batchId;
+  const toast = useToast();
 
   const [batch, setBatch] = useState<BatchDetails | null>(null);
   const [scale, setScale] = useState<number>(1);
@@ -458,7 +460,7 @@ export default function BatchDetailPage() {
     });
     const data = await res.json();
     if (!res.ok) {
-      alert(data.error ?? 'Failed to add beef');
+      toast.error(data.error ?? 'Failed to add beef');
       return;
     }
 
@@ -469,6 +471,7 @@ export default function BatchDetailPage() {
     setBeefUnit('g');
     setBeefQuery('');
     await searchBeefLots('');
+    toast.success('Beef allocation recorded.');
   };
 
   const startEditingBeefAllocation = (allocation: BeefAllocationReport) => {
@@ -493,7 +496,7 @@ export default function BatchDetailPage() {
     if (!editingBeefAllocationId) return;
     const nextQuantity = Number(editingBeefQuantity);
     if (!Number.isFinite(nextQuantity) || nextQuantity <= 0) {
-      alert('Enter a positive quantity to update this allocation.');
+      toast.error('Enter a positive quantity to update this allocation.');
       return;
     }
 
@@ -510,11 +513,12 @@ export default function BatchDetailPage() {
       });
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
       if (!res.ok || data.ok !== true) {
-        alert(data.error ?? 'Failed to update beef allocation.');
+        toast.error(data.error ?? 'Failed to update beef allocation.');
         return;
       }
       await Promise.all([loadBeefAllocations(), fetchBatch()]);
       cancelEditingBeefAllocation();
+      toast.success('Beef allocation updated.');
     } finally {
       setBeefAllocationBusyId(null);
     }
@@ -531,13 +535,14 @@ export default function BatchDetailPage() {
       );
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
       if (!res.ok || data.ok !== true) {
-        alert(data.error ?? 'Failed to remove beef allocation.');
+        toast.error(data.error ?? 'Failed to remove beef allocation.');
         return;
       }
       if (editingBeefAllocationId === allocation.id) {
         cancelEditingBeefAllocation();
       }
       await Promise.all([loadBeefAllocations(), fetchBatch()]);
+      toast.success('Beef allocation removed.');
     } finally {
       setBeefAllocationBusyId(null);
     }
@@ -858,10 +863,10 @@ export default function BatchDetailPage() {
       doc.save(filename);
     } catch (error) {
       console.error('Failed to export batch PDF', error);
-      alert(
+      toast.error(
         error instanceof Error
           ? error.message
-          : 'An unexpected error occurred while exporting the PDF.',
+          : 'An unexpected error occurred while exporting the PDF.'
       );
     } finally {
       setExporting(false);
@@ -997,7 +1002,7 @@ export default function BatchDetailPage() {
       const amt = hasOverride ? Number(opts?.overrideAmount) : Number(rawFromState);
       if (!Number.isFinite(amt) || amt <= 0) {
         if (!opts?.silent) {
-          alert('Please enter a positive number.');
+          toast.error('Please enter a positive number.');
         }
         return;
       }
@@ -1012,7 +1017,7 @@ export default function BatchDetailPage() {
         const j = (await res.json().catch(() => ({}))) as { actual?: ActualRow; error?: string };
         if (!res.ok || !j.actual) {
           if (!opts?.silent) {
-            alert(j.error ?? 'Failed to save actual');
+            toast.error(j.error ?? 'Failed to save actual');
           } else {
             console.error('Failed to save cure actual', j.error);
           }
@@ -1031,8 +1036,8 @@ export default function BatchDetailPage() {
       } finally {
         setSaving((s) => ({ ...s, [material_id]: false }));
       }
-    },
-    [actualInputs, batchId]
+  },
+    [actualInputs, batchId, toast]
   );
 
   const allCriticalOk = useMemo(() => {
@@ -1070,11 +1075,12 @@ export default function BatchDetailPage() {
     const res = await fetch(`/api/batches/${batchId}/complete`, { method: 'POST' });
     const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; status?: BatchStatus };
     if (!res.ok || j.ok !== true) {
-      alert(j.error ?? 'Failed to complete batch');
+      toast.error(j.error ?? 'Failed to complete batch');
       return;
     }
     const nextStatus = j.status === 'released' ? 'completed' : j.status ?? 'completed';
     setBatch((b) => (b ? { ...b, status: nextStatus } : b));
+    toast.success('Batch marked as completed.');
   }
 
   const stageOrder: QaStage[] = [

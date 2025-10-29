@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useToast } from '@/components/ToastProvider';
 
 interface Product {
   id: string;
@@ -20,6 +21,7 @@ interface Recipe {
 
 export default function NewBatchPage() {
   const router = useRouter();
+  const toast = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [selectedProductId, setSelectedProductId] = useState('');
@@ -78,13 +80,15 @@ export default function NewBatchPage() {
 
       if (res.ok) {
         const data = await res.json();
+        toast.success('Batch created successfully.');
         router.push(`/batches/${data.batch.id}`);
       } else {
         const error = await res.json();
-        alert(`Error: ${error.error}`);
+        toast.error(error?.error ? `Error: ${error.error}` : 'Failed to create batch');
       }
     } catch (error) {
-      alert('Failed to create batch');
+      console.error(error);
+      toast.error('Failed to create batch');
     } finally {
       setCreating(false);
     }

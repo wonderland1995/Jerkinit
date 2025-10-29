@@ -1,11 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Layout from '@/components/Layout';
 import Breadcrumbs from '@/components/Breadcrumbs';
+import { useToast } from '@/components/ToastProvider';
 import type { Material, Supplier, ReceiveLotRequest } from '@/types/inventory';
 
 export default function ReceiveLotPage() {
+  const router = useRouter();
+  const toast = useToast();
   const [materials, setMaterials] = useState<Material[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [formData, setFormData] = useState<ReceiveLotRequest>({
@@ -51,14 +55,17 @@ export default function ReceiveLotPage() {
 
       if (res.ok) {
         const data = await res.json();
-        alert(`Lot received successfully! Internal code: ${data.lot.internal_lot_code}`);
-        window.location.href = '/inventory';
+        toast.success('Lot received successfully!', {
+          description: data?.lot?.internal_lot_code ? `Internal code: ${data.lot.internal_lot_code}` : undefined,
+        });
+        router.push('/inventory');
       } else {
         const error = await res.json();
-        alert(`Error: ${error.error}`);
+        toast.error(error?.error ? `Error: ${error.error}` : 'Failed to receive lot');
       }
     } catch (error) {
-      alert('Failed to receive lot');
+      console.error(error);
+      toast.error('Failed to receive lot');
     } finally {
       setSaving(false);
     }

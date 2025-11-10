@@ -31,7 +31,22 @@ export async function GET(_req: NextRequest) {
   const { data, error } = await supabase
     .from('recipes')
     .select(
-      'id, name, recipe_code, base_beef_weight, target_yield_weight, is_active, description, created_at'
+      `
+        id,
+        product_id,
+        name,
+        recipe_code,
+        base_beef_weight,
+        target_yield_weight,
+        is_active,
+        description,
+        created_at,
+        product:products (
+          id,
+          name,
+          code
+        )
+      `
     )
     .order('created_at', { ascending: false });
 

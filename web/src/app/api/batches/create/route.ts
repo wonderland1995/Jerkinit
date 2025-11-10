@@ -133,7 +133,6 @@ export async function POST(request: Request) {
       .from('batches')
       .insert({
         batch_id: finalBatchId,
-        batch_number: finalBatchId,
         product_id,
         recipe_id,
         beef_weight_kg,
@@ -155,13 +154,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to create batch' }, { status: 400 });
     }
 
-    const needsIdAlignment =
-      batch.batch_id !== finalBatchId || (batch.batch_number ?? finalBatchId) !== finalBatchId;
+    const needsIdAlignment = batch.batch_id !== finalBatchId;
 
     if (needsIdAlignment) {
       const { data: correctedBatch, error: correctionError } = await supabase
         .from('batches')
-        .update({ batch_id: finalBatchId, batch_number: finalBatchId })
+        .update({ batch_id: finalBatchId })
         .eq('id', batch.id)
         .select()
         .single();

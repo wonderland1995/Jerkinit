@@ -129,10 +129,11 @@ export async function POST(request: Request) {
     // 3. Create batch
     const productionDateIso = resolveProductionDate(production_date);
 
-    const { data: batch, error: batchError } = await supabase
+    const { data: insertedBatch, error: batchError } = await supabase
       .from('batches')
       .insert({
         batch_id: finalBatchId,
+        batch_number: finalBatchId,
         product_id,
         recipe_id,
         beef_weight_kg,
@@ -147,6 +148,29 @@ export async function POST(request: Request) {
 
     if (batchError) {
       return NextResponse.json({ error: batchError.message }, { status: 400 });
+    }
+
+    let batch = insertedBatch;
+    if (!batch) {
+      return NextResponse.json({ error: 'Failed to create batch' }, { status: 400 });
+    }
+
+    const needsIdAlignment =
+      batch.batch_id !== finalBatchId || (batch.batch_number ?? finalBatchId) !== finalBatchId;
+
+    if (needsIdAlignment) {
+      const { data: correctedBatch, error: correctionError } = await supabase
+        .from('batches')
+        .update({ batch_id: finalBatchId, batch_number: finalBatchId })
+        .eq('id', batch.id)
+        .select()
+        .single();
+
+      if (!correctionError && correctedBatch) {
+        batch = correctedBatch;
+      } else if (correctionError) {
+        console.warn('Unable to sync batch identifiers to base36 format', correctionError);
+      }
     }
 
     // 4. Create batch_ingredients records (for your existing system)

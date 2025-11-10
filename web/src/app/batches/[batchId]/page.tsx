@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -1813,7 +1813,6 @@ export default function BatchDetailPage() {
           if (!res.ok) throw new Error('Failed to delete batch');
           router.push('/batches');
         }}
-        batchId={batch.id}
         batchNumber={batchDisplayId}
       />
     </div>

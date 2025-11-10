@@ -1,7 +1,7 @@
 // src/app/qa/[batchId]/page.tsx
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useToast } from '@/components/ToastProvider';
 
@@ -52,6 +52,15 @@ interface BatchDetails {
   product?: ProductLite;
 }
 
+const STAGES: Array<{ key: Stage; label: string }> = [
+  { key: 'preparation', label: 'Preparation' },
+  { key: 'mixing', label: 'Mixing' },
+  { key: 'marination', label: 'Marination' },
+  { key: 'drying', label: 'Drying' },
+  { key: 'packaging', label: 'Packaging' },
+  { key: 'final', label: 'Final' },
+];
+
 // ---------- Page ----------
 export default function BatchQAPage() {
   const params = useParams();
@@ -65,21 +74,7 @@ export default function BatchQAPage() {
   const [loading, setLoading] = useState(true);
   const [activeStage, setActiveStage] = useState<Stage>('preparation');
 
-  const stages: Array<{ key: Stage; label: string }> = [
-    { key: 'preparation', label: 'Preparation' },
-    { key: 'mixing', label: 'Mixing' },
-    { key: 'marination', label: 'Marination' },
-    { key: 'drying', label: 'Drying' },
-    { key: 'packaging', label: 'Packaging' },
-    { key: 'final', label: 'Final' },
-  ];
-
-  useEffect(() => {
-    void fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batchId]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const [batchRes, checkpointsRes, checksRes] = await Promise.all([
         fetch(`/api/batches/${batchId}`),
@@ -113,7 +108,11 @@ export default function BatchQAPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [batchId]);
+
+  useEffect(() => {
+    void fetchData();
+  }, [fetchData]);
 
   const stageCheckpoints = useMemo(
     () => checkpoints.filter((c) => c.stage === activeStage),
@@ -144,9 +143,9 @@ export default function BatchQAPage() {
 
   const currentStageLabel = useMemo(() => {
     if (qaComplete) return 'QA Complete';
-    const match = stages.find((s) => s.key === overallStage);
+    const match = STAGES.find((s) => s.key === overallStage);
     return match ? match.label : 'QA in progress';
-  }, [qaComplete, stages, overallStage]);
+  }, [qaComplete, overallStage]);
 
   const currentStageBadgeClass = useMemo(() => {
     if (qaComplete) return 'bg-green-100 text-green-700';
@@ -231,7 +230,7 @@ export default function BatchQAPage() {
       <div className="sticky top-[81px] z-10 bg-white/90 backdrop-blur border-b">
         <div className="mx-auto max-w-6xl px-4 sm:px-5">
           <div className="flex gap-2 overflow-x-auto py-2">
-            {stages.map((s) => {
+            {STAGES.map((s) => {
               const list = checkpoints.filter((c) => c.stage === s.key);
               const passed = list.filter((c) => qaChecks[c.id]?.status === 'passed').length;
               const total = list.length;
@@ -262,7 +261,7 @@ export default function BatchQAPage() {
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <div className="text-sm font-medium text-gray-700">
-                {stages.find((s) => s.key === activeStage)?.label} progress
+                {STAGES.find((s) => s.key === activeStage)?.label} progress
               </div>
               <div className="text-sm font-semibold text-gray-900">{stageProgress}%</div>
               {currentCheckpoint && (

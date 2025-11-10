@@ -1,10 +1,7 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next';
 
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  experimental: {
-    typedRoutes: true,     // ✅ ensure this is true
-  },
+const nextConfig: NextConfig = {
+  typedRoutes: true,
 };
 
-module.exports = nextConfig;
+export default nextConfig;

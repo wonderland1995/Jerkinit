@@ -491,7 +491,6 @@ export default function BatchHistoryPage() {
             setSelectedBatch(null);
           }}
           onConfirm={handleDeleteConfirm}
-          batchId={selectedBatch.id}
           batchNumber={selectedBatch.batch_id}
         />
       )}

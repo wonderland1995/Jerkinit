@@ -23,5 +23,18 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ batches: data });
+  const normalized = (data ?? []).map((row) => {
+    const { product, ...rest } = row as typeof row & {
+      product?: { id: string; name: string | null; code: string | null } | null;
+      product_name?: string | null;
+    };
+    return {
+      ...rest,
+      product_name: rest.product_name ?? product?.name ?? null,
+      product_code: product?.code ?? null,
+      product,
+    };
+  });
+
+  return NextResponse.json({ batches: normalized });
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { CORE_TEMP_LIMIT } from '@/config/qa';
 
@@ -238,15 +238,20 @@ export default function BatchQA() {
   const [items, setItems] = useState<CheckpointVm[] | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`/api/batches/${batchId}/qa`);
-    const j = await res.json();
-    setItems(j.checkpoints as CheckpointVm[]);
-    setLoading(false);
-  }
+    try {
+      const res = await fetch(`/api/batches/${batchId}/qa`);
+      const j = await res.json();
+      setItems(j.checkpoints as CheckpointVm[]);
+    } finally {
+      setLoading(false);
+    }
+  }, [batchId]);
 
-  useEffect(() => { void load(); }, [batchId]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   const grouped = useMemo(() => {
     const by: Record<Stage, CheckpointVm[]> = {

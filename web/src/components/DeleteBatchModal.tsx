@@ -7,7 +7,6 @@ interface DeleteBatchModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: () => Promise<void>;
-  batchId: string;
   batchNumber: string;
 }
 
@@ -15,7 +14,6 @@ export default function DeleteBatchModal({
   isOpen, 
   onClose, 
   onConfirm, 
-  batchId,
   batchNumber 
 }: DeleteBatchModalProps) {
   const [confirmText, setConfirmText] = useState('');
@@ -35,7 +33,8 @@ export default function DeleteBatchModal({
     try {
       await onConfirm();
       onClose();
-    } catch (_err) {
+    } catch (error) {
+      console.error('Delete batch failed', error);
       setError('Failed to delete batch. Please try again.');
     } finally {
       setIsDeleting(false);

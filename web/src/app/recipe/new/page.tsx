@@ -36,23 +36,30 @@ export default function CreateBatchPage() {
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
-    void fetchRecipes();
-  }, []);
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await fetch('/api/recipes', { cache: 'no-store' });
+        if (!res.ok) throw new Error('Failed to load recipes');
+        const data = (await res.json()) as { recipes?: RecipeRecord[] };
+        if (!cancelled) {
+          setRecipes(data.recipes ?? []);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to fetch recipes', error);
+          toast.error('Unable to load recipes right now.');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
 
-  const fetchRecipes = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/recipes', { cache: 'no-store' });
-      if (!res.ok) throw new Error('Failed to load recipes');
-      const data = (await res.json()) as { recipes?: RecipeRecord[] };
-      setRecipes(data.recipes ?? []);
-    } catch (error) {
-      console.error('Failed to fetch recipes', error);
-      toast.error('Unable to load recipes right now.');
-    } finally {
-      setLoading(false);
-    }
-  };
+    return () => {
+      cancelled = true;
+    };
+  }, [toast]);
 
   const filteredRecipes = useMemo(() => {
     if (!search.trim()) return recipes;

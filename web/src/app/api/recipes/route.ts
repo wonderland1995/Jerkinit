@@ -25,7 +25,7 @@ type PostBody = {
   ingredients: IngredientInput[];
 };
 
-export async function GET(_req: NextRequest) {
+export async function GET() {
   const supabase = createClient();
 
   const { data, error } = await supabase

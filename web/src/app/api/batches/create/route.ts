@@ -20,25 +20,6 @@ const convert = (value: number, from: Unit, to: Unit): number => {
   return value;
 };
 
-const base36FromDigits = (digits: string): string => {
-  const numeric = digits.replace(/\D/g, '');
-  if (!numeric) return '0';
-  try {
-    let value = BigInt(numeric);
-    if (value === 0n) return '0';
-    const alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    let result = '';
-    while (value > 0n) {
-      const remainder = Number(value % 36n);
-      result = alphabet[remainder] + result;
-      value /= 36n;
-    }
-    return result;
-  } catch {
-    return numeric;
-  }
-};
-
 const resolveProductionDate = (value: unknown): string => {
   if (typeof value === 'string') {
     const parsed = new Date(value);
@@ -109,7 +90,10 @@ export async function POST(request: Request) {
       }
 
       const dateDigits = today.replace(/-/g, '');
-      const base36Code = base36FromDigits(dateDigits).toUpperCase();
+      const parsedDateNumber = Number.parseInt(dateDigits, 10);
+      const base36Code = Number.isFinite(parsedDateNumber)
+        ? parsedDateNumber.toString(36).toUpperCase()
+        : dateDigits.toUpperCase();
       const dailySequence = String(nextCounter).padStart(3, '0');
       finalBatchId = `JI-${base36Code}-${dailySequence}`;
     }

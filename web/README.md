@@ -31,17 +31,30 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 
 ## Security
 
-The entire application (pages and API routes) is now behind HTTP Basic authentication that is enforced by `middleware.ts`.
+The entire application (UI + APIs) now uses NextAuth credential logins backed by the `app_users` table in Supabase. Access is limited to signed-in operators and every authentication- or data-changing event can be written to `audit_logs`.
 
-Add the following variables to your `.env.local` (or your deployment environment):
+1. Configure the required environment variables (for example inside `.env.local`):
 
-```
-BASIC_AUTH_USERNAME=jerkin-admin
-BASIC_AUTH_PASSWORD=super-secure-password
-# Optional, defaults to "JerkinIt Production"
-BASIC_AUTH_REALM=JerkinIt Production
-```
+   ```
+   NEXTAUTH_SECRET=generate-a-long-random-string
+   NEXT_PUBLIC_SUPABASE_URL=...
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+   SUPABASE_URL=...
+   SUPABASE_SERVICE_KEY=... # or SUPABASE_SERVICE_ROLE_KEY
+   ```
 
-- If either `BASIC_AUTH_USERNAME` or `BASIC_AUTH_PASSWORD` is missing the middleware automatically bypasses auth. That can help locally but should never happen in production.
-- Requests to `/health` remain public so uptime checks can keep running. Tweak the `PUBLIC_PATH_PREFIXES` constant in `middleware.ts` if you need to allow additional paths.
-- Browsers cache Basic-auth credentials for the life of the tab/session, so the SPA can keep calling `/api/*` after a single login prompt.
+2. Create operator accounts by running the helper script (uses the service-role key and stores a bcrypt hash):
+
+   ```bash
+   npm run user:create -- --email you@factory.com --name "QA Lead" --role admin
+   ```
+
+   Roles can be `user`, `manager`, or `admin`. Multiple accounts can be provisioned the same way or via SQL migrations.
+
+3. Sign in at `/login`. Once authenticated, every protected page becomes available and the `Sign out` button in the navbar revokes the session.
+
+### Audit trails
+
+- All logins are automatically recorded in `audit_logs`.
+- Server routes can call `recordAuditEvent` from `src/lib/audit.ts` to capture additional actions. Critical flows such as batch creation/measurements already do this; extend to other APIs as needed.
+- Each record includes the user id, email, action label, and optional metadata so you can reconstruct who did what and when.

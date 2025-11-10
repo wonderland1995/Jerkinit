@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { Route } from 'next';
 import { useState } from 'react';
+import { signOut, useSession } from 'next-auth/react';
 
 type NavItem = {
   name: string;
@@ -15,6 +16,8 @@ type NavItem = {
 export default function Navbar() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const { data: session } = useSession();
+  const userDisplay = session?.user?.name || session?.user?.email || 'User';
 
   const isActive = (p: Route) => (p === '/' ? pathname === '/' : pathname.startsWith(p));
 
@@ -75,6 +78,20 @@ export default function Navbar() {
                 {item.name}
               </Link>
             ))}
+
+            <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
+              <div className="text-right">
+                <p className="text-[10px] uppercase tracking-wide text-gray-400">Signed in as</p>
+                <p className="text-sm font-semibold text-gray-900">{userDisplay}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => signOut({ callbackUrl: '/login' })}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Sign out
+              </button>
+            </div>
           </div>
 
           {/* Mobile hamburger */}
@@ -138,6 +155,17 @@ export default function Navbar() {
                 {item.name}
               </Link>
             ))}
+
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                signOut({ callbackUrl: '/login' });
+              }}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Sign out
+            </button>
           </div>
         </div>
       )}

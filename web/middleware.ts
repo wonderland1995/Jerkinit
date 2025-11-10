@@ -1,71 +1,38 @@
-import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
+import { withAuth } from 'next-auth/middleware';
 
-const REALM = process.env.BASIC_AUTH_REALM ?? 'JerkinIt Production';
-const USERNAME = process.env.BASIC_AUTH_USERNAME;
-const PASSWORD = process.env.BASIC_AUTH_PASSWORD;
+const PUBLIC_PATHS = ['/login', '/api/health', '/api/auth'];
+const PUBLIC_FILE = /\.(.*)$/;
 
-const PUBLIC_PATH_PREFIXES = ['/health'];
+export default withAuth(
+  function middleware(req) {
+    const { pathname } = req.nextUrl;
 
-const unauthorizedResponse = () =>
-  new NextResponse('Authentication required.', {
-    status: 401,
-    headers: {
-      'WWW-Authenticate': `Basic realm="${REALM}", charset="UTF-8"`,
-    },
-  });
-
-const isPublicPath = (pathname: string) =>
-  PUBLIC_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
-
-export function middleware(request: NextRequest) {
-  // Disable auth automatically if credentials are not configured.
-  if (!USERNAME || !PASSWORD) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.warn(
-        'Basic auth middleware is bypassed because BASIC_AUTH_USERNAME or BASIC_AUTH_PASSWORD is not set.'
-      );
+    if (pathname === '/login' && req.nextauth?.token) {
+      return NextResponse.redirect(new URL('/', req.url));
     }
+
     return NextResponse.next();
+  },
+  {
+    pages: {
+      signIn: '/login',
+    },
+    callbacks: {
+      authorized: ({ req, token }) => {
+        const { pathname } = req.nextUrl;
+        if (
+          PUBLIC_PATHS.some((publicPath) => pathname.startsWith(publicPath)) ||
+          pathname.startsWith('/_next') ||
+          PUBLIC_FILE.test(pathname)
+        ) {
+          return true;
+        }
+        return !!token;
+      },
+    },
   }
-
-  const { pathname } = request.nextUrl;
-
-  if (isPublicPath(pathname)) {
-    return NextResponse.next();
-  }
-
-  const authorization = request.headers.get('authorization');
-
-  if (!authorization?.startsWith('Basic ')) {
-    return unauthorizedResponse();
-  }
-
-  const encodedCredentials = authorization.split(' ')[1] ?? '';
-
-  let decodedCredentials = '';
-
-  try {
-    decodedCredentials = atob(encodedCredentials);
-  } catch {
-    return unauthorizedResponse();
-  }
-
-  const separatorIndex = decodedCredentials.indexOf(':');
-
-  if (separatorIndex === -1) {
-    return unauthorizedResponse();
-  }
-
-  const suppliedUser = decodedCredentials.slice(0, separatorIndex);
-  const suppliedPassword = decodedCredentials.slice(separatorIndex + 1);
-
-  if (suppliedUser !== USERNAME || suppliedPassword !== PASSWORD) {
-    return unauthorizedResponse();
-  }
-
-  return NextResponse.next();
-}
+);
 
 export const config = {
   matcher: [

@@ -61,7 +61,8 @@ export const authOptions: AuthOptions = {
         }
 
         const resolvedRole: Role = ROLE_VALUES.includes((user.role as Role)) ? (user.role as Role) : 'user';
-        const forwardedFor = (req?.headers?.['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim();
+        const forwardedHeader = req?.headers?.['x-forwarded-for'] as string | undefined;
+        const forwardedFor = forwardedHeader?.split(',')[0]?.trim();
 
         await recordAuditEvent({
           userId: user.id,
@@ -70,7 +71,7 @@ export const authOptions: AuthOptions = {
           resource: 'user',
           resourceId: user.id,
           metadata: { role: resolvedRole },
-          ipAddress: forwardedFor ?? req?.ip ?? null,
+          ipAddress: forwardedFor ?? (req?.headers?.['x-real-ip'] as string | undefined) ?? null,
         });
 
         return {

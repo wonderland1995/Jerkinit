@@ -29,8 +29,19 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-## Deploy on Vercel
+## Security
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The entire application (pages and API routes) is now behind HTTP Basic authentication that is enforced by `middleware.ts`.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Add the following variables to your `.env.local` (or your deployment environment):
+
+```
+BASIC_AUTH_USERNAME=jerkin-admin
+BASIC_AUTH_PASSWORD=super-secure-password
+# Optional, defaults to "JerkinIt Production"
+BASIC_AUTH_REALM=JerkinIt Production
+```
+
+- If either `BASIC_AUTH_USERNAME` or `BASIC_AUTH_PASSWORD` is missing the middleware automatically bypasses auth. That can help locally but should never happen in production.
+- Requests to `/health` remain public so uptime checks can keep running. Tweak the `PUBLIC_PATH_PREFIXES` constant in `middleware.ts` if you need to allow additional paths.
+- Browsers cache Basic-auth credentials for the life of the tab/session, so the SPA can keep calling `/api/*` after a single login prompt.

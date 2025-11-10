@@ -39,15 +39,7 @@ export async function POST(request: Request) {
   const supabase = createClient();
   const body = await request.json();
 
-  const {
-    product_id,
-    recipe_id,
-    beef_weight_kg,
-    batch_number, // Optional override
-    created_by,
-    notes,
-    production_date,
-  } = body;
+  const { product_id, recipe_id, beef_weight_kg, created_by, notes, production_date } = body;
 
   const cureSettings: CurePpmSettings = { ...DEFAULT_CURE_SETTINGS };
   try {
@@ -75,21 +67,18 @@ export async function POST(request: Request) {
   }
 
   try {
-    // 1. Get or generate batch_id
-    let finalBatchId = batch_number;
-    
-    if (!finalBatchId) {
-      // Use your existing batch counter logic
+    // 1. Generate batch_id (no external overrides to keep format consistent)
+    let finalBatchId: string;
+    {
       const today = new Date().toISOString().split('T')[0];
-      
+
       const { data: counter } = await supabase
         .from('batch_day_counters')
         .select('counter')
         .eq('date', today)
         .single();
-      
+
       let nextCounter = 1;
-      
       if (counter) {
         nextCounter = counter.counter + 1;
         await supabase
@@ -97,11 +86,9 @@ export async function POST(request: Request) {
           .update({ counter: nextCounter })
           .eq('date', today);
       } else {
-        await supabase
-          .from('batch_day_counters')
-          .insert({ date: today, counter: 1 });
+        await supabase.from('batch_day_counters').insert({ date: today, counter: 1 });
       }
-      
+
       const dateDigits = today.replace(/-/g, '');
       const parsedDateNumber = Number.parseInt(dateDigits, 10);
       const base36Code = Number.isFinite(parsedDateNumber)

@@ -1195,8 +1195,8 @@ export default function BatchDetailPage() {
             <h1 className="text-3xl font-bold">{batchDisplayId}</h1>
             <div className="mt-2 space-y-1 text-sm text-gray-600">
               <p>
-                <span className="text-gray-500">Batch ID:</span>{' '}
-                <span className="font-mono text-gray-700">{batch.id}</span>
+                <span className="text-gray-500">Batch Number:</span>{' '}
+                <span className="font-mono text-gray-700">{batchDisplayId}</span>
               </p>
               <p>
                 <span className="text-gray-500">Production Date:</span>{' '}
@@ -1224,11 +1224,11 @@ export default function BatchDetailPage() {
 
         {/* Batch + Stage Info */}
         <div className="bg-white rounded-xl shadow p-6 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="p-4 rounded-lg bg-gray-50">
-              <p className="text-xs text-gray-500">Batch ID</p>
-              <p className="font-mono font-semibold mt-1 break-all">{batch.id}</p>
-            </div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="p-4 rounded-lg bg-gray-50">
+                <p className="text-xs text-gray-500">Batch Number</p>
+                <p className="font-mono font-semibold mt-1 break-all">{batchDisplayId}</p>
+              </div>
             <div className="p-4 rounded-lg bg-gray-50">
               <p className="text-xs text-gray-500">Production Date</p>
               <p className="font-semibold mt-1">{formatLocalDate(batch.production_date)}</p>

@@ -146,7 +146,6 @@ export async function POST(request: Request) {
       .from('batches')
       .insert({
         batch_id: finalBatchId,
-        batch_number: finalBatchId,
         product_id,
         recipe_id,
         beef_weight_kg,

@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     product_id,
     recipe_id,
     beef_weight_kg,
-    batch_number, // Optional, if you want to override auto-generation
+    batch_number, // Optional override
     created_by,
     notes,
     production_date,
@@ -146,6 +146,7 @@ export async function POST(request: Request) {
       .from('batches')
       .insert({
         batch_id: finalBatchId,
+        batch_number: finalBatchId,
         product_id,
         recipe_id,
         beef_weight_kg,

@@ -56,9 +56,33 @@ interface RecentBatch {
   };
 }
 
+interface RecallRecord {
+  id: string;
+  reason: string;
+  notes: string | null;
+  initiated_at: string;
+  initiated_by?: string | null;
+  status: string;
+  lot?: {
+    id: string;
+    lot_number: string;
+    internal_lot_code: string | null;
+    material_name: string | null;
+  } | null;
+  batches: Array<{
+    id: string;
+    batch_id: string;
+    status: string;
+    release_status: string | null;
+    product_name: string | null;
+  }>;
+}
+
 export default function HomePage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentBatches, setRecentBatches] = useState<RecentBatch[]>([]);
+  const [recalls, setRecalls] = useState<RecallRecord[]>([]);
+  const [copiedRecallId, setCopiedRecallId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -67,16 +91,19 @@ export default function HomePage() {
 
   const fetchDashboardData = async () => {
     try {
-      const [statsRes, batchesRes] = await Promise.all([
+      const [statsRes, batchesRes, recallsRes] = await Promise.all([
         fetch('/api/dashboard/stats'),
         fetch('/api/batches/history?limit=10'),
+        fetch('/api/recalls'),
       ]);
 
       const statsData = await statsRes.json();
       const batchesData = await batchesRes.json();
+      const recallsData = await recallsRes.json();
 
       setStats(statsData);
       setRecentBatches(batchesData.batches || []);
+      setRecalls(recallsData.recalls || []);
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error);
     } finally {
@@ -99,6 +126,41 @@ export default function HomePage() {
     { name: 'In Progress', value: stats?.in_progress || 0, color: '#f59e0b' },
     { name: 'Completed', value: stats?.completed || 0, color: '#10b981' },
   ];
+
+  const generateRecallEmail = (record: RecallRecord) => {
+    const lotLabel = record.lot?.lot_number ?? 'Lot';
+    const batchLines =
+      record.batches.length > 0
+        ? record.batches
+            .map(
+              (batch) =>
+                `• Batch ${batch.batch_id}${
+                  batch.product_name ? ` (${batch.product_name})` : ''
+                }`,
+            )
+            .join('\n')
+        : '• No finished batches recorded';
+
+    return (
+      `Subject: URGENT Recall – Lot ${lotLabel}\n\n` +
+      `Reason: ${record.reason}\n` +
+      (record.notes ? `Notes: ${record.notes}\n` : '') +
+      `Initiated: ${new Date(record.initiated_at).toLocaleString()}\n\n` +
+      `Affected Batches:\n${batchLines}\n\n` +
+      `Actions:\n1. Quarantine all finished goods listed above.\n2. Notify customers/distributors if product has shipped.\n3. Document corrective actions in QA log.\n\n` +
+      `Please reply confirming receipt of this recall notice.\n`
+    );
+  };
+
+  const handleCopyEmail = async (record: RecallRecord) => {
+    try {
+      await navigator.clipboard.writeText(generateRecallEmail(record));
+      setCopiedRecallId(record.id);
+      setTimeout(() => setCopiedRecallId(null), 2000);
+    } catch (error) {
+      console.error('Failed to copy email body', error);
+    }
+  };
 
   if (loading) {
     return (
@@ -322,6 +384,86 @@ export default function HomePage() {
                 <span className="font-medium">Manage Recipes</span>
               </Link>
             </div>
+          </div>
+        </div>
+
+        {/* Recalls & Issues */}
+        <div className="grid gap-6 lg:grid-cols-2 mb-8">
+          <div className="bg-white rounded-2xl border border-red-200 shadow-sm">
+            <div className="flex items-center justify-between border-b border-red-100 px-6 py-4">
+              <div>
+                <h3 className="text-lg font-semibold text-red-800">Open Recalls</h3>
+                <p className="text-sm text-red-600">
+                  {recalls.length ? `${recalls.length} active` : 'No open recalls'}
+                </p>
+              </div>
+              <AlertTriangle className="h-6 w-6 text-red-600" />
+            </div>
+            {recalls.length === 0 ? (
+              <p className="px-6 py-8 text-sm text-gray-500">No recalls recorded.</p>
+            ) : (
+              <div className="divide-y divide-red-100">
+                {recalls.slice(0, 4).map((recall) => (
+                  <div key={recall.id} className="px-6 py-4 space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <div>
+                        <p className="font-semibold text-gray-900">
+                          Lot {recall.lot?.lot_number ?? 'Unknown'}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {recall.lot?.material_name ?? 'Material unknown'}
+                        </p>
+                      </div>
+                      <span className="text-xs font-medium text-gray-500">
+                        {new Date(recall.initiated_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <p className="text-sm text-red-700">{recall.reason}</p>
+                    {recall.batches.length > 0 && (
+                      <div className="text-xs text-gray-600">
+                        Affected batches:{' '}
+                        {recall.batches
+                          .map((batch) => batch.batch_id)
+                          .slice(0, 3)
+                          .join(', ')}
+                        {recall.batches.length > 3 ? '…' : ''}
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-2 pt-2">
+                      {recall.lot?.id && (
+                        <Link
+                          href={`/lots/${recall.lot.id}` as Route}
+                          className="inline-flex items-center rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                        >
+                          View lot
+                        </Link>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void handleCopyEmail(recall)}
+                        className="inline-flex items-center rounded-full border border-blue-200 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50"
+                      >
+                        {copiedRecallId === recall.id ? 'Copied!' : 'Generate email'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">QA Issues</h3>
+                <p className="text-sm text-gray-500">Track open investigations</p>
+              </div>
+              <ClipboardCheck className="h-6 w-6 text-gray-400" />
+            </div>
+            <p className="text-sm text-gray-600">
+              No escalations logged. As recalls or CAPA actions are completed, summaries can be posted
+              here for quick visibility.
+            </p>
           </div>
         </div>
 

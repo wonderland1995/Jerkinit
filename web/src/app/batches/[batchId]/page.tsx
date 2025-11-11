@@ -7,7 +7,7 @@ import { AiFillEdit } from 'react-icons/ai';
 import { FaDeleteLeft } from 'react-icons/fa6';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import DeleteBatchModal from '@/components/DeleteBatchModal';
-import RecallBatchModal from '@/components/RecallBatchModal';
+import RecallModal from '@/components/RecallModal';
 import { useToast } from '@/components/ToastProvider';
 import { formatQuantity } from '@/lib/utils';
 import {
@@ -1911,13 +1911,15 @@ export default function BatchDetailPage() {
         </div>
       </div>
 
-      <RecallBatchModal
+      <RecallModal
         isOpen={showRecallModal}
         onClose={handleCloseRecallModal}
         onSubmit={handleRecallSubmit}
         loading={recallLoading}
         error={recallError}
-        batchNumber={batchDisplayId}
+        entityLabel={batchDisplayId}
+        title="Recall batch"
+        description="This will flag the batch as recalled and alert downstream reports."
       />
 
       <DeleteBatchModal

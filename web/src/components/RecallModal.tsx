@@ -3,23 +3,29 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, Loader2, X } from 'lucide-react';
 
-interface RecallBatchModalProps {
+interface RecallModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (reason: string, notes: string) => Promise<boolean>;
   loading: boolean;
   error?: string | null;
-  batchNumber: string;
+  entityLabel: string;
+  title?: string;
+  description?: string;
+  confirmLabel?: string;
 }
 
-export default function RecallBatchModal({
+export default function RecallModal({
   isOpen,
   onClose,
   onSubmit,
   loading,
   error,
-  batchNumber,
-}: RecallBatchModalProps) {
+  entityLabel,
+  title = 'Recall',
+  description = 'Provide context for the recall so downstream teams know what to do next.',
+  confirmLabel = 'Confirm recall',
+}: RecallModalProps) {
   const [reason, setReason] = useState('');
   const [notes, setNotes] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
@@ -67,12 +73,11 @@ export default function RecallBatchModal({
           </div>
 
           <div className="text-center">
-            <h3 className="text-xl font-semibold text-gray-900">Recall batch</h3>
+            <h3 className="text-xl font-semibold text-gray-900">{title}</h3>
             <p className="mt-2 text-sm text-gray-600">
-              You are about to mark batch{' '}
-              <span className="font-mono font-semibold text-gray-900">{batchNumber}</span> as
-              recalled. This will alert downstream reports and prevent the batch from being released
-              again until issues are resolved.
+              You are about to mark{' '}
+              <span className="font-mono font-semibold text-gray-900">{entityLabel}</span> as
+              recalled. {description}
             </p>
           </div>
 
@@ -86,7 +91,7 @@ export default function RecallBatchModal({
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/60"
-                placeholder="Describe why this batch needs to be recalled..."
+                placeholder="Describe why this recall is being initiated..."
                 disabled={loading}
               />
             </div>
@@ -97,7 +102,7 @@ export default function RecallBatchModal({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/60"
-                placeholder="Add any follow-up actions, customer details, or corrective measures..."
+                placeholder="Add follow-up actions, customer targets, or corrective measures..."
                 disabled={loading}
               />
             </div>
@@ -128,7 +133,7 @@ export default function RecallBatchModal({
                     Saving...
                   </span>
                 ) : (
-                  'Confirm recall'
+                  confirmLabel
                 )}
               </button>
             </div>

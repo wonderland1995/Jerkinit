@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { createServerClient } from '@/lib/db';
 import { formatDate, formatDateTime, formatQuantity } from '@/lib/utils';
+import LotRecallPanel from './LotRecallPanel';
 
 type Unit = 'g' | 'kg' | 'ml' | 'L' | 'units';
 
@@ -11,6 +12,9 @@ interface LotRow {
   current_balance: number;
   received_date: string | null;
   expiry_date: string | null;
+  status: 'available' | 'quarantine' | 'depleted' | 'recalled';
+  recall_reason: string | null;
+  recall_notes: string | null;
   material: {
     id: string;
     name: string;
@@ -53,6 +57,9 @@ export default async function LotDetailPage({
         current_balance,
         received_date,
         expiry_date,
+        status,
+        recall_reason,
+        recall_notes,
         material:materials ( id, name, category, unit ),
         supplier:suppliers ( name )
       `
@@ -176,6 +183,16 @@ export default async function LotDetailPage({
               </div>
             </dl>
           </div>
+        </div>
+
+        <div className="mt-6">
+          <LotRecallPanel
+            lotId={lotRecord.id}
+            lotLabel={lotRecord.lot_number}
+            isRecalled={lotRecord.status === 'recalled'}
+            recallReason={lotRecord.recall_reason}
+            recallNotes={lotRecord.recall_notes}
+          />
         </div>
 
         <div className="mt-8 rounded-xl border border-slate-200 bg-white">

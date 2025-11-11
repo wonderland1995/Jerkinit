@@ -99,10 +99,13 @@ export default function RecallLauncher({ open, onClose, onSuccess }: RecallLaunc
             : [];
           setOptions(
             batches.map((batch) => ({
-              id: String(batch.id),
-              label: batch.batch_id ?? 'Batch',
-              description: batch.product_name ?? 'Unknown product',
-              meta: batch.status ?? null,
+              id: String(batch.id ?? ''),
+              label: typeof batch.batch_id === 'string' ? batch.batch_id : 'Batch',
+              description:
+                typeof batch.product_name === 'string'
+                  ? batch.product_name
+                  : 'Unknown product',
+              meta: typeof batch.status === 'string' ? batch.status : null,
             })),
           );
         }

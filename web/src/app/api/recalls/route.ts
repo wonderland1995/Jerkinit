@@ -43,17 +43,22 @@ export async function GET() {
   const recalls = (data ?? []).map((record) => {
     const lot = Array.isArray(record.lot) ? record.lot[0] : record.lot;
     const batchesRaw = Array.isArray(record.lot_recall_batches) ? record.lot_recall_batches : [];
-    const batches = batchesRaw.map((row) => {
-      const batch = Array.isArray(row.batch) ? row.batch[0] : row.batch;
-      if (!batch) return null;
-      return {
-        id: batch.id,
-        batch_id: batch.batch_id,
-        status: batch.status,
-        release_status: batch.release_status,
-        product_name: batch.product?.name ?? null,
-      };
-    }).filter((row): row is NonNullable<typeof row> => Boolean(row));
+    const batches = batchesRaw
+      .map((row) => {
+        const batchRel = row.batch;
+        const batch = Array.isArray(batchRel) ? batchRel[0] : batchRel;
+        if (!batch) return null;
+        const productRel = batch.product;
+        const product = Array.isArray(productRel) ? productRel[0] : productRel;
+        return {
+          id: batch.id,
+          batch_id: batch.batch_id,
+          status: batch.status,
+          release_status: batch.release_status,
+          product_name: product?.name ?? null,
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => Boolean(row));
 
     return {
       id: record.id,

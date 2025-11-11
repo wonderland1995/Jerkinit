@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ClipboardCheck, Search, Filter, Calendar, TrendingUp, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
 import type { Route } from 'next';
+import type { ComplianceTaskWithStatus } from '@/types/compliance';
+import { formatDate } from '@/lib/utils';
 
 interface Batch {
   id: string;
@@ -42,6 +44,17 @@ const STAGE_BADGE_CLASSES: Record<Stage, string> = {
   final: 'bg-emerald-100 text-emerald-700 border-emerald-200',
 };
 
+const COMPLIANCE_STATUS: Record<
+  ComplianceTaskWithStatus['status'],
+  { label: string; className: string }
+> = {
+  not_started: { label: 'Not started', className: 'bg-gray-100 text-gray-700 border-gray-200' },
+  on_track: { label: 'On track', className: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+  due_soon: { label: 'Due soon', className: 'bg-amber-100 text-amber-700 border-amber-200' },
+  overdue: { label: 'Overdue', className: 'bg-red-100 text-red-700 border-red-200' },
+  batch_due: { label: 'Due (batches)', className: 'bg-orange-100 text-orange-700 border-orange-200' },
+ };
+
 interface BatchQaProgress {
   current_stage: Stage;
   percent_complete: number;
@@ -53,9 +66,35 @@ export default function QAPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'in_progress' | 'completed'>('all');
+  const [complianceTasks, setComplianceTasks] = useState<ComplianceTaskWithStatus[]>([]);
+  const [complianceLoading, setComplianceLoading] = useState(true);
 
   useEffect(() => {
     fetchBatches();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadCompliance = async () => {
+      try {
+        setComplianceLoading(true);
+        const res = await fetch('/api/compliance/tasks', { cache: 'no-store' });
+        if (!res.ok) throw new Error('Failed to load compliance tasks');
+        const data = (await res.json()) as { tasks: ComplianceTaskWithStatus[] };
+        if (!cancelled) {
+          setComplianceTasks(Array.isArray(data.tasks) ? data.tasks : []);
+        }
+      } catch (error) {
+        console.error('Failed to load compliance summary', error);
+        if (!cancelled) setComplianceTasks([]);
+      } finally {
+        if (!cancelled) setComplianceLoading(false);
+      }
+    };
+    loadCompliance();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const fetchBatches = async () => {
@@ -147,6 +186,71 @@ export default function QAPage() {
             value={stats.failed_checks}
             color="red"
           />
+        </div>
+
+        {/* General Compliance Snapshot */}
+        <div className="bg-white border border-blue-100 rounded-2xl shadow-sm p-6 mb-8">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">General compliance</p>
+              <h2 className="text-xl font-semibold text-gray-900 mt-1">Listeria monitoring & microbiological verification</h2>
+              <p className="text-sm text-gray-600">
+                Weekly food-contact swabs, fortnightly non-contact swabs, and micro tests every 10 batches.
+              </p>
+            </div>
+            <Link
+              href="/qa/compliance"
+              className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              Open compliance hub
+            </Link>
+          </div>
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            {complianceLoading ? (
+              Array.from({ length: 3 }).map((_, idx) => (
+                <div key={idx} className="rounded-xl border border-gray-100 bg-gray-50 p-4 animate-pulse space-y-3">
+                  <div className="h-4 w-2/3 rounded bg-gray-200" />
+                  <div className="h-3 w-1/2 rounded bg-gray-200" />
+                  <div className="h-3 w-1/3 rounded bg-gray-200" />
+                </div>
+              ))
+            ) : complianceTasks.length === 0 ? (
+              <p className="text-sm text-gray-500 col-span-full">
+                Configure compliance tasks in Supabase to begin tracking prerequisite programs.
+              </p>
+            ) : (
+              complianceTasks.slice(0, 3).map((task) => {
+                const status = COMPLIANCE_STATUS[task.status];
+                return (
+                  <div key={task.id} className="rounded-2xl border border-gray-100 p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-gray-900">{task.name}</p>
+                      <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${status.className}`}>
+                        {status.label}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs uppercase tracking-wide text-gray-500">{task.category}</p>
+                    <div className="mt-3 space-y-1 text-sm text-gray-600">
+                      <div>
+                        <span className="font-medium text-gray-700">Last:</span>{' '}
+                        {task.latest_log?.completed_at ? formatDate(task.latest_log.completed_at, true) : 'Not recorded'}
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-700">
+                          {task.frequency_type === 'batch_interval' ? 'Batches since test:' : 'Next due:'}
+                        </span>{' '}
+                        {task.frequency_type === 'batch_interval'
+                          ? `${task.batches_since_last ?? '–'}${typeof task.batches_remaining === 'number' ? ` (need ${Math.max(task.batches_remaining, 0)} more)` : ''}`
+                          : task.next_due_at
+                          ? formatDate(task.next_due_at, true)
+                          : 'Set after first record'}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
 
         {/* Search and Filter Bar */}

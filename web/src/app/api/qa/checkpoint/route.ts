@@ -16,6 +16,7 @@ interface PostBody {
   humidity_percent?: number | null;
   ph_level?: number | null;
   water_activity?: number | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export async function POST(req: NextRequest) {
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'batch_id, checkpoint_id, and status are required' }, { status: 400 });
   }
 
-  const fields = {
+  const fields: Record<string, unknown> = {
     status: body.status,
     checked_by: body.checked_by ?? null,
     notes: body.notes ?? null,
@@ -44,6 +45,10 @@ export async function POST(req: NextRequest) {
     water_activity: body.water_activity ?? null,
     checked_at: new Date().toISOString(),
   };
+
+  if (Object.prototype.hasOwnProperty.call(body, 'metadata')) {
+    fields.metadata = body.metadata ?? {};
+  }
 
   // Check if a row already exists for this batch/checkpoint
   const { data: existingRows, error: selErr } = await supabase

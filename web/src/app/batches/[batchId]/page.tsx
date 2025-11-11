@@ -673,17 +673,61 @@ export default function BatchDetailPage() {
           const marMeta = metaRecord as MarinationTimesMeta;
           const startLabelRaw = marMeta.startISO ? formatDateTime(marMeta.startISO) : '';
           const endLabelRaw = marMeta.endISO ? formatDateTime(marMeta.endISO) : '';
-          const startLabel = startLabelRaw === '—' ? '' : startLabelRaw;
-          const endLabel = endLabelRaw === '—' ? '' : endLabelRaw;
+          const startLabel = startLabelRaw === '-' ? '' : startLabelRaw;
+          const endLabel = endLabelRaw === '-' ? '' : endLabelRaw;
           if (startLabel || endLabel) {
             const windowLabel = [startLabel, endLabel].filter(Boolean).join(' -> ');
             if (windowLabel) {
               metrics.push(`Marination ${windowLabel}`);
             }
           }
+
+          const dryingRun = metaRecord['drying_run'];
+          if (dryingRun && typeof dryingRun === 'object') {
+            const ovenValue =
+              typeof dryingRun['oven_temp_c'] === 'number'
+                ? dryingRun['oven_temp_c']
+                : typeof dryingRun['oven_temp_c'] === 'string'
+                ? Number(dryingRun['oven_temp_c'])
+                : null;
+            if (Number.isFinite(ovenValue)) {
+              metrics.push(`Oven ${Number(ovenValue).toFixed(1)} deg C`);
+            }
+            const startIso =
+              typeof dryingRun['start_iso'] === 'string'
+                ? (dryingRun['start_iso'] as string)
+                : typeof dryingRun['startISO'] === 'string'
+                ? (dryingRun['startISO'] as string)
+                : null;
+            const endIso =
+              typeof dryingRun['end_iso'] === 'string'
+                ? (dryingRun['end_iso'] as string)
+                : typeof dryingRun['endISO'] === 'string'
+                ? (dryingRun['endISO'] as string)
+                : null;
+            const startLabel = startIso ? formatDateTime(startIso) : '';
+            const endLabel = endIso ? formatDateTime(endIso) : '';
+            if (startLabel || endLabel) {
+              const label = [startLabel, endLabel].filter(Boolean).join(' -> ');
+              if (label) {
+                metrics.push(`Drying ${label}`);
+              }
+            }
+            if (startIso && endIso) {
+              const startTs = Date.parse(startIso);
+              const endTs = Date.parse(endIso);
+              if (Number.isFinite(startTs) && Number.isFinite(endTs) && endTs > startTs) {
+                const minutes = Math.round((endTs - startTs) / 60000);
+                const hours = Math.floor(minutes / 60);
+                const mins = minutes % 60;
+                const durationLabel = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+                metrics.push(`Duration ${durationLabel}`);
+              }
+            }
+          }
         }
 
-        return metrics.length ? metrics.join('; ') : '—';
+        return metrics.length ? metrics.join('; ') : '-';
       };
 
       const toQaRow = (checkpoint: QaCheckpointReport) => {

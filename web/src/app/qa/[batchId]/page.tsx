@@ -39,6 +39,7 @@ interface QACheck {
   water_activity: number | null;
   notes: string | null;
   corrective_action: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 interface ProductLite {
@@ -357,6 +358,78 @@ type FieldFlags = {
   aw?: boolean;
   notes?: boolean;       // default true
   managedExternally?: boolean; // shows banner, hides actions
+  tripleTemps?: boolean;
+  dryingRun?: boolean;
+};
+
+const toLocalDateTimeInput = (value?: string | null) => {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return new Date(parsed.getTime() - parsed.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+};
+
+const toIsoFromLocalInput = (value?: string) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return new Date(parsed.getTime() + parsed.getTimezoneOffset() * 60000).toISOString();
+};
+
+const extractTripleTemps = (metadata?: Record<string, unknown> | null): [string, string, string] => {
+  if (!metadata || typeof metadata !== 'object') return ['', '', ''];
+  const raw = Array.isArray((metadata as Record<string, unknown>)['readings'])
+    ? ((metadata as Record<string, unknown>)['readings'] as Array<Record<string, unknown>>)
+    : [];
+
+  return [0, 1, 2].map((idx) => {
+    const entry = raw[idx];
+    if (!entry || typeof entry !== 'object') return '';
+    const numeric =
+      typeof entry['tempC'] === 'number'
+        ? entry['tempC']
+        : typeof entry['temp'] === 'number'
+        ? entry['temp']
+        : typeof entry['tempC'] === 'string'
+        ? Number(entry['tempC'])
+        : typeof entry['temp'] === 'string'
+        ? Number(entry['temp'])
+        : null;
+    return Number.isFinite(numeric) ? String(numeric) : '';
+  }) as [string, string, string];
+};
+
+const extractDryingRun = (metadata?: Record<string, unknown> | null) => {
+  if (!metadata || typeof metadata !== 'object') {
+    return { oven: '', start: '', end: '' };
+  }
+  const raw = (metadata as Record<string, unknown>)['drying_run'];
+  if (!raw || typeof raw !== 'object') {
+    return { oven: '', start: '', end: '' };
+  }
+  const ovenValue =
+    typeof raw['oven_temp_c'] === 'number'
+      ? raw['oven_temp_c']
+      : typeof raw['oven_temp_c'] === 'string'
+      ? Number(raw['oven_temp_c'])
+      : null;
+  const startRaw =
+    typeof raw['start_iso'] === 'string'
+      ? raw['start_iso']
+      : typeof raw['startISO'] === 'string'
+      ? raw['startISO']
+      : null;
+  const endRaw =
+    typeof raw['end_iso'] === 'string'
+      ? raw['end_iso']
+      : typeof raw['endISO'] === 'string'
+      ? raw['endISO']
+      : null;
+  return {
+    oven: Number.isFinite(ovenValue) ? String(ovenValue) : '',
+    start: toLocalDateTimeInput(startRaw),
+    end: toLocalDateTimeInput(endRaw),
+  };
 };
 
 // Map the EXACT inputs each checkpoint code needs.
@@ -382,13 +455,13 @@ const FIELDS_BY_CODE: Record<string, FieldFlags> = {
   'MIX-TEMPERATURE': { temperature: true, notes: true },
 
   // Core Temperature Achievement (drying)
-  'DRY-CCP-003': { temperature: true, notes: true },
-  'DRY-CORE': { temperature: true, notes: true },
+  'DRY-CCP-003': { notes: true, tripleTemps: true },
+  'DRY-CORE': { notes: true, tripleTemps: true },
 
   // Temperature Log - Hourly (we allow spot entry, or note)
-  'DRY-CCP-004': { temperature: true, notes: true },
-  'DRY-TEMP': { temperature: true, notes: true },
-  'DRY-TEMPERATURE': { temperature: true, notes: true },
+  'DRY-CCP-004': { temperature: true, notes: true, dryingRun: true },
+  'DRY-TEMP': { temperature: true, notes: true, dryingRun: true },
+  'DRY-TEMPERATURE': { temperature: true, notes: true, dryingRun: true },
 
   // Water Activity Test
   'DRY-CCP-005': { aw: true, notes: true },
@@ -437,7 +510,9 @@ function getFieldFlags(cp: Checkpoint): FieldFlags {
 function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
   const toast = useToast();
   const fields = getFieldFlags(checkpoint);
-  const [expanded, setExpanded] = useState(() => Boolean(fields.temperature || fields.humidity || fields.ph || fields.aw));
+  const [expanded, setExpanded] = useState(() =>
+    Boolean(fields.temperature || fields.humidity || fields.ph || fields.aw || fields.tripleTemps || fields.dryingRun),
+  );
 
   // Keep form inputs as strings for easy empty checks
   const [temperature, setTemperature] = useState<string>(check?.temperature_c?.toString() ?? '');
@@ -446,8 +521,47 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
   const [aw, setAw] = useState<string>(check?.water_activity?.toString() ?? '');
   const [notes, setNotes] = useState<string>(check?.notes ?? '');
   const [action, setAction] = useState<string>(check?.corrective_action ?? '');
+  const [pieceTemps, setPieceTemps] = useState<[string, string, string]>(() =>
+    extractTripleTemps((check?.metadata as Record<string, unknown> | null) ?? null),
+  );
+  const initialDrying = extractDryingRun((check?.metadata as Record<string, unknown> | null) ?? null);
+  const [ovenTemp, setOvenTemp] = useState<string>(initialDrying.oven);
+  const [dryingStart, setDryingStart] = useState<string>(initialDrying.start);
+  const [dryingEnd, setDryingEnd] = useState<string>(initialDrying.end);
 
   const status: QAStatus = check?.status ?? 'pending';
+
+  useEffect(() => {
+    setTemperature(check?.temperature_c != null ? String(check.temperature_c) : '');
+    setHumidity(check?.humidity_percent != null ? String(check.humidity_percent) : '');
+    setPh(check?.ph_level != null ? String(check.ph_level) : '');
+    setAw(check?.water_activity != null ? String(check.water_activity) : '');
+    setNotes(check?.notes ?? '');
+    setAction(check?.corrective_action ?? '');
+    if (fields.tripleTemps) {
+      setPieceTemps(extractTripleTemps((check?.metadata as Record<string, unknown> | null) ?? null));
+    }
+    if (fields.dryingRun) {
+      const parsed = extractDryingRun((check?.metadata as Record<string, unknown> | null) ?? null);
+      setOvenTemp(parsed.oven);
+      setDryingStart(parsed.start);
+      setDryingEnd(parsed.end);
+    } else {
+      setOvenTemp('');
+      setDryingStart('');
+      setDryingEnd('');
+    }
+  }, [
+    check?.temperature_c,
+    check?.humidity_percent,
+    check?.ph_level,
+    check?.water_activity,
+    check?.notes,
+    check?.corrective_action,
+    check?.metadata,
+    fields.tripleTemps,
+    fields.dryingRun,
+  ]);
 
   const validateIfPassing = (nextStatus: QAStatus = status): string | null => {
     // If checkpoint requires a specific reading and user is marking PASSED, require it.
@@ -456,18 +570,90 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
       if (fields.humidity && humidity === '') return 'Humidity (%) is required for this checkpoint.';
       if (fields.ph && ph === '') return 'pH is required for this checkpoint.';
       if (fields.aw && aw === '') return 'Water activity (aw) is required for this checkpoint.';
+      if (fields.tripleTemps && pieceTemps.some((temp) => temp.trim() === '')) {
+        return 'All three cooking temperature readings are required.';
+      }
+      if (fields.dryingRun) {
+        if (ovenTemp.trim() === '') return 'Drying oven temperature is required.';
+        if (!dryingStart || !dryingEnd) return 'Drying start and finish times are required.';
+      }
     }
     return null;
   };
 
-  const buildPayload = (nextStatus: QAStatus): Partial<QACheck> => ({
-    temperature_c: fields.temperature ? (temperature !== '' ? Number(temperature) : null) : null,
-    humidity_percent: fields.humidity ? (humidity !== '' ? Number(humidity) : null) : null,
-    ph_level: fields.ph ? (ph !== '' ? Number(ph) : null) : null,
-    water_activity: fields.aw ? (aw !== '' ? Number(aw) : null) : null,
-    notes: fields.notes ? (notes.trim() ? notes : null) : null,
-    corrective_action: nextStatus === 'failed' ? (action.trim() ? action : null) : null,
-  });
+  const buildMetadataPayload = (): Record<string, unknown> | null => {
+    if (!fields.tripleTemps && !fields.dryingRun) {
+      return null;
+    }
+    const base =
+      check?.metadata && typeof check.metadata === 'object'
+        ? { ...(check.metadata as Record<string, unknown>) }
+        : {};
+    let mutated = false;
+
+    if (fields.tripleTemps) {
+      const readings = pieceTemps
+        .map((value, idx) => {
+          const trimmed = value.trim();
+          if (!trimmed) return null;
+          const num = Number(trimmed);
+          if (!Number.isFinite(num)) return null;
+          return { label: `Piece ${idx + 1}`, tempC: num };
+        })
+        .filter((entry): entry is { label: string; tempC: number } => Boolean(entry));
+      if (readings.length > 0) {
+        base['readings'] = readings;
+      } else {
+        delete base['readings'];
+      }
+      mutated = true;
+    }
+
+    if (fields.dryingRun) {
+      const ovenValue = ovenTemp.trim() ? Number(ovenTemp) : null;
+      const startIso = toIsoFromLocalInput(dryingStart);
+      const endIso = toIsoFromLocalInput(dryingEnd);
+      if (ovenValue != null || startIso || endIso) {
+        base['drying_run'] = {
+          oven_temp_c: ovenValue,
+          start_iso: startIso,
+          end_iso: endIso,
+        };
+      } else {
+        delete base['drying_run'];
+      }
+      mutated = true;
+    }
+
+    return mutated ? base : null;
+  };
+
+  const buildPayload = (nextStatus: QAStatus): Partial<QACheck> => {
+    const payload: Partial<QACheck> = {
+      temperature_c: fields.temperature ? (temperature !== '' ? Number(temperature) : null) : null,
+      humidity_percent: fields.humidity ? (humidity !== '' ? Number(humidity) : null) : null,
+      ph_level: fields.ph ? (ph !== '' ? Number(ph) : null) : null,
+      water_activity: fields.aw ? (aw !== '' ? Number(aw) : null) : null,
+      notes: fields.notes ? (notes.trim() ? notes : null) : null,
+      corrective_action: nextStatus === 'failed' ? (action.trim() ? action : null) : null,
+    };
+
+    if (fields.tripleTemps) {
+      const numericTemps = pieceTemps
+        .map((value) => (value.trim() ? Number(value) : null))
+        .filter((value): value is number => Number.isFinite(value));
+      if (numericTemps.length > 0) {
+        payload.temperature_c = Math.max(...numericTemps);
+      }
+    }
+
+    const metadataPayload = buildMetadataPayload();
+    if (metadataPayload !== null) {
+      payload.metadata = metadataPayload;
+    }
+
+    return payload;
+  };
 
   const save = () => {
     const err = validateIfPassing(status);
@@ -496,6 +682,14 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
   };
 
   const quickSkip = () => onChange('skipped', buildPayload('skipped'));
+
+  const updatePieceTemp = (index: 0 | 1 | 2, value: string) => {
+    setPieceTemps((prev) => {
+      const next = [...prev] as [string, string, string];
+      next[index] = value;
+      return next;
+    });
+  };
 
   return (
     <div
@@ -530,6 +724,12 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
               )}
               {fields.aw && (
                 <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-700">Water Activity</span>
+              )}
+              {fields.tripleTemps && (
+                <span className="rounded bg-orange-100 px-2 py-0.5 text-xs text-orange-700">3 Temps</span>
+              )}
+              {fields.dryingRun && (
+                <span className="rounded bg-rose-100 px-2 py-0.5 text-xs text-rose-700">Drying Run</span>
               )}
             </div>
             <p className="mt-1 text-sm text-gray-600">{checkpoint.description}</p>
@@ -638,6 +838,61 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
               )}
             </div>
 
+            {fields.tripleTemps && (
+              <div className="rounded-2xl border border-blue-100 bg-blue-50/40 p-3">
+                <p className="text-sm font-medium text-gray-700">Cooking temperature checks (3 pieces)</p>
+                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+                  {(['Piece 1', 'Piece 2', 'Piece 3'] as const).map((label, idx) => (
+                    <div key={label}>
+                      <label className="mb-1 block text-xs font-medium text-gray-600">{label}</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={pieceTemps[idx]}
+                        onChange={(e) => updatePieceTemp(idx as 0 | 1 | 2, e.target.value)}
+                        className="w-full rounded-lg border px-3 py-2"
+                        placeholder="deg C"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {fields.dryingRun && (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Drying oven temp (deg C)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={ovenTemp}
+                    onChange={(e) => setOvenTemp(e.target.value)}
+                    className="w-full rounded-lg border px-3 py-2"
+                    placeholder="e.g. 70"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Drying start time</label>
+                  <input
+                    type="datetime-local"
+                    value={dryingStart}
+                    onChange={(e) => setDryingStart(e.target.value)}
+                    className="w-full rounded-lg border px-3 py-2"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Drying finish time</label>
+                  <input
+                    type="datetime-local"
+                    value={dryingEnd}
+                    onChange={(e) => setDryingEnd(e.target.value)}
+                    className="w-full rounded-lg border px-3 py-2"
+                  />
+                </div>
+              </div>
+            )}
+
             {fields.notes && (
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">Notes</label>
@@ -646,7 +901,7 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   className="w-full rounded-lg border px-3 py-2"
-                  placeholder="Optional notes…"
+                  placeholder="Optional notes..."
                 />
               </div>
             )}

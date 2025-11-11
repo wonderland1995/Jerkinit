@@ -1,9 +1,13 @@
 // src/app/qa/[batchId]/page.tsx
+/* eslint-disable @next/next/no-img-element */
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, FormEvent, ChangeEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useToast } from '@/components/ToastProvider';
+import { Download, FileDown, FileText, Loader2, Camera } from 'lucide-react';
+import { formatDateTime } from '@/lib/utils';
+import type { QADocument } from '@/types/qa';
 
 // ---------- Types that match your DB ----------
 type Stage =
@@ -53,6 +57,13 @@ interface BatchDetails {
   product?: ProductLite;
 }
 
+type QADocumentWithType = QADocument & {
+  document_type?: {
+    code: string | null;
+    name: string | null;
+  } | null;
+};
+
 const STAGES: Array<{ key: Stage; label: string }> = [
   { key: 'preparation', label: 'Preparation' },
   { key: 'mixing', label: 'Mixing' },
@@ -61,6 +72,9 @@ const STAGES: Array<{ key: Stage; label: string }> = [
   { key: 'packaging', label: 'Packaging' },
   { key: 'final', label: 'Final' },
 ];
+
+const getStageLabel = (stage: Stage) =>
+  STAGES.find((s) => s.key === stage)?.label ?? stage.charAt(0).toUpperCase() + stage.slice(1);
 
 // ---------- Page ----------
 export default function BatchQAPage() {
@@ -74,6 +88,14 @@ export default function BatchQAPage() {
   const [qaChecks, setQAChecks] = useState<Record<string, QACheck>>({});
   const [loading, setLoading] = useState(true);
   const [activeStage, setActiveStage] = useState<Stage>('preparation');
+  const [documents, setDocuments] = useState<QADocumentWithType[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(true);
+  const [uploadingDocument, setUploadingDocument] = useState(false);
+  const [documentNotes, setDocumentNotes] = useState('');
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const documentInputRef = useRef<HTMLInputElement | null>(null);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const documentTypeCode = 'QA-PHOTO';
 
   const fetchData = useCallback(async () => {
     try {
@@ -111,9 +133,28 @@ export default function BatchQAPage() {
     }
   }, [batchId]);
 
+  const fetchDocuments = useCallback(async () => {
+    try {
+      setDocumentsLoading(true);
+      const res = await fetch(`/api/qa/documents?batchId=${batchId}`, { cache: 'no-store' });
+      if (!res.ok) throw new Error('Failed to load documents');
+      const data = (await res.json()) as { documents?: QADocumentWithType[] };
+      setDocuments(Array.isArray(data.documents) ? data.documents : []);
+    } catch (error) {
+      console.error('Failed to load QA documents', error);
+      setDocuments([]);
+    } finally {
+      setDocumentsLoading(false);
+    }
+  }, [batchId]);
+
   useEffect(() => {
     void fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    void fetchDocuments();
+  }, [fetchDocuments]);
 
   const stageCheckpoints = useMemo(
     () => checkpoints.filter((c) => c.stage === activeStage),
@@ -188,6 +229,219 @@ export default function BatchQAPage() {
     await fetchData();
   };
 
+  const handleDocumentFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    setDocumentFile(file);
+  };
+
+  const handleUploadDocument = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!documentFile) {
+      toast.error('Select a file to upload.');
+      return;
+    }
+
+    setUploadingDocument(true);
+    try {
+      const payload = new FormData();
+      payload.append('batch_id', batchId);
+      payload.append('document_type_code', documentTypeCode);
+      payload.append('document_number', `${batch?.batch_id ?? batchId}-${Date.now()}`);
+      payload.append('status', 'pending');
+      payload.append('file', documentFile);
+      if (documentNotes.trim()) {
+        payload.append('notes', documentNotes.trim());
+      }
+
+      const res = await fetch('/api/qa/documents', {
+        method: 'POST',
+        body: payload,
+      });
+
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? 'Failed to upload document');
+      }
+
+      toast.success('Attachment uploaded.');
+      setDocumentNotes('');
+      setDocumentFile(null);
+      if (documentInputRef.current) {
+        documentInputRef.current.value = '';
+      }
+      await fetchDocuments();
+    } catch (error) {
+      console.error('Failed to upload QA document', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to upload document.');
+    } finally {
+      setUploadingDocument(false);
+    }
+  };
+
+  const summarizeTemperatures = (check?: QACheck): string => {
+    if (!check) return '-';
+    const parts: string[] = [];
+    if (typeof check.temperature_c === 'number') {
+      parts.push(`${Number(check.temperature_c).toFixed(1)} °C`);
+    }
+    const metadata =
+      check.metadata && typeof check.metadata === 'object'
+        ? (check.metadata as Record<string, unknown>)
+        : null;
+    if (metadata && Array.isArray((metadata as { readings?: unknown }).readings)) {
+      const readings = (metadata as { readings: Array<Record<string, unknown>> }).readings;
+      readings.forEach((reading, idx) => {
+        const tempValue =
+          typeof reading?.tempC === 'number'
+            ? reading.tempC
+            : typeof reading?.tempC === 'string'
+            ? Number(reading.tempC)
+            : null;
+        if (tempValue != null && Number.isFinite(tempValue)) {
+          parts.push(`Piece ${idx + 1}: ${Number(tempValue).toFixed(1)} °C`);
+        }
+      });
+    }
+    if (metadata && metadata.drying_run && typeof metadata.drying_run === 'object') {
+      const oven = (metadata.drying_run as Record<string, unknown>).oven_temp_c;
+      if (typeof oven === 'number') {
+        parts.push(`Oven ${oven.toFixed(1)} °C`);
+      }
+    }
+    return parts.length ? parts.join('; ') : '-';
+  };
+
+  const summarizeOtherReadings = (check?: QACheck): string => {
+    if (!check) return '-';
+    const parts: string[] = [];
+    if (typeof check.humidity_percent === 'number') {
+      parts.push(`Humidity ${Number(check.humidity_percent).toFixed(1)} %`);
+    }
+    if (typeof check.ph_level === 'number') {
+      parts.push(`pH ${Number(check.ph_level).toFixed(2)}`);
+    }
+    if (typeof check.water_activity === 'number') {
+      parts.push(`aw ${Number(check.water_activity).toFixed(3)}`);
+    }
+    const metadata =
+      check.metadata && typeof check.metadata === 'object'
+        ? (check.metadata as Record<string, unknown>)
+        : null;
+    if (metadata && metadata.drying_run && typeof metadata.drying_run === 'object') {
+      const run = metadata.drying_run as { start_iso?: string; end_iso?: string };
+      if (run.start_iso || run.end_iso) {
+        parts.push(
+          `Drying ${run.start_iso ? formatDateTime(run.start_iso) : '-'} → ${
+            run.end_iso ? formatDateTime(run.end_iso) : '-'
+          }`,
+        );
+      }
+    }
+    if (check.notes) {
+      parts.push(`Notes: ${check.notes}`);
+    }
+    return parts.length ? parts.join('; ') : '-';
+  };
+
+  const isImageFile = (value?: string | null) => {
+    if (!value) return false;
+    const normalized = value.split('?')[0];
+    return /\.(png|jpe?g|gif|bmp|webp)$/i.test(normalized);
+  };
+
+  const handleExportPdf = async () => {
+    if (!checkpoints.length) {
+      toast.error('No checkpoints available to export.');
+      return;
+    }
+    setExportingPdf(true);
+    try {
+      const [{ jsPDF }, autoTableModule] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
+      const autoTable = autoTableModule.default;
+      if (typeof autoTable !== 'function') {
+        throw new Error('PDF export module failed to load');
+      }
+
+      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+      const marginLeft = 14;
+      let cursorY = 18;
+
+      doc.setFontSize(16);
+      doc.text('QA Test Sheet', marginLeft, cursorY);
+      cursorY += 7;
+
+      doc.setFontSize(11);
+      doc.text(`Batch: ${batch?.batch_id ?? batchId}`, marginLeft, cursorY);
+      cursorY += 5;
+      doc.text(`Product: ${batch?.product?.name ?? '-'}`, marginLeft, cursorY);
+      cursorY += 5;
+      doc.text(`Status: ${currentStageLabel}`, marginLeft, cursorY);
+      cursorY += 5;
+      doc.text(`Generated: ${formatDateTime(new Date().toISOString())}`, marginLeft, cursorY);
+      cursorY += 7;
+
+      doc.setFontSize(12);
+      doc.text('Checkpoint Summary', marginLeft, cursorY);
+      cursorY += 4;
+
+      const qaRows = checkpoints.map((cp) => {
+        const check = qaChecks[cp.id];
+        return [
+          cp.code,
+          cp.name,
+          getStageLabel(cp.stage),
+          (check?.status ?? 'pending').toUpperCase(),
+          summarizeTemperatures(check),
+          summarizeOtherReadings(check),
+          check?.checked_at ? formatDateTime(check.checked_at) : '-',
+        ];
+      });
+
+      autoTable(doc, {
+        startY: cursorY,
+        head: [['Code', 'Checkpoint', 'Stage', 'Status', 'Temperatures', 'Other Readings', 'Checked At']],
+        body: qaRows,
+        styles: { fontSize: 9, cellPadding: 2 },
+        headStyles: { fillColor: [30, 64, 175], textColor: 255 },
+      });
+
+      const lastTable = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable;
+      cursorY = (lastTable?.finalY ?? cursorY) + 8;
+
+      doc.setFontSize(12);
+      doc.text('Supporting Documents', marginLeft, cursorY);
+      cursorY += 4;
+
+      if (documents.length > 0) {
+        const docRows = documents.map((docItem) => [
+          docItem.file_name ?? 'Attachment',
+          docItem.document_type?.name ?? docItem.document_type?.code ?? 'Attachment',
+          formatDateTime(docItem.uploaded_at),
+          docItem.notes ?? '-',
+        ]);
+
+        autoTable(doc, {
+          startY: cursorY,
+          head: [['File', 'Type', 'Uploaded', 'Notes']],
+          body: docRows,
+          styles: { fontSize: 9, cellPadding: 2 },
+          headStyles: { fillColor: [22, 101, 52], textColor: 255 },
+        });
+      } else {
+        doc.setFontSize(10);
+        doc.text('No supporting documents uploaded.', marginLeft, cursorY);
+      }
+
+      const safeName = (batch?.batch_id ?? batchId).replace(/[^A-Za-z0-9-_]/g, '_');
+      doc.save(`${safeName}_qa.pdf`);
+    } catch (error) {
+      console.error('Failed to export QA PDF', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to export QA PDF.');
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen grid place-items-center bg-gray-50">
@@ -218,11 +472,21 @@ export default function BatchQAPage() {
                 {batch?.batch_id} {batch?.product?.name ? `- ${batch.product.name}` : ''}
               </p>
             </div>
-            <span
-              className={`self-start sm:self-auto rounded-full px-3 py-1 text-sm font-medium ${currentStageBadgeClass}`}
-            >
-              {currentStageLabel}
-            </span>
+            <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+              <button
+                onClick={handleExportPdf}
+                disabled={exportingPdf}
+                className="inline-flex items-center justify-center gap-2 rounded-full border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+              >
+                {exportingPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                {exportingPdf ? 'Exporting...' : 'Export PDF'}
+              </button>
+              <span
+                className={`self-start sm:self-auto rounded-full px-3 py-1 text-sm font-medium ${currentStageBadgeClass}`}
+              >
+                {currentStageLabel}
+              </span>
+            </div>
           </div>
         </div>
       </header>
@@ -293,6 +557,120 @@ export default function BatchQAPage() {
               className="h-2 rounded-full bg-green-600 transition-all"
               style={{ width: `${stageProgress}%` }}
             />
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-4 lg:grid-cols-[2fr,1fr]">
+          <div className="rounded-xl border bg-white p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-gray-500">Evidence</p>
+                <h2 className="text-lg font-semibold text-gray-900">Photos & Docs</h2>
+              </div>
+              <span className="text-xs text-gray-500">
+                {documents.length} item{documents.length === 1 ? '' : 's'}
+              </span>
+            </div>
+            {documentsLoading ? (
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading documents...
+              </div>
+            ) : documents.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
+                No supporting documents uploaded yet.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {documents.map((doc) => {
+                  const isImage = isImageFile(doc.file_name ?? doc.file_url ?? undefined);
+                  return (
+                    <div key={doc.id} className="flex gap-3 rounded-lg border p-3">
+                      <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-md bg-gray-100">
+                        {isImage && doc.file_url ? (
+                          <img
+                            src={doc.file_url}
+                            alt={doc.file_name ?? 'QA attachment'}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-gray-500">
+                            <FileText className="h-6 w-6" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-gray-900">
+                          {doc.file_name ?? 'Attachment'}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {(doc.document_type?.name ?? doc.document_type?.code ?? 'Attachment')}{' '}
+                          · {formatDateTime(doc.uploaded_at)}
+                        </p>
+                        {doc.notes && (
+                          <p className="mt-1 text-sm text-gray-600 break-words">{doc.notes}</p>
+                        )}
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {doc.file_url && (
+                            <a
+                              href={doc.file_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                            >
+                              <FileDown className="h-3.5 w-3.5" />
+                              View
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <div className="rounded-xl border bg-white p-4">
+            <p className="text-xs uppercase tracking-wide text-gray-500">Upload</p>
+            <h3 className="text-lg font-semibold text-gray-900">Add photo / document</h3>
+            <p className="text-sm text-gray-500">
+              Attach supporting evidence straight from the floor. Images and PDFs are supported.
+            </p>
+            <form onSubmit={handleUploadDocument} className="mt-4 space-y-3">
+              <div>
+                <label className="text-sm font-medium text-gray-700">File</label>
+                <input
+                  ref={documentInputRef}
+                  type="file"
+                  accept="image/*,application/pdf"
+                  onChange={handleDocumentFileChange}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700">Notes</label>
+                <textarea
+                  rows={3}
+                  value={documentNotes}
+                  onChange={(e) => setDocumentNotes(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                  placeholder="Optional context or checkpoint reference..."
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={uploadingDocument || !documentFile}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+              >
+                {uploadingDocument ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Camera className="h-4 w-4" />
+                )}
+                {uploadingDocument ? 'Uploading...' : 'Upload'}
+              </button>
+            </form>
           </div>
         </div>
 

@@ -36,8 +36,13 @@ export interface QADocument {
   approved_at: string | null;
   rejection_reason: string | null;
   notes: string | null;
-  metadata:Json;
+  metadata: Json;
   expires_at: string | null;
+  document_type?: {
+    id: string;
+    code: string | null;
+    name: string | null;
+  } | null;
 }
 
 export interface QACheckpoint {

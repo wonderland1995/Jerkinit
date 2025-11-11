@@ -30,6 +30,7 @@ import {
   ResponsiveContainer,
   Legend 
 } from 'recharts';
+import RecallLauncher from '@/components/RecallLauncher';
 
 interface DashboardStats {
   total_batches: number;
@@ -83,6 +84,7 @@ export default function HomePage() {
   const [recentBatches, setRecentBatches] = useState<RecentBatch[]>([]);
   const [recalls, setRecalls] = useState<RecallRecord[]>([]);
   const [copiedRecallId, setCopiedRecallId] = useState<string | null>(null);
+  const [recallLauncherOpen, setRecallLauncherOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -390,14 +392,23 @@ export default function HomePage() {
         {/* Recalls & Issues */}
         <div className="grid gap-6 lg:grid-cols-2 mb-8">
           <div className="bg-white rounded-2xl border border-red-200 shadow-sm">
-            <div className="flex items-center justify-between border-b border-red-100 px-6 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-red-100 px-6 py-4">
               <div>
                 <h3 className="text-lg font-semibold text-red-800">Open Recalls</h3>
                 <p className="text-sm text-red-600">
                   {recalls.length ? `${recalls.length} active` : 'No open recalls'}
                 </p>
               </div>
-              <AlertTriangle className="h-6 w-6 text-red-600" />
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRecallLauncherOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-full border border-red-200 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
+                >
+                  + New recall
+                </button>
+                <AlertTriangle className="h-6 w-6 text-red-600" />
+              </div>
             </div>
             {recalls.length === 0 ? (
               <p className="px-6 py-8 text-sm text-gray-500">No recalls recorded.</p>
@@ -557,6 +568,13 @@ export default function HomePage() {
           </div>
         </div>
       </div>
+      <RecallLauncher
+        open={recallLauncherOpen}
+        onClose={() => setRecallLauncherOpen(false)}
+        onSuccess={() => {
+          void fetchDashboardData();
+        }}
+      />
     </div>
   );
 }

@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, FormEvent, ChangeEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useToast } from '@/components/ToastProvider';
-import { Download, FileDown, FileText, Loader2, Camera } from 'lucide-react';
+import { Download, FileDown, FileText, Loader2, Camera, Trash2 } from 'lucide-react';
 import { formatDateTime } from '@/lib/utils';
 import type { QADocument } from '@/types/qa';
 
@@ -96,6 +96,7 @@ export default function BatchQAPage() {
   const documentInputRef = useRef<HTMLInputElement | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
   const documentTypeCode = 'QA-PHOTO';
+  const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -275,6 +276,28 @@ export default function BatchQAPage() {
       toast.error(error instanceof Error ? error.message : 'Failed to upload document.');
     } finally {
       setUploadingDocument(false);
+    }
+  };
+
+  const handleDeleteDocument = async (docId: string) => {
+    if (!confirm('Delete this attachment?')) {
+      return;
+    }
+    setDeletingDocId(docId);
+    try {
+      const res = await fetch(`/api/qa/documents?id=${docId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? 'Failed to delete document');
+      }
+      toast.success('Attachment removed.');
+      await fetchDocuments();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to delete document.');
+    } finally {
+      setDeletingDocId(null);
     }
   };
 
@@ -616,12 +639,26 @@ export default function BatchQAPage() {
                               href={doc.file_url}
                               target="_blank"
                               rel="noreferrer"
+                              download={doc.file_name ?? undefined}
                               className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
                             >
                               <FileDown className="h-3.5 w-3.5" />
                               View
                             </a>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteDocument(doc.id)}
+                            disabled={deletingDocId === doc.id}
+                            className="inline-flex items-center gap-1 rounded-full border border-red-200 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-60"
+                          >
+                            {deletingDocId === doc.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-3.5 w-3.5" />
+                            )}
+                            Delete
+                          </button>
                         </div>
                       </div>
                     </div>

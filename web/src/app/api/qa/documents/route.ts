@@ -113,6 +113,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const metadata = {
+    storage_path: storageKey,
+  };
+
   const { data: inserted, error: insertErr } = await supabase
     .from('qa_documents')
     .insert({
@@ -124,7 +128,7 @@ export async function POST(request: NextRequest) {
       status,
       uploaded_by,
       notes,
-      metadata: {},
+      metadata,
     })
     .select(
       `
@@ -146,4 +150,46 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json(inserted, { status: 201 });
+}
+
+export async function DELETE(request: NextRequest) {
+  const supabase = createClient();
+  const { searchParams } = new URL(request.url);
+  const documentId = searchParams.get('id');
+
+  if (!documentId) {
+    return NextResponse.json({ error: 'Document id is required' }, { status: 400 });
+  }
+
+  const { data: existing, error: fetchErr } = await supabase
+    .from('qa_documents')
+    .select('id, metadata, file_url')
+    .eq('id', documentId)
+    .single();
+
+  if (fetchErr || !existing) {
+    return NextResponse.json({ error: fetchErr?.message ?? 'Document not found' }, { status: 404 });
+  }
+
+  const storagePath =
+    existing.metadata && typeof existing.metadata === 'object'
+      ? (existing.metadata as { storage_path?: string | null }).storage_path ?? null
+      : null;
+
+  if (storagePath) {
+    await supabaseAdmin.storage.from(BUCKET).remove([storagePath]);
+  } else if (existing.file_url) {
+    const url = new URL(existing.file_url);
+    const parts = url.pathname.split(`/storage/v1/object/public/${BUCKET}/`);
+    if (parts.length === 2 && parts[1]) {
+      await supabaseAdmin.storage.from(BUCKET).remove([parts[1]]);
+    }
+  }
+
+  const { error: deleteErr } = await supabase.from('qa_documents').delete().eq('id', documentId);
+  if (deleteErr) {
+    return NextResponse.json({ error: deleteErr.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
 }

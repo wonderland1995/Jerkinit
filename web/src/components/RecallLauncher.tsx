@@ -163,8 +163,11 @@ export default function RecallLauncher({ open, onClose, onSuccess }: RecallLaunc
 
   return (
     <div className="fixed inset-0 z-50">
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={() => !submitting && onClose()} />
-      <div className="flex min-h-full items-center justify-center p-4">
+      <div
+        className="fixed inset-0 z-0 bg-black/40 backdrop-blur-sm"
+        onClick={() => !submitting && onClose()}
+      />
+      <div className="relative z-10 flex min-h-full items-center justify-center p-4">
         <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl">
           <div className="flex items-center gap-3 border-b pb-3">
             <div className="rounded-full bg-purple-100 p-2 text-purple-600">

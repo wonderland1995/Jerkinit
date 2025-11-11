@@ -73,7 +73,12 @@ export async function GET() {
             lot_number: lot.lot_number,
             internal_lot_code: lot.internal_lot_code,
             status: lot.status,
-            material_name: lot.material?.name ?? null,
+            material_name: (() => {
+              const materialRel = lot.material;
+              if (!materialRel) return null;
+              const material = Array.isArray(materialRel) ? materialRel[0] : materialRel;
+              return material?.name ?? null;
+            })(),
             recall_reason: lot.recall_reason,
             recall_notes: lot.recall_notes,
           }

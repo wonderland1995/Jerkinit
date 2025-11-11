@@ -7,6 +7,7 @@ import { AiFillEdit } from 'react-icons/ai';
 import { FaDeleteLeft } from 'react-icons/fa6';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import DeleteBatchModal from '@/components/DeleteBatchModal';
+import RecallBatchModal from '@/components/RecallBatchModal';
 import { useToast } from '@/components/ToastProvider';
 import { formatQuantity } from '@/lib/utils';
 import {
@@ -101,6 +102,9 @@ interface BatchDetails {
   scaling_factor: number | null;
   production_date: string | null;
   status: BatchStatus;
+  release_status?: 'pending' | 'approved' | 'rejected' | 'hold' | 'recalled' | null;
+  recall_reason?: string | null;
+  recall_notes?: string | null;
   recipe?: { name: string; recipe_code: string };
 }
 
@@ -226,6 +230,9 @@ export default function BatchDetailPage() {
   const [savedFlash, setSavedFlash] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showRecallModal, setShowRecallModal] = useState(false);
+  const [recallLoading, setRecallLoading] = useState(false);
+  const [recallError, setRecallError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [cureSettings, setCureSettings] = useState<CurePpmSettings>(DEFAULT_CURE_SETTINGS);
 
@@ -326,6 +333,41 @@ export default function BatchDetailPage() {
     } else {
       setQaSummary(null);
     }
+  };
+
+  const handleRecallSubmit = async (reason: string, notes: string) => {
+    setRecallError(null);
+    setRecallLoading(true);
+    try {
+      const res = await fetch(`/api/batches/${batchId}/recall`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason, notes }),
+      });
+
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        const message = body.error ?? 'Failed to mark batch as recalled.';
+        setRecallError(message);
+        return false;
+      }
+
+      await fetchBatch();
+      toast.success('Batch marked as recalled.');
+      setShowRecallModal(false);
+      return true;
+    } catch (error) {
+      setRecallError(error instanceof Error ? error.message : 'Failed to mark batch as recalled.');
+      return false;
+    } finally {
+      setRecallLoading(false);
+    }
+  };
+
+  const handleCloseRecallModal = () => {
+    if (recallLoading) return;
+    setShowRecallModal(false);
+    setRecallError(null);
   };
 
   const loadBeefAllocations = async () => {
@@ -1266,6 +1308,14 @@ export default function BatchDetailPage() {
           </div>
         </div>
 
+        {batch.release_status === 'recalled' && (
+          <div className="mb-6 rounded-xl border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-900">
+            <p className="font-semibold">This batch has been recalled.</p>
+            {batch.recall_reason && <p className="mt-1">{batch.recall_reason}</p>}
+            {batch.recall_notes && <p className="mt-1 text-purple-800">{batch.recall_notes}</p>}
+          </div>
+        )}
+
         {/* Batch + Stage Info */}
         <div className="bg-white rounded-xl shadow p-6 mb-6">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -1839,6 +1889,18 @@ export default function BatchDetailPage() {
             </button>
           ) : null}
 
+          {batch.release_status && batch.release_status !== 'recalled' && (
+            <button
+              onClick={() => {
+                setShowRecallModal(true);
+                setRecallError(null);
+              }}
+              className="inline-flex items-center gap-2 rounded-lg border border-purple-200 px-4 py-2 text-sm font-medium text-purple-700 hover:bg-purple-50"
+            >
+              Recall Batch
+            </button>
+          )}
+
           <button
             onClick={() => setShowDeleteModal(true)}
             className="ml-auto flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
@@ -1848,6 +1910,15 @@ export default function BatchDetailPage() {
           </button>
         </div>
       </div>
+
+      <RecallBatchModal
+        isOpen={showRecallModal}
+        onClose={handleCloseRecallModal}
+        onSubmit={handleRecallSubmit}
+        loading={recallLoading}
+        error={recallError}
+        batchNumber={batchDisplayId}
+      />
 
       <DeleteBatchModal
         isOpen={showDeleteModal}

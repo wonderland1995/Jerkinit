@@ -79,15 +79,19 @@ export default function RecallLauncher({ open, onClose, onSuccess }: RecallLaunc
             ? ((data as { lots?: Array<Record<string, unknown>> }).lots ?? [])
             : [];
           setOptions(
-            lots.map((lot) => ({
-              id: String(lot.id),
-              label: `Lot ${lot.lot_number ?? lot.internal_lot_code ?? 'Unknown'}`,
-              description: lot.material?.name ?? 'Unknown material',
-              meta:
-                typeof lot.current_balance === 'number'
-                  ? `${Number(lot.current_balance).toFixed(0)} ${lot.unit ?? 'g'}`
-                  : null,
-            })),
+            lots.map((lot) => {
+              const materialRel = lot.material;
+              const material = Array.isArray(materialRel) ? materialRel[0] : materialRel;
+              return {
+                id: String(lot.id),
+                label: `Lot ${lot.lot_number ?? lot.internal_lot_code ?? 'Unknown'}`,
+                description: material?.name ?? 'Unknown material',
+                meta:
+                  typeof lot.current_balance === 'number'
+                    ? `${Number(lot.current_balance).toFixed(0)} ${lot.unit ?? 'g'}`
+                    : null,
+              };
+            }),
           );
         } else {
           const batches = Array.isArray((data as { batches?: unknown[] }).batches)

@@ -236,23 +236,33 @@ const quickCreateMaterial = async () => {
           {/* Basic Info */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-  <label className="block text-sm font-medium text-gray-700 mb-1">
-    Product *
-  </label>
-  <select
-    required
-    value={productId}
-    onChange={(e) => setProductId(e.target.value)}
-    className="w-full border border-gray-300 rounded px-3 py-2"
-  >
-    <option value="">Select product...</option>
-    {products.map((p) => (
-      <option key={p.id} value={p.id}>
-        {p.name} ({p.code})
-      </option>
-    ))}
-  </select>
-</div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium text-gray-700">
+                  Product *
+                </label>
+                <a
+                  href="/products"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-800"
+                >
+                  + New product
+                </a>
+              </div>
+              <select
+                required
+                value={productId}
+                onChange={(e) => setProductId(e.target.value)}
+                className="w-full border border-gray-300 rounded px-3 py-2"
+              >
+                <option value="">Select product...</option>
+                {products.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.code})
+                  </option>
+                ))}
+              </select>
+            </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">

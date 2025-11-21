@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import type { Recipe } from '@/types/inventory';
@@ -23,7 +24,7 @@ export default function RecipesPage() {
     <div className="min-h-screen bg-gray-50">
       <Breadcrumbs items={[
         { label: 'Dashboard', href: '/' },
-        { label: 'Recipes', href: '/recipes' }
+        { label: 'All recipes', href: '/recipes' }
       ]} />
 
       <div className="mb-6 flex justify-between items-center">
@@ -34,6 +35,17 @@ export default function RecipesPage() {
         >
           + Create Recipe
         </button>
+      </div>
+
+      <div className="mb-6 rounded-xl border border-blue-100 bg-blue-50/60 p-4 text-sm text-gray-700">
+        <p>
+          Each recipe links directly to a product. Make sure the product exists before starting a new recipe.
+          Manage them on the{' '}
+          <Link href="/products" className="font-semibold text-blue-700 underline hover:text-blue-900">
+            Products page
+          </Link>
+          .
+        </p>
       </div>
 
       {loading ? (

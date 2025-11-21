@@ -54,9 +54,9 @@ const thermalProgram = [
 ];
 
 const measurementSteps = [
-  'Composite sample pulled from the thickest pieces immediately after the final 75 °C hold.',
-  'Sample rested to ambient and sealed in the AquaLab Pawkit chamber per the manufacturer’s SOP.',
-  'Stabilized reading recorded: 0.793 aw.',
+  'After the final 75 °C hold, a composite from every flavour produced that day is sealed and labelled as one production “batch”.',
+  'Each production day counts as a batch for verification; after ten days the retained samples are chilled and couriered to the accredited lab.',
+  'The lab issues the official water activity report (latest series confirmed 0.793 aw).',
 ];
 
 export const metadata: Metadata = {
@@ -152,7 +152,7 @@ export default function WaterActivityProofPage() {
                 Measured result: {awReading.toFixed(3)} aw
               </h2>
               <p className="text-sm text-gray-600">
-                Reading recorded on the AquaLab Pawkit following the manufacturer’s SOP.
+                Verification is performed by an external laboratory after every ten production days (each day is logged as a batch even when multiple flavours run).
               </p>
             </div>
           </div>

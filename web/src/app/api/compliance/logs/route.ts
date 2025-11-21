@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
-import { createClient } from '@/lib/db';
+import { getServerSession } from 'next-auth';
+import { createServerClient } from '@/lib/db';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import type { ComplianceLog } from '@/types/compliance';
+import { authOptions } from '@/lib/auth/options';
 
 const BUCKET = 'compliance-proof';
 
@@ -17,7 +19,12 @@ function buildPublicUrl(path: string) {
 }
 
 export async function GET(request: NextRequest) {
-  const supabase = createClient();
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const supabase = createServerClient();
   const { searchParams } = new URL(request.url);
   const taskId = searchParams.get('taskId');
   if (!taskId) {
@@ -42,7 +49,12 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = createClient();
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const supabase = createServerClient();
 
   let form: FormData;
   try {

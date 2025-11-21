@@ -2,7 +2,17 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ClipboardCheck, Search, Filter, Calendar, TrendingUp, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
+import {
+  ClipboardCheck,
+  Search,
+  Filter,
+  Calendar,
+  TrendingUp,
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  Droplet,
+} from 'lucide-react';
 import type { Route } from 'next';
 import type { ComplianceTaskWithStatus } from '@/types/compliance';
 import { formatDate } from '@/lib/utils';
@@ -186,6 +196,29 @@ export default function QAPage() {
             value={stats.failed_checks}
             color="red"
           />
+        </div>
+
+        <div className="mb-8 rounded-2xl border border-blue-100 bg-gradient-to-r from-sky-50 via-white to-emerald-50 p-6 shadow-sm">
+          <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="rounded-2xl bg-white p-3 shadow-sm">
+                <Droplet className="h-6 w-6 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Water activity verification</p>
+                <h2 className="text-lg font-semibold text-gray-900">Proof of drying method</h2>
+                <p className="text-sm text-gray-600">
+                  Review the documented time, temperature, and weight-loss data that delivered the 0.793 aw reading and 55% target.
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/qa/water-activity-proof"
+              className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-6 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
+            >
+              View proof of method
+            </Link>
+          </div>
         </div>
 
         {/* General Compliance Snapshot */}

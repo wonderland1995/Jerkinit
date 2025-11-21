@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { getServerSession } from 'next-auth';
-import { createServerClient } from '@/lib/db';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import type { ComplianceLog } from '@/types/compliance';
 import { authOptions } from '@/lib/auth/options';
@@ -38,7 +37,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const supabase = createServerClient();
   const { searchParams } = new URL(request.url);
   const taskId = searchParams.get('taskId');
   if (!taskId) {
@@ -48,7 +46,7 @@ export async function GET(request: NextRequest) {
   const limitParam = searchParams.get('limit');
   const limit = limitParam ? Math.min(Math.max(Number(limitParam), 1), 200) : 25;
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from('compliance_logs')
     .select('*')
     .eq('compliance_task_id', taskId)

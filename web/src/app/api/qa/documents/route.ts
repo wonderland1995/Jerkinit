@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
     storage_path: storageKey,
   };
 
-  const { data: inserted, error: insertErr } = await supabase
+  const { data: inserted, error: insertErr } = await supabaseAdmin
     .from('qa_documents')
     .insert({
       batch_id,
@@ -186,7 +186,7 @@ export async function DELETE(request: NextRequest) {
     }
   }
 
-  const { error: deleteErr } = await supabase.from('qa_documents').delete().eq('id', documentId);
+  const { error: deleteErr } = await supabaseAdmin.from('qa_documents').delete().eq('id', documentId);
   if (deleteErr) {
     return NextResponse.json({ error: deleteErr.message }, { status: 500 });
   }

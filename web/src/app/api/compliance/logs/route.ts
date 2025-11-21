@@ -68,8 +68,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const supabase = createServerClient();
-
   let form: FormData;
   try {
     form = await request.formData();
@@ -152,7 +150,7 @@ export async function POST(request: NextRequest) {
     proofFilename = file.name;
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from('compliance_logs')
     .insert({
       compliance_task_id: taskId,

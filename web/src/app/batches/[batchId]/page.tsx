@@ -1081,7 +1081,7 @@ export default function BatchDetailPage() {
     async (
       material_id: string,
       unit: Unit,
-      opts?: { overrideAmount?: number; silent?: boolean }
+      opts?: { overrideAmount?: number; overrideTolerance?: number; silent?: boolean }
     ) => {
       const rawFromState = actualInputs[material_id];
       const hasOverride = typeof opts?.overrideAmount === 'number';
@@ -1090,7 +1090,18 @@ export default function BatchDetailPage() {
         if (!opts?.silent) {
           toast.error('Please enter a positive number.');
         }
-        return;
+        return false;
+      }
+
+      const body: Record<string, unknown> = {
+        material_id,
+        actual_amount: amt,
+        unit,
+        recorded_by: 'UI',
+      };
+
+      if (typeof opts?.overrideTolerance === 'number' && opts.overrideTolerance > 0) {
+        body.tolerance_percentage = opts.overrideTolerance;
       }
 
       setSaving((s) => ({ ...s, [material_id]: true }));
@@ -1098,7 +1109,7 @@ export default function BatchDetailPage() {
         const res = await fetch(`/api/batches/${batchId}/ingredients/actuals`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ material_id, actual_amount: amt, unit, recorded_by: 'UI' }),
+          body: JSON.stringify(body),
         });
         const j = (await res.json().catch(() => ({}))) as { actual?: ActualRow; error?: string };
         if (!res.ok || !j.actual) {
@@ -1107,7 +1118,7 @@ export default function BatchDetailPage() {
           } else {
             console.error('Failed to save cure actual', j.error);
           }
-          return;
+          return false;
         }
         const responseUnit = (j.actual.unit as Unit | undefined) ?? unit;
         setActuals((prev) => ({ ...prev, [material_id]: j.actual }));
@@ -1119,10 +1130,11 @@ export default function BatchDetailPage() {
         setTimeout(() => {
           setSavedFlash((f) => ({ ...f, [material_id]: false }));
         }, 1200);
+        return true;
       } finally {
         setSaving((s) => ({ ...s, [material_id]: false }));
       }
-  },
+    },
     [actualInputs, batchId, toast]
   );
 
@@ -1132,6 +1144,34 @@ export default function BatchDetailPage() {
     if (criticals.length === 0) return true;
     return criticals.every((r) => r.inTol === true);
   }, [rows]);
+
+  const overrideOutOfTolerance = useCallback(
+    async (materialId: string, unit: Unit, actualVal: number | null, diffPct: number | null) => {
+      if (!Number.isFinite(actualVal ?? NaN) || !actualVal || actualVal <= 0) {
+        toast.error('Record an actual amount before overriding.');
+        return;
+      }
+      if (diffPct == null) {
+        toast.error('Unable to determine the deviation for this ingredient.');
+        return;
+      }
+      const overrideTolerance = diffPct + 0.1;
+      const confirmOverride = confirm(
+        `Override to “in tolerance” by allowing up to ${overrideTolerance.toFixed(
+          2
+        )}% deviation?`
+      );
+      if (!confirmOverride) return;
+      const ok = await saveActual(materialId, unit, {
+        overrideAmount: actualVal,
+        overrideTolerance,
+      });
+      if (ok) {
+        toast.success('Override recorded. Ingredient marked in tolerance.');
+      }
+    },
+    [saveActual, toast]
+  );
 
   useEffect(() => {
     if (!cureSummary || !cureSummary.materialId) return;
@@ -1792,9 +1832,28 @@ export default function BatchDetailPage() {
                               OK
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 px-2 py-0.5">
-                              Out
-                            </span>
+                            <div className="space-y-2">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 px-2 py-0.5">
+                                Out
+                              </span>
+                              {r.actualVal != null && r.actualVal > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void overrideOutOfTolerance(
+                                      r.material_id,
+                                      targetUnitLabel,
+                                      r.actualVal,
+                                      r.diffPct
+                                    )
+                                  }
+                                  disabled={saving[r.material_id]}
+                                  className="text-xs font-medium text-blue-700 hover:text-blue-900 disabled:opacity-50"
+                                >
+                                  Override to in
+                                </button>
+                              )}
+                            </div>
                           )}
                           {cureRowMatch && cureDetails && (
                             <div className="text-xs text-gray-500 mt-1">

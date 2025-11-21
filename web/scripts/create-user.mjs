@@ -49,13 +49,10 @@ function question(query, { silent = false } = {}) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey =
-    process.env.SUPABASE_SERVICE_KEY ??
-    process.env.SUPABASE_SERVICE_ROLE_KEY ??
-    process.env.SUPABASE_SERVICE_ROLE;
+  const serviceKey = process.env.SUPABASE_SERVICE_KEY;
 
   if (!supabaseUrl || !serviceKey) {
-    stderr.write('Missing SUPABASE_URL and/or service-role key environment variables.\n');
+    stderr.write('Missing SUPABASE_URL and/or SUPABASE_SERVICE_KEY environment variables.\n');
     exit(1);
   }
 

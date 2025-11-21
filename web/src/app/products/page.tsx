@@ -26,10 +26,6 @@ export default function ProductsPage() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<ProductFormState>(defaultForm);
 
-  useEffect(() => {
-    void loadProducts();
-  }, [loadProducts]);
-
   const loadProducts = useCallback(async () => {
     setLoading(true);
     try {
@@ -43,6 +39,10 @@ export default function ProductsPage() {
       setLoading(false);
     }
   }, [toast]);
+
+  useEffect(() => {
+    void loadProducts();
+  }, [loadProducts]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();

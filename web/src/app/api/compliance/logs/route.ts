@@ -8,18 +8,30 @@ import { authOptions } from '@/lib/auth/options';
 
 const BUCKET = 'compliance-proof';
 
+let bucketChecked = false;
+
 async function ensureBucketExists() {
+  if (bucketChecked) return;
   const { data, error } = await supabaseAdmin.storage.getBucket(BUCKET);
-  if (data) return;
-  if (error && !/not found/i.test(error.message ?? '')) {
-    throw error;
+  if (data) {
+    bucketChecked = true;
+    return;
   }
+
+  if (error && !/not found/i.test(error.message ?? '')) {
+    console.warn('Unable to read compliance-proof bucket:', error.message ?? error);
+    return;
+  }
+
   const { error: createError } = await supabaseAdmin.storage.createBucket(BUCKET, {
     public: true,
   });
   if (createError && !/already exists/i.test(createError.message ?? '')) {
-    throw createError;
+    console.warn('Unable to create compliance-proof bucket:', createError.message ?? createError);
+    return;
   }
+
+  bucketChecked = true;
 }
 
 function buildPublicUrl(path: string) {
@@ -126,12 +138,7 @@ export async function POST(request: NextRequest) {
     const storageKey = `${taskId}/${randomUUID()}${safeExt}`;
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    try {
-      await ensureBucketExists();
-    } catch (bucketError) {
-      console.error('Failed to ensure compliance proof bucket', bucketError);
-      return NextResponse.json({ error: 'Unable to access compliance proof storage bucket.' }, { status: 500 });
-    }
+    await ensureBucketExists();
 
     const { error: uploadError } = await supabaseAdmin.storage
       .from(BUCKET)

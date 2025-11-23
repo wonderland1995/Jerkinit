@@ -10,11 +10,11 @@ type Card = {
   tone?: 'ok' | 'warn' | 'alert';
 };
 
-const toneClass: Record<Card['tone'] & string, string> = {
+const toneClass: Record<'ok' | 'warn' | 'alert' | 'default', string> = {
   ok: 'bg-emerald-50 border-emerald-200 text-emerald-800',
   warn: 'bg-amber-50 border-amber-200 text-amber-800',
   alert: 'bg-red-50 border-red-200 text-red-800',
-  undefined: 'bg-slate-50 border-slate-200 text-slate-800',
+  default: 'bg-slate-50 border-slate-200 text-slate-800',
 };
 
 export default function AuditSnapshotPage() {
@@ -84,7 +84,7 @@ export default function AuditSnapshotPage() {
           {cards.map((card) => (
             <div
               key={card.title}
-              className={`rounded-xl border p-4 shadow-sm ${toneClass[card.tone ?? '']}`}
+          className={`rounded-xl border p-4 shadow-sm ${toneClass[card.tone ?? 'default']}`}
             >
               <p className="text-xs font-semibold uppercase tracking-wide">{card.title}</p>
               <p className="mt-2 text-xl font-bold">{card.value}</p>

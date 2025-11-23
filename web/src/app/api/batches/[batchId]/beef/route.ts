@@ -23,6 +23,8 @@ type BeefAllocationRow = {
     lot_number: string;
     internal_lot_code: string;
     current_balance: number;
+    certificate_of_analysis?: Record<string, unknown> | null;
+    passed_receiving_qa?: boolean | null;
     unit?: string | null;
     material?: { unit?: string | null } | Array<{ unit?: string | null }> | null;
     received_date: string | null;
@@ -65,6 +67,7 @@ export async function GET(
       id, batch_id, lot_id, material_id, quantity_used, unit, allocated_at,
       lot:lots (
         id, lot_number, internal_lot_code, current_balance, received_date, expiry_date,
+        certificate_of_analysis, passed_receiving_qa,
         material:materials(unit),
         supplier:suppliers(name)
       )

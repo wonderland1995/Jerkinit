@@ -635,7 +635,6 @@ export default function BatchDetailPage() {
       const beefAllocations = Array.isArray(beefJson.allocations) ? beefJson.allocations : [];
       const recordedBeefTotal =
         typeof beefJson.total_g === 'number' ? beefJson.total_g : beefTotalG;
-
       const formatStatus = (value: BatchStatus) =>
         value
           .split('_')
@@ -643,10 +642,48 @@ export default function BatchDetailPage() {
           .join(' ');
 
       const formatDateTime = (value: string | null | undefined) => {
-        if (!value) return '—';
+        if (!value) return '-';
         const dt = new Date(value);
-        return Number.isNaN(dt.getTime()) ? '—' : dt.toLocaleString();
+        return Number.isNaN(dt.getTime()) ? '-' : dt.toLocaleString();
       };
+
+      const beefQaByLot: Array<{
+        lot_number: string;
+        internal_code: string;
+        temp: string;
+        packaging: string;
+        odour: string;
+        visual: string;
+        result: string;
+        checkedAt: string;
+      }> = [];
+      const seenLots = new Set<string>();
+      for (const alloc of beefAllocations) {
+        const lot = Array.isArray(alloc.lot) ? alloc.lot[0] : alloc.lot;
+        if (!lot || !lot.id || seenLots.has(lot.id)) continue;
+        seenLots.add(lot.id);
+        const coa =
+          lot.certificate_of_analysis && typeof lot.certificate_of_analysis === 'object'
+            ? (lot.certificate_of_analysis as Record<string, unknown>)
+            : {};
+        const temp = typeof coa['receiving_temp_c'] === 'number' ? `${coa['receiving_temp_c']} °C` : '-';
+        const packaging = coa['packaging_intact'] === false ? 'Fail' : coa['packaging_intact'] === true ? 'OK' : '-';
+        const odour = coa['odour_ok'] === false ? 'Fail' : coa['odour_ok'] === true ? 'OK' : '-';
+        const visual = coa['visual_ok'] === false ? 'Fail' : coa['visual_ok'] === true ? 'OK' : '-';
+        const result = lot.passed_receiving_qa === false ? 'Fail' : lot.passed_receiving_qa === true ? 'Pass' : '-';
+        const checkedAt =
+          typeof coa['check_time'] === 'string' ? formatDateTime(coa['check_time']) : '';
+        beefQaByLot.push({
+          lot_number: lot.lot_number,
+          internal_code: lot.internal_lot_code,
+          temp,
+          packaging,
+          odour,
+          visual,
+          result,
+          checkedAt,
+        });
+      }
 
       const formatTemperatures = (checkpoint: QaCheckpointReport) => {
         const parts: string[] = [];
@@ -931,18 +968,29 @@ export default function BatchDetailPage() {
       doc.text('Beef QA Checks', marginLeft, cursorY);
       cursorY += 4;
 
-      if (beefQaCheckpoints.length > 0) {
-        const beefQaRows = beefQaCheckpoints.map(toQaRow);
+      if (beefQaByLot.length > 0) {
+        const beefQaRows = beefQaByLot.map((row) => [
+          row.lot_number ?? '-',
+          row.internal_code ?? '-',
+          row.temp,
+          row.packaging,
+          row.odour,
+          row.visual,
+          row.result,
+          row.checkedAt || '-',
+        ]);
         autoTableFn(doc, {
           startY: cursorY,
-          head: [['Checkpoint', 'Stage', 'Status', 'Temperatures', 'Other Readings', 'Checked At']],
+          head: [
+            ['Lot #', 'Internal Code', 'Receiving Temp', 'Packaging', 'Odour', 'Visual', 'Result', 'Checked At'],
+          ],
           body: beefQaRows,
           styles: { fontSize: 9, cellPadding: 2 },
           headStyles: { fillColor: [59, 7, 100], textColor: 255 },
         });
       } else {
         doc.setFontSize(10);
-        doc.text('No beef-specific QA checkpoints recorded.', marginLeft, cursorY);
+        doc.text('No beef receiving QA recorded from lots.', marginLeft, cursorY);
       }
 
       const filename = `${batchLabel}-batch-report.pdf`;

@@ -104,14 +104,12 @@ export default function BatchQAPage() {
     () =>
       new Set([
         'DRY-PREHEAT',
-        'DRY-CCP-004',
         'MIX-INGR',
         'MAR-FSP-SALT',
         'MAR-FSP-TIME',
         'DRY-FSP-OVEN',
         'DRY-FSP-CORE',
         'DRY-FSP-AW-LAB',
-        'DRY-FSP-VALIDATION',
       ]),
     [],
   );
@@ -143,11 +141,7 @@ export default function BatchQAPage() {
             !excludedCheckpointCodes.has(c.code) &&
             (allowedCheckpointCodes.size === 0 || allowedCheckpointCodes.has(c.code)),
         )
-        .map((c) =>
-          ['DRY-FSP-AW-LAB', 'FIN-RELEASE'].includes(c.code)
-            ? { ...c, required: false }
-            : c
-        )
+        .map((c) => (c.code === 'FIN-RELEASE' ? { ...c, required: false } : c))
         .sort((a, b) =>
           a.stage === b.stage
             ? a.display_order - b.display_order || (b.required ? 1 : -1)

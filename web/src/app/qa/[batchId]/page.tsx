@@ -105,15 +105,20 @@ export default function BatchQAPage() {
       new Set([
         'DRY-PREHEAT',
         'DRY-CCP-004',
+        'MIX-INGR',
         'MAR-FSP-SALT',
         'MAR-FSP-TIME',
         'DRY-FSP-OVEN',
         'DRY-FSP-CORE',
         'DRY-FSP-AW-LAB',
         'DRY-FSP-VALIDATION',
-        'FIN-RELEASE',
       ]),
     [],
+  );
+  const availableStages = useMemo(
+    () =>
+      STAGES.filter((s) => checkpoints.some((c) => c.stage === s.key)),
+    [checkpoints],
   );
 
   const fetchData = useCallback(async () => {
@@ -138,6 +143,11 @@ export default function BatchQAPage() {
             !excludedCheckpointCodes.has(c.code) &&
             (allowedCheckpointCodes.size === 0 || allowedCheckpointCodes.has(c.code)),
         )
+        .map((c) =>
+          ['DRY-FSP-AW-LAB', 'FIN-RELEASE'].includes(c.code)
+            ? { ...c, required: false }
+            : c
+        )
         .sort((a, b) =>
           a.stage === b.stage
             ? a.display_order - b.display_order || (b.required ? 1 : -1)
@@ -156,6 +166,13 @@ export default function BatchQAPage() {
       setLoading(false);
     }
   }, [batchId]);
+
+  useEffect(() => {
+    if (availableStages.length === 0) return;
+    if (!availableStages.some((s) => s.key === activeStage)) {
+      setActiveStage(availableStages[0]?.key ?? 'preparation');
+    }
+  }, [availableStages, activeStage]);
 
   const fetchDocuments = useCallback(async () => {
     try {
@@ -447,7 +464,21 @@ export default function BatchQAPage() {
       parts.push(`${baseText}${adjText}${adjustNote ? ` - ${adjustNote}` : ''}`);
     }
 
-    if (metadata && metadata.lab_aw && typeof metadata.lab_aw === 'object') {
+    if (metadata && metadata.process_check && typeof metadata.process_check === 'object') {
+      const pc = metadata.process_check as {
+        temp_met?: boolean;
+        weight_met?: boolean;
+        runtime_logged?: boolean;
+      };
+      const ok = [
+        pc.temp_met ? 'Internal temp met' : null,
+        pc.weight_met ? 'Weight loss met' : null,
+        pc.runtime_logged ? 'Runtime logged' : null,
+      ].filter(Boolean);
+      if (ok.length > 0) {
+        parts.push(`Process checks: ${ok.join(', ')}`);
+      }
+    } else if (metadata && metadata.lab_aw && typeof metadata.lab_aw === 'object') {
       const lab = metadata.lab_aw as {
         sample_id?: string | null;
         lab_name?: string | null;
@@ -633,7 +664,7 @@ export default function BatchQAPage() {
       <div className="sticky top-[81px] z-10 bg-white/90 backdrop-blur border-b">
         <div className="mx-auto max-w-6xl px-4 sm:px-5">
           <div className="flex gap-2 overflow-x-auto py-2">
-            {STAGES.map((s) => {
+            {availableStages.map((s) => {
               const list = checkpoints.filter((c) => c.stage === s.key);
               const passed = list.filter((c) => qaChecks[c.id]?.status === 'passed').length;
               const total = list.length;
@@ -918,6 +949,7 @@ type FieldFlags = {
   dryingRun?: boolean;
   marinationRun?: boolean;
   labAw?: boolean;
+  processConfirm?: boolean;
 };
 
 const toLocalDateTimeInput = (value?: string | null) => {
@@ -1105,6 +1137,21 @@ const extractLabAw = (metadata?: Record<string, unknown> | null) => {
   return { sampleId, labName, sentAt, resultAw: resultAwValue, resultAt };
 };
 
+const extractProcessConfirm = (metadata?: Record<string, unknown> | null) => {
+  if (!metadata || typeof metadata !== 'object') {
+    return { tempMet: false, weightMet: false, runtimeLogged: false };
+  }
+  const raw = (metadata as Record<string, unknown>)['process_check'];
+  if (!raw || typeof raw !== 'object') {
+    return { tempMet: false, weightMet: false, runtimeLogged: false };
+  }
+  return {
+    tempMet: Boolean((raw as Record<string, unknown>)['temp_met']),
+    weightMet: Boolean((raw as Record<string, unknown>)['weight_met']),
+    runtimeLogged: Boolean((raw as Record<string, unknown>)['runtime_logged']),
+  };
+};
+
 // Map the EXACT inputs each checkpoint code needs.
 // Anything not listed falls back to "notes only".
 const FIELDS_BY_CODE: Record<string, FieldFlags> = {
@@ -1114,7 +1161,7 @@ const FIELDS_BY_CODE: Record<string, FieldFlags> = {
   'MAR-FSP-TIME': { temperature: true, notes: true, marinationRun: true },
   'DRY-FSP-OVEN': { temperature: true, notes: true, dryingRun: true },
   'DRY-FSP-CORE': { notes: true, tripleTemps: true },
-  'DRY-FSP-AW-LAB': { labAw: true, notes: true },
+  'DRY-FSP-AW-LAB': { notes: true, processConfirm: true },
   'DRY-FSP-VALIDATION': { notes: true },
   'DRY-PREHEAT': { temperature: true, notes: true },
 
@@ -1232,6 +1279,10 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
   const [labSentAt, setLabSentAt] = useState<string>(initialLabAw.sentAt);
   const [labResultAw, setLabResultAw] = useState<string>(initialLabAw.resultAw);
   const [labResultAt, setLabResultAt] = useState<string>(initialLabAw.resultAt);
+  const initialProcessConfirm = extractProcessConfirm((check?.metadata as Record<string, unknown> | null) ?? null);
+  const [processTempMet, setProcessTempMet] = useState<boolean>(initialProcessConfirm.tempMet);
+  const [processWeightMet, setProcessWeightMet] = useState<boolean>(initialProcessConfirm.weightMet);
+  const [processRuntimeLogged, setProcessRuntimeLogged] = useState<boolean>(initialProcessConfirm.runtimeLogged);
 
   const marinationDurationMinutes = useMemo(
     () => (fields.marinationRun ? computeDurationFromLocalInputs(marinationStart, marinationEnd) : null),
@@ -1290,6 +1341,16 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
       setLabResultAw('');
       setLabResultAt('');
     }
+    if (fields.processConfirm) {
+      const parsed = extractProcessConfirm((check?.metadata as Record<string, unknown> | null) ?? null);
+      setProcessTempMet(parsed.tempMet);
+      setProcessWeightMet(parsed.weightMet);
+      setProcessRuntimeLogged(parsed.runtimeLogged);
+    } else {
+      setProcessTempMet(false);
+      setProcessWeightMet(false);
+      setProcessRuntimeLogged(false);
+    }
   }, [
     check?.temperature_c,
     check?.humidity_percent,
@@ -1302,6 +1363,7 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
     fields.dryingRun,
     fields.marinationRun,
     fields.labAw,
+    fields.processConfirm,
   ]);
 
   const validateIfPassing = (nextStatus: QAStatus = status): string | null => {
@@ -1335,11 +1397,16 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
         return 'Water activity result must be numeric.';
       }
     }
+    if (fields.processConfirm && nextStatus === 'passed') {
+      if (!processTempMet || !processWeightMet || !processRuntimeLogged) {
+        return 'Confirm temperature, weight loss, and runtime are all documented.';
+      }
+    }
     return null;
   };
 
   const buildMetadataPayload = (): Record<string, unknown> | null => {
-    if (!fields.tripleTemps && !fields.dryingRun && !fields.marinationRun && !fields.labAw) {
+    if (!fields.tripleTemps && !fields.dryingRun && !fields.marinationRun && !fields.labAw && !fields.processConfirm) {
       return null;
     }
     const base =
@@ -1426,6 +1493,15 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
       mutated = true;
     }
 
+    if (fields.processConfirm) {
+      base['process_check'] = {
+        temp_met: processTempMet,
+        weight_met: processWeightMet,
+        runtime_logged: processRuntimeLogged,
+      };
+      mutated = true;
+    }
+
     return mutated ? base : null;
   };
 
@@ -1456,6 +1532,17 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
 
     if (fields.aw || fields.labAw) {
       payload.water_activity = waterActivityValue ?? (check?.water_activity ?? null);
+    }
+
+    if (fields.processConfirm) {
+      payload.metadata = {
+        ...(payload.metadata as Record<string, unknown> | undefined),
+        process_check: {
+          temp_met: processTempMet,
+          weight_met: processWeightMet,
+          runtime_logged: processRuntimeLogged,
+        },
+      };
     }
 
     const metadataPayload = buildMetadataPayload();
@@ -1778,6 +1865,45 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
                 </div>
                 <p className="mt-2 text-xs text-gray-600">
                   Use the temperature field above for the marinade temperature at load.
+                </p>
+              </div>
+            )}
+
+            {fields.processConfirm && (
+              <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-3">
+                <p className="text-sm font-medium text-gray-700">Drying process confirmation</p>
+                <div className="mt-3 space-y-2 text-sm text-gray-700">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={processTempMet}
+                      onChange={(e) => setProcessTempMet(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300"
+                    />
+                    Internal temp target met (≥72°C, two points)
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={processWeightMet}
+                      onChange={(e) => setProcessWeightMet(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300"
+                    />
+                    Weight loss target met (≥54%)
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={processRuntimeLogged}
+                      onChange={(e) => setProcessRuntimeLogged(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300"
+                    />
+                    Runtime recorded (start/finish documented)
+                  </label>
+                </div>
+                <p className="mt-2 text-xs text-gray-600">
+                  Mark this checkpoint Passed when the drying parameters above are all documented. Use notes for any
+                  exceptions.
                 </p>
               </div>
             )}

@@ -1081,7 +1081,7 @@ export default function BatchDetailPage() {
     async (
       material_id: string,
       unit: Unit,
-      opts?: { overrideAmount?: number; overrideTolerance?: number; silent?: boolean }
+      opts?: { overrideAmount?: number; overrideTolerance?: number; silent?: boolean; overrideComment?: string }
     ) => {
       const rawFromState = actualInputs[material_id];
       const hasOverride = typeof opts?.overrideAmount === 'number';
@@ -1097,7 +1097,7 @@ export default function BatchDetailPage() {
         material_id,
         actual_amount: amt,
         unit,
-        recorded_by: 'UI',
+        recorded_by: opts?.overrideComment ? `Override: ${opts.overrideComment}` : 'UI',
       };
 
       if (typeof opts?.overrideTolerance === 'number' && opts.overrideTolerance > 0) {
@@ -1145,6 +1145,14 @@ export default function BatchDetailPage() {
     return criticals.every((r) => r.inTol === true);
   }, [rows]);
 
+  const [overrideDialog, setOverrideDialog] = useState<{
+    materialId: string;
+    unit: Unit;
+    actualVal: number;
+    diffPct: number;
+  } | null>(null);
+  const [overrideComment, setOverrideComment] = useState('');
+
   const overrideOutOfTolerance = useCallback(
     async (materialId: string, unit: Unit, actualVal: number | null, diffPct: number | null) => {
       if (!Number.isFinite(actualVal ?? NaN) || !actualVal || actualVal <= 0) {
@@ -1155,23 +1163,31 @@ export default function BatchDetailPage() {
         toast.error('Unable to determine the deviation for this ingredient.');
         return;
       }
-      const overrideTolerance = diffPct + 0.1;
-      const confirmOverride = confirm(
-        `Override to “in tolerance” by allowing up to ${overrideTolerance.toFixed(
-          2
-        )}% deviation?`
-      );
-      if (!confirmOverride) return;
-      const ok = await saveActual(materialId, unit, {
-        overrideAmount: actualVal,
-        overrideTolerance,
-      });
-      if (ok) {
-        toast.success('Override recorded. Ingredient marked in tolerance.');
-      }
+      setOverrideDialog({ materialId, unit, actualVal, diffPct });
+      setOverrideComment('');
     },
-    [saveActual, toast]
+    [toast]
   );
+
+  const confirmOverride = useCallback(async () => {
+    if (!overrideDialog) return;
+    const { materialId, unit, actualVal, diffPct } = overrideDialog;
+    const overrideTolerance = diffPct + 0.1;
+    if (!overrideComment.trim()) {
+      toast.error('Please add a short comment for the override.');
+      return;
+    }
+    const ok = await saveActual(materialId, unit, {
+      overrideAmount: actualVal,
+      overrideTolerance,
+      overrideComment: overrideComment.trim(),
+    });
+    if (ok) {
+      toast.success('Override recorded. Ingredient marked in tolerance.');
+      setOverrideDialog(null);
+      setOverrideComment('');
+    }
+  }, [overrideDialog, overrideComment, saveActual, toast]);
 
   useEffect(() => {
     if (!cureSummary || !cureSummary.materialId) return;
@@ -1307,6 +1323,60 @@ export default function BatchDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {overrideDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-semibold text-gray-900">Override out-of-tolerance</h3>
+            <p className="mt-2 text-sm text-gray-600">
+              This will mark the ingredient as in tolerance by widening the tolerance limit. Add a short justification.
+            </p>
+            <div className="mt-4 space-y-2 text-sm text-gray-700">
+              <div className="flex justify-between">
+                <span>Actual amount</span>
+                <span className="font-semibold">{overrideDialog.actualVal}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Current deviation</span>
+                <span className="font-semibold">{overrideDialog.diffPct.toFixed(2)}%</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Proposed tolerance</span>
+                <span className="font-semibold">{(overrideDialog.diffPct + 0.1).toFixed(2)}%</span>
+              </div>
+            </div>
+            <div className="mt-4">
+              <label className="mb-1 block text-sm font-medium text-gray-700">Comment</label>
+              <textarea
+                value={overrideComment}
+                onChange={(e) => setOverrideComment(e.target.value)}
+                className="w-full rounded-lg border px-3 py-2 text-sm"
+                rows={3}
+                placeholder="Why is this override acceptable?"
+              />
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg border px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                onClick={() => {
+                  setOverrideDialog(null);
+                  setOverrideComment('');
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                onClick={() => void confirmOverride()}
+              >
+                Confirm override
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-6xl mx-auto px-6 py-6">
         <Breadcrumbs
           items={[

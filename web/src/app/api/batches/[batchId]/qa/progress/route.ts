@@ -29,6 +29,15 @@ type StageProgress = {
 };
 
 const STAGE_ORDER: Stage[] = ['preparation', 'mixing', 'marination', 'drying', 'packaging', 'final'];
+const ALLOWED_CODES = new Set([
+  'DRY-PREHEAT',
+  'MIX-INGR',
+  'MAR-FSP-SALT',
+  'MAR-FSP-TIME',
+  'DRY-FSP-OVEN',
+  'DRY-FSP-CORE',
+  'DRY-FSP-AW-LAB',
+]);
 
 export async function GET(
   _req: NextRequest,
@@ -50,7 +59,9 @@ export async function GET(
     return NextResponse.json({ error: cpErr.message }, { status: 500 });
   }
 
-  const checkpoints = (cpRows ?? []) as Checkpoint[];
+  const checkpoints = ((cpRows ?? []) as Checkpoint[]).filter((cp) =>
+    cp.code ? ALLOWED_CODES.has(cp.code) : true
+  );
 
   // 2) Load batch checks for this batch
   const { data: chkRows, error: chErr } = await supabase

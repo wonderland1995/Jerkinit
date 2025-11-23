@@ -7,7 +7,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useToast } from '@/components/ToastProvider';
 import { Download, FileDown, FileText, Loader2, Camera, Trash2 } from 'lucide-react';
 import { formatDateTime } from '@/lib/utils';
-import type { QADocument } from '@/types/qa';
+import type { QADocument, QADocumentType } from '@/types/qa';
 
 // ---------- Types that match your DB ----------
 type Stage =
@@ -90,12 +90,14 @@ export default function BatchQAPage() {
   const [activeStage, setActiveStage] = useState<Stage>('preparation');
   const [documents, setDocuments] = useState<QADocumentWithType[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(true);
+  const [docTypes, setDocTypes] = useState<QADocumentType[]>([]);
+  const [docTypesLoading, setDocTypesLoading] = useState(true);
+  const [documentTypeCode, setDocumentTypeCode] = useState('QA-PHOTO');
   const [uploadingDocument, setUploadingDocument] = useState(false);
   const [documentNotes, setDocumentNotes] = useState('');
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const documentInputRef = useRef<HTMLInputElement | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
-  const documentTypeCode = 'QA-PHOTO';
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -149,6 +151,27 @@ export default function BatchQAPage() {
     }
   }, [batchId]);
 
+  const fetchDocTypes = useCallback(async () => {
+    try {
+      setDocTypesLoading(true);
+      const res = await fetch('/api/qa/document-types', { cache: 'no-store' });
+      if (!res.ok) throw new Error('Failed to load document types');
+      const data = (await res.json()) as { document_types?: QADocumentType[] };
+      const list = Array.isArray(data.document_types) ? data.document_types : [];
+      setDocTypes(list);
+      setDocumentTypeCode((prev) => {
+        if (prev && list.some((dt) => dt.code === prev)) return prev;
+        return list[0]?.code ?? 'QA-PHOTO';
+      });
+    } catch (error) {
+      console.error('Failed to load QA document types', error);
+      setDocTypes([]);
+      setDocumentTypeCode((prev) => prev || 'QA-PHOTO');
+    } finally {
+      setDocTypesLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void fetchData();
   }, [fetchData]);
@@ -156,6 +179,10 @@ export default function BatchQAPage() {
   useEffect(() => {
     void fetchDocuments();
   }, [fetchDocuments]);
+
+  useEffect(() => {
+    void fetchDocTypes();
+  }, [fetchDocTypes]);
 
   const stageCheckpoints = useMemo(
     () => checkpoints.filter((c) => c.stage === activeStage),
@@ -305,7 +332,7 @@ export default function BatchQAPage() {
     if (!check) return '-';
     const parts: string[] = [];
     if (typeof check.temperature_c === 'number') {
-      parts.push(`${Number(check.temperature_c).toFixed(1)} °C`);
+      parts.push(`${Number(check.temperature_c).toFixed(1)} deg C`);
     }
     const metadata =
       check.metadata && typeof check.metadata === 'object'
@@ -321,14 +348,20 @@ export default function BatchQAPage() {
             ? Number(reading.tempC)
             : null;
         if (tempValue != null && Number.isFinite(tempValue)) {
-          parts.push(`Piece ${idx + 1}: ${Number(tempValue).toFixed(1)} °C`);
+          parts.push(`Piece ${idx + 1}: ${Number(tempValue).toFixed(1)} deg C`);
         }
       });
     }
     if (metadata && metadata.drying_run && typeof metadata.drying_run === 'object') {
       const oven = (metadata.drying_run as Record<string, unknown>).oven_temp_c;
       if (typeof oven === 'number') {
-        parts.push(`Oven ${oven.toFixed(1)} °C`);
+        parts.push(`Oven ${oven.toFixed(1)} deg C`);
+      }
+    }
+    if (metadata && metadata.marination_run && typeof metadata.marination_run === 'object') {
+      const marinadeTemp = (metadata.marination_run as Record<string, unknown>).marinade_temp_c;
+      if (typeof marinadeTemp === 'number') {
+        parts.push(`Marinade ${marinadeTemp.toFixed(1)} deg C`);
       }
     }
     return parts.length ? parts.join('; ') : '-';
@@ -350,14 +383,57 @@ export default function BatchQAPage() {
       check.metadata && typeof check.metadata === 'object'
         ? (check.metadata as Record<string, unknown>)
         : null;
+
+    if (metadata && metadata.marination_run && typeof metadata.marination_run === 'object') {
+      const run = metadata.marination_run as { start_iso?: string; end_iso?: string; duration_minutes?: number | null };
+      const duration =
+        typeof run.duration_minutes === 'number'
+          ? run.duration_minutes
+          : computeDurationMinutes(run.start_iso ?? null, run.end_iso ?? null);
+      const window = `${run.start_iso ? formatDateTime(run.start_iso) : '-'} -> ${
+        run.end_iso ? formatDateTime(run.end_iso) : '-'
+      }`;
+      parts.push(`Marination ${window}${formatDurationMinutes(duration) ? ` (${formatDurationMinutes(duration)})` : ''}`);
+    }
+
     if (metadata && metadata.drying_run && typeof metadata.drying_run === 'object') {
-      const run = metadata.drying_run as { start_iso?: string; end_iso?: string };
-      if (run.start_iso || run.end_iso) {
-        parts.push(
-          `Drying ${run.start_iso ? formatDateTime(run.start_iso) : '-'} → ${
-            run.end_iso ? formatDateTime(run.end_iso) : '-'
-          }`,
-        );
+      const run = metadata.drying_run as { start_iso?: string; end_iso?: string; duration_minutes?: number | null };
+      const duration =
+        typeof run.duration_minutes === 'number'
+          ? run.duration_minutes
+          : computeDurationMinutes(run.start_iso ?? null, run.end_iso ?? null);
+      const window = `${run.start_iso ? formatDateTime(run.start_iso) : '-'} -> ${
+        run.end_iso ? formatDateTime(run.end_iso) : '-'
+      }`;
+      parts.push(`Drying ${window}${formatDurationMinutes(duration) ? ` (${formatDurationMinutes(duration)})` : ''}`);
+    }
+
+    if (metadata && metadata.lab_aw && typeof metadata.lab_aw === 'object') {
+      const lab = metadata.lab_aw as {
+        sample_id?: string | null;
+        lab_name?: string | null;
+        sent_iso?: string | null;
+        result_iso?: string | null;
+        result_aw?: number | string | null;
+      };
+      const rawAw =
+        typeof lab.result_aw === 'number'
+          ? lab.result_aw
+          : typeof lab.result_aw === 'string'
+          ? Number(lab.result_aw)
+          : null;
+      const awText = rawAw != null && Number.isFinite(rawAw) ? Number(rawAw).toFixed(3) : null;
+      const sentText = lab.sent_iso ? formatDateTime(lab.sent_iso) : null;
+      const resultText = lab.result_iso ? formatDateTime(lab.result_iso) : null;
+      const pieces = [
+        awText ? `aw ${awText}` : null,
+        lab.sample_id ? `sample ${lab.sample_id}` : null,
+        lab.lab_name ? `lab ${lab.lab_name}` : null,
+        sentText ? `sent ${sentText}` : null,
+        resultText ? `received ${resultText}` : null,
+      ].filter(Boolean);
+      if (pieces.length > 0) {
+        parts.push(`Lab: ${pieces.join(', ')}`);
       }
     }
     if (check.notes) {
@@ -675,6 +751,32 @@ export default function BatchQAPage() {
             </p>
             <form onSubmit={handleUploadDocument} className="mt-4 space-y-3">
               <div>
+                <label className="text-sm font-medium text-gray-700">Document type</label>
+                {docTypesLoading ? (
+                  <div className="mt-1 flex items-center gap-2 text-xs text-gray-500">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Loading types...
+                  </div>
+                ) : docTypes.length > 0 ? (
+                  <select
+                    value={documentTypeCode}
+                    onChange={(e) => setDocumentTypeCode(e.target.value)}
+                    className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                  >
+                    {docTypes.map((type) => (
+                      <option key={type.code} value={type.code}>
+                        {type.name}
+                        {type.required_for_batch ? ' (required)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="mt-1 text-xs text-gray-500">
+                    No document type metadata found. Defaulting to QA-PHOTO.
+                  </p>
+                )}
+              </div>
+              <div>
                 <label className="text-sm font-medium text-gray-700">File</label>
                 <input
                   ref={documentInputRef}
@@ -775,6 +877,8 @@ type FieldFlags = {
   managedExternally?: boolean; // shows banner, hides actions
   tripleTemps?: boolean;
   dryingRun?: boolean;
+  marinationRun?: boolean;
+  labAw?: boolean;
 };
 
 const toLocalDateTimeInput = (value?: string | null) => {
@@ -789,6 +893,28 @@ const toIsoFromLocalInput = (value?: string) => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return null;
   return new Date(parsed.getTime() + parsed.getTimezoneOffset() * 60000).toISOString();
+};
+
+const computeDurationMinutes = (startIso?: string | null, endIso?: string | null) => {
+  if (!startIso || !endIso) return null;
+  const start = new Date(startIso).getTime();
+  const end = new Date(endIso).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  const diff = end - start;
+  if (diff <= 0) return null;
+  return Math.round(diff / 60000);
+};
+
+const computeDurationFromLocalInputs = (startLocal?: string | null, endLocal?: string | null) =>
+  computeDurationMinutes(toIsoFromLocalInput(startLocal ?? undefined), toIsoFromLocalInput(endLocal ?? undefined));
+
+const formatDurationMinutes = (minutes?: number | null) => {
+  if (minutes == null || !Number.isFinite(minutes) || minutes < 0) return null;
+  const whole = Math.round(minutes);
+  const hours = Math.floor(whole / 60);
+  const mins = whole % 60;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
 };
 
 const extractTripleTemps = (metadata?: Record<string, unknown> | null): [string, string, string] => {
@@ -816,11 +942,11 @@ const extractTripleTemps = (metadata?: Record<string, unknown> | null): [string,
 
 const extractDryingRun = (metadata?: Record<string, unknown> | null) => {
   if (!metadata || typeof metadata !== 'object') {
-    return { oven: '', start: '', end: '' };
+    return { oven: '', start: '', end: '', durationMinutes: null as number | null };
   }
   const raw = (metadata as Record<string, unknown>)['drying_run'];
   if (!raw || typeof raw !== 'object') {
-    return { oven: '', start: '', end: '' };
+    return { oven: '', start: '', end: '', durationMinutes: null as number | null };
   }
   const ovenValue =
     typeof raw['oven_temp_c'] === 'number'
@@ -840,16 +966,92 @@ const extractDryingRun = (metadata?: Record<string, unknown> | null) => {
       : typeof raw['endISO'] === 'string'
       ? raw['endISO']
       : null;
+  const durationValue =
+    typeof raw['duration_minutes'] === 'number'
+      ? raw['duration_minutes']
+      : null;
   return {
     oven: Number.isFinite(ovenValue) ? String(ovenValue) : '',
     start: toLocalDateTimeInput(startRaw),
     end: toLocalDateTimeInput(endRaw),
+    durationMinutes: durationValue ?? computeDurationMinutes(startRaw, endRaw),
   };
+};
+
+const extractMarinationRun = (metadata?: Record<string, unknown> | null) => {
+  if (!metadata || typeof metadata !== 'object') {
+    return { start: '', end: '', durationMinutes: null as number | null };
+  }
+  const raw = (metadata as Record<string, unknown>)['marination_run'];
+  if (!raw || typeof raw !== 'object') {
+    return { start: '', end: '', durationMinutes: null as number | null };
+  }
+  const startRaw =
+    typeof raw['start_iso'] === 'string'
+      ? raw['start_iso']
+      : typeof raw['startISO'] === 'string'
+      ? raw['startISO']
+      : null;
+  const endRaw =
+    typeof raw['end_iso'] === 'string'
+      ? raw['end_iso']
+      : typeof raw['endISO'] === 'string'
+      ? raw['endISO']
+      : null;
+  const durationValue =
+    typeof raw['duration_minutes'] === 'number'
+      ? raw['duration_minutes']
+      : null;
+  return {
+    start: toLocalDateTimeInput(startRaw),
+    end: toLocalDateTimeInput(endRaw),
+    durationMinutes: durationValue ?? computeDurationMinutes(startRaw, endRaw),
+  };
+};
+
+const extractLabAw = (metadata?: Record<string, unknown> | null) => {
+  if (!metadata || typeof metadata !== 'object') {
+    return { sampleId: '', labName: '', sentAt: '', resultAw: '', resultAt: '' };
+  }
+  const raw = (metadata as Record<string, unknown>)['lab_aw'];
+  if (!raw || typeof raw !== 'object') {
+    return { sampleId: '', labName: '', sentAt: '', resultAw: '', resultAt: '' };
+  }
+  const sampleId = typeof raw['sample_id'] === 'string' ? raw['sample_id'] : '';
+  const labName = typeof raw['lab_name'] === 'string' ? raw['lab_name'] : '';
+  const resultAwValue =
+    typeof raw['result_aw'] === 'number'
+      ? String(raw['result_aw'])
+      : typeof raw['result_aw'] === 'string'
+      ? raw['result_aw']
+      : '';
+  const sentAt =
+    typeof raw['sent_iso'] === 'string'
+      ? toLocalDateTimeInput(raw['sent_iso'])
+      : typeof raw['sentISO'] === 'string'
+      ? toLocalDateTimeInput(raw['sentISO'])
+      : '';
+  const resultAt =
+    typeof raw['result_iso'] === 'string'
+      ? toLocalDateTimeInput(raw['result_iso'])
+      : typeof raw['resultISO'] === 'string'
+      ? toLocalDateTimeInput(raw['resultISO'])
+      : '';
+  return { sampleId, labName, sentAt, resultAw: resultAwValue, resultAt };
 };
 
 // Map the EXACT inputs each checkpoint code needs.
 // Anything not listed falls back to "notes only".
 const FIELDS_BY_CODE: Record<string, FieldFlags> = {
+  // --- FSP-specific checkpoints ---
+  'PREP-BEEF-RECEIVE': { temperature: true, notes: true },
+  'MAR-FSP-SALT': { notes: true },
+  'MAR-FSP-TIME': { temperature: true, notes: true, marinationRun: true },
+  'DRY-FSP-OVEN': { temperature: true, notes: true, dryingRun: true },
+  'DRY-FSP-CORE': { notes: true, tripleTemps: true },
+  'DRY-FSP-AW-LAB': { labAw: true, notes: true },
+  'DRY-FSP-VALIDATION': { notes: true },
+
   // --- Preparation (some moved out of this page) ---
   // Raw Beef Receiving Temperature -> handled in Receiving flow, not here
   'PREP-CCP-001': { managedExternally: true },
@@ -882,10 +1084,10 @@ const FIELDS_BY_CODE: Record<string, FieldFlags> = {
   'DRY-CCP-005': { aw: true, notes: true },
   'DRY-AW': { aw: true, notes: true },
 
-  // Yield Calculation is usually computed later (final) — just note/mark
+  // Yield Calculation is usually computed later (final) - just note/mark
   'FIN-006': { notes: true },
 
-  // Metal detection / label compliance / storage checks — status + optional notes
+  // Metal detection / label compliance / storage checks - status + optional notes
   'PKG-CCP-001': { notes: true },
   'PKG-CCP-002': { notes: true },
   'PKG-CCP-003': { notes: true },
@@ -905,6 +1107,7 @@ function getFieldFlags(cp: Checkpoint): FieldFlags {
 
   const text = `${cp.code ?? ''} ${cp.name ?? ''} ${cp.description ?? ''}`
     .toLowerCase();
+  const allowAutoAw = !base.labAw;
 
   if (!base.temperature && /temp|core|degc|deg c|celsius/.test(text)) {
     base.temperature = true;
@@ -915,7 +1118,7 @@ function getFieldFlags(cp: Checkpoint): FieldFlags {
   if (!base.ph && /\bph\b/.test(text)) {
     base.ph = true;
   }
-  if (!base.aw && /(water activity|a_w|aw)/.test(text)) {
+  if (!base.aw && allowAutoAw && /(water activity|a_w|aw)/.test(text)) {
     base.aw = true;
   }
 
@@ -926,7 +1129,16 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
   const toast = useToast();
   const fields = getFieldFlags(checkpoint);
   const [expanded, setExpanded] = useState(() =>
-    Boolean(fields.temperature || fields.humidity || fields.ph || fields.aw || fields.tripleTemps || fields.dryingRun),
+    Boolean(
+      fields.temperature ||
+        fields.humidity ||
+        fields.ph ||
+        fields.aw ||
+        fields.tripleTemps ||
+        fields.dryingRun ||
+        fields.marinationRun ||
+        fields.labAw,
+    ),
   );
 
   // Keep form inputs as strings for easy empty checks
@@ -943,6 +1155,24 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
   const [ovenTemp, setOvenTemp] = useState<string>(initialDrying.oven);
   const [dryingStart, setDryingStart] = useState<string>(initialDrying.start);
   const [dryingEnd, setDryingEnd] = useState<string>(initialDrying.end);
+  const initialMarination = extractMarinationRun((check?.metadata as Record<string, unknown> | null) ?? null);
+  const [marinationStart, setMarinationStart] = useState<string>(initialMarination.start);
+  const [marinationEnd, setMarinationEnd] = useState<string>(initialMarination.end);
+  const initialLabAw = extractLabAw((check?.metadata as Record<string, unknown> | null) ?? null);
+  const [labSampleId, setLabSampleId] = useState<string>(initialLabAw.sampleId);
+  const [labName, setLabName] = useState<string>(initialLabAw.labName);
+  const [labSentAt, setLabSentAt] = useState<string>(initialLabAw.sentAt);
+  const [labResultAw, setLabResultAw] = useState<string>(initialLabAw.resultAw);
+  const [labResultAt, setLabResultAt] = useState<string>(initialLabAw.resultAt);
+
+  const marinationDurationMinutes = useMemo(
+    () => (fields.marinationRun ? computeDurationFromLocalInputs(marinationStart, marinationEnd) : null),
+    [fields.marinationRun, marinationStart, marinationEnd],
+  );
+  const dryingDurationMinutes = useMemo(
+    () => (fields.dryingRun ? computeDurationFromLocalInputs(dryingStart, dryingEnd) : null),
+    [fields.dryingRun, dryingStart, dryingEnd],
+  );
 
   const status: QAStatus = check?.status ?? 'pending';
 
@@ -966,6 +1196,28 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
       setDryingStart('');
       setDryingEnd('');
     }
+    if (fields.marinationRun) {
+      const parsed = extractMarinationRun((check?.metadata as Record<string, unknown> | null) ?? null);
+      setMarinationStart(parsed.start);
+      setMarinationEnd(parsed.end);
+    } else {
+      setMarinationStart('');
+      setMarinationEnd('');
+    }
+    if (fields.labAw) {
+      const parsedLab = extractLabAw((check?.metadata as Record<string, unknown> | null) ?? null);
+      setLabSampleId(parsedLab.sampleId);
+      setLabName(parsedLab.labName);
+      setLabSentAt(parsedLab.sentAt);
+      setLabResultAw(parsedLab.resultAw);
+      setLabResultAt(parsedLab.resultAt);
+    } else {
+      setLabSampleId('');
+      setLabName('');
+      setLabSentAt('');
+      setLabResultAw('');
+      setLabResultAt('');
+    }
   }, [
     check?.temperature_c,
     check?.humidity_percent,
@@ -976,28 +1228,52 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
     check?.metadata,
     fields.tripleTemps,
     fields.dryingRun,
+    fields.marinationRun,
+    fields.labAw,
   ]);
 
   const validateIfPassing = (nextStatus: QAStatus = status): string | null => {
+    const needsTime = nextStatus === 'passed' || nextStatus === 'failed';
+
     // If checkpoint requires a specific reading and user is marking PASSED, require it.
     if (nextStatus === 'passed') {
       if (fields.temperature && temperature === '') return 'Temperature (deg C) is required for this checkpoint.';
       if (fields.humidity && humidity === '') return 'Humidity (%) is required for this checkpoint.';
       if (fields.ph && ph === '') return 'pH is required for this checkpoint.';
       if (fields.aw && aw === '') return 'Water activity (aw) is required for this checkpoint.';
+      if (fields.aw && aw !== '' && Number.isNaN(Number(aw))) {
+        return 'Water activity (aw) must be numeric.';
+      }
       if (fields.tripleTemps && pieceTemps.some((temp) => temp.trim() === '')) {
         return 'All three cooking temperature readings are required.';
       }
-      if (fields.dryingRun) {
-        if (ovenTemp.trim() === '') return 'Drying oven temperature is required.';
-        if (!dryingStart || !dryingEnd) return 'Drying start and finish times are required.';
+    }
+
+    if (fields.dryingRun && needsTime) {
+      if (ovenTemp.trim() === '') return 'Drying oven temperature is required.';
+      if (!dryingStart || !dryingEnd) return 'Drying start and finish times are required.';
+      if (!dryingDurationMinutes) return 'Drying finish time must be after start time.';
+    }
+    if (fields.marinationRun && needsTime) {
+      if (!marinationStart || !marinationEnd) return 'Marination start and finish times are required.';
+      if (!marinationDurationMinutes) return 'Marination finish time must be after start time.';
+    }
+    if (fields.labAw && needsTime) {
+      if (!labSampleId.trim()) return 'Lab sample ID/reference is required for water activity.';
+      if (!labSentAt) return 'Lab sent date/time is required for water activity.';
+      if (labResultAw.trim() === '') return 'Water activity result from the lab is required.';
+      if (labResultAw.trim() !== '' && Number.isNaN(Number(labResultAw))) {
+        return 'Water activity result must be numeric.';
+      }
+      if (labResultAw.trim() !== '' && !labResultAt) {
+        return 'Result received date/time is required with the aw value.';
       }
     }
     return null;
   };
 
   const buildMetadataPayload = (): Record<string, unknown> | null => {
-    if (!fields.tripleTemps && !fields.dryingRun) {
+    if (!fields.tripleTemps && !fields.dryingRun && !fields.marinationRun && !fields.labAw) {
       return null;
     }
     const base =
@@ -1025,7 +1301,8 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
     }
 
     if (fields.dryingRun) {
-      const ovenValue = ovenTemp.trim() ? Number(ovenTemp) : null;
+      const ovenNumeric = ovenTemp.trim() ? Number(ovenTemp) : null;
+      const ovenValue = Number.isFinite(ovenNumeric) ? ovenNumeric : null;
       const startIso = toIsoFromLocalInput(dryingStart);
       const endIso = toIsoFromLocalInput(dryingEnd);
       if (ovenValue != null || startIso || endIso) {
@@ -1033,9 +1310,49 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
           oven_temp_c: ovenValue,
           start_iso: startIso,
           end_iso: endIso,
+          duration_minutes: dryingDurationMinutes,
         };
       } else {
         delete base['drying_run'];
+      }
+      mutated = true;
+    }
+
+    if (fields.marinationRun) {
+      const startIso = toIsoFromLocalInput(marinationStart);
+      const endIso = toIsoFromLocalInput(marinationEnd);
+      const marinadeNumeric = temperature.trim() ? Number(temperature) : null;
+      const marinadeTemp = Number.isFinite(marinadeNumeric) ? marinadeNumeric : null;
+      if (startIso || endIso) {
+        base['marination_run'] = {
+          start_iso: startIso,
+          end_iso: endIso,
+          duration_minutes: marinationDurationMinutes,
+          marinade_temp_c: fields.temperature ? marinadeTemp : null,
+        };
+      } else {
+        delete base['marination_run'];
+      }
+      mutated = true;
+    }
+
+    if (fields.labAw) {
+      const sampleId = labSampleId.trim();
+      const lab = labName.trim();
+      const sentIso = toIsoFromLocalInput(labSentAt);
+      const resultIso = toIsoFromLocalInput(labResultAt);
+      const awValue = labResultAw.trim() !== '' ? Number(labResultAw) : null;
+
+      if (sampleId || lab || sentIso || resultIso || awValue != null) {
+        base['lab_aw'] = {
+          sample_id: sampleId || null,
+          lab_name: lab || null,
+          sent_iso: sentIso,
+          result_iso: resultIso,
+          result_aw: awValue,
+        };
+      } else {
+        delete base['lab_aw'];
       }
       mutated = true;
     }
@@ -1048,10 +1365,16 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
       temperature_c: fields.temperature ? (temperature !== '' ? Number(temperature) : null) : null,
       humidity_percent: fields.humidity ? (humidity !== '' ? Number(humidity) : null) : null,
       ph_level: fields.ph ? (ph !== '' ? Number(ph) : null) : null,
-      water_activity: fields.aw ? (aw !== '' ? Number(aw) : null) : null,
       notes: fields.notes ? (notes.trim() ? notes : null) : null,
       corrective_action: nextStatus === 'failed' ? (action.trim() ? action : null) : null,
     };
+
+    let waterActivityValue: number | null = null;
+    if (fields.aw && aw !== '') {
+      waterActivityValue = Number(aw);
+    } else if (fields.labAw && labResultAw.trim() !== '') {
+      waterActivityValue = Number(labResultAw);
+    }
 
     if (fields.tripleTemps) {
       const numericTemps = pieceTemps
@@ -1060,6 +1383,10 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
       if (numericTemps.length > 0) {
         payload.temperature_c = Math.max(...numericTemps);
       }
+    }
+
+    if (fields.aw || fields.labAw) {
+      payload.water_activity = waterActivityValue ?? (check?.water_activity ?? null);
     }
 
     const metadataPayload = buildMetadataPayload();
@@ -1091,7 +1418,12 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
   };
 
   const quickFail = () => {
-    // Encourage corrective action on fail
+    const err = validateIfPassing('failed');
+    if (err) {
+      toast.error(err);
+      setExpanded(true);
+      return;
+    }
     setExpanded(true);
     onChange('failed', buildPayload('failed'));
   };
@@ -1305,6 +1637,106 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
                     className="w-full rounded-lg border px-3 py-2"
                   />
                 </div>
+                <div className="md:col-span-3 text-xs text-gray-600">
+                  Runtime: {formatDurationMinutes(dryingDurationMinutes) ?? 'Enter start and finish to calculate runtime.'}
+                </div>
+              </div>
+            )}
+
+            {fields.marinationRun && (
+              <div className="rounded-2xl border border-amber-100 bg-amber-50/60 p-3">
+                <p className="text-sm font-medium text-gray-700">Marination window</p>
+                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Marination start</label>
+                    <input
+                      type="datetime-local"
+                      value={marinationStart}
+                      onChange={(e) => setMarinationStart(e.target.value)}
+                      className="w-full rounded-lg border px-3 py-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Marination finish</label>
+                    <input
+                      type="datetime-local"
+                      value={marinationEnd}
+                      onChange={(e) => setMarinationEnd(e.target.value)}
+                      className="w-full rounded-lg border px-3 py-2"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <div className="text-xs text-gray-700">
+                      Time in marinade:{' '}
+                      <span className="font-semibold">
+                        {formatDurationMinutes(marinationDurationMinutes) ?? 'Enter start and finish'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-gray-600">
+                  Use the temperature field above for the marinade temperature at load.
+                </p>
+              </div>
+            )}
+
+            {fields.labAw && (
+              <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-3">
+                <p className="text-sm font-medium text-gray-700">Water activity lab submission</p>
+                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Lab sample ID / reference</label>
+                    <input
+                      type="text"
+                      value={labSampleId}
+                      onChange={(e) => setLabSampleId(e.target.value)}
+                      className="w-full rounded-lg border px-3 py-2"
+                      placeholder="e.g. AW-240301"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Lab name</label>
+                    <input
+                      type="text"
+                      value={labName}
+                      onChange={(e) => setLabName(e.target.value)}
+                      className="w-full rounded-lg border px-3 py-2"
+                      placeholder="Accredited lab"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Sample sent</label>
+                    <input
+                      type="datetime-local"
+                      value={labSentAt}
+                      onChange={(e) => setLabSentAt(e.target.value)}
+                      className="w-full rounded-lg border px-3 py-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Result received</label>
+                    <input
+                      type="datetime-local"
+                      value={labResultAt}
+                      onChange={(e) => setLabResultAt(e.target.value)}
+                      className="w-full rounded-lg border px-3 py-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Water activity result (aw)</label>
+                    <input
+                      type="number"
+                      step="0.001"
+                      value={labResultAw}
+                      onChange={(e) => setLabResultAw(e.target.value)}
+                      className="w-full rounded-lg border px-3 py-2"
+                      placeholder="e.g. 0.82"
+                    />
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-gray-600">
+                  Use status "Conditional" while the sample is at the lab; mark Passed/Failed once the result is known.
+                </p>
               </div>
             )}
 

@@ -519,7 +519,11 @@ export default function BatchQAPage() {
     }
     setExportingPdf(true);
     try {
-      const [{ jsPDF }, autoTableModule] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
+      const [{ jsPDF }, autoTableModule, beefRes] = await Promise.all([
+        import('jspdf'),
+        import('jspdf-autotable'),
+        fetch(`/api/batches/${batchId}/beef`, { cache: 'no-store' }),
+      ]);
       const autoTable = autoTableModule.default;
       if (typeof autoTable !== 'function') {
         throw new Error('PDF export module failed to load');
@@ -570,6 +574,71 @@ export default function BatchQAPage() {
 
       const lastTable = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable;
       cursorY = (lastTable?.finalY ?? cursorY) + 8;
+
+      // Beef receiving QA (from lot intake)
+      let beefAllocations: Array<Record<string, unknown>> = [];
+      if (beefRes.ok) {
+        const beefJson = (await beefRes.json()) as { allocations?: Array<Record<string, unknown>> };
+        beefAllocations = Array.isArray(beefJson.allocations) ? beefJson.allocations : [];
+      }
+
+      doc.setFontSize(12);
+      doc.text('Beef Receiving QA', marginLeft, cursorY);
+      cursorY += 4;
+
+      const beefQaRows = beefAllocations
+        .map((alloc) => {
+          const lotRaw = (alloc as { lot?: unknown }).lot;
+          const lot = Array.isArray(lotRaw) ? lotRaw[0] : lotRaw;
+          if (!lot || typeof lot !== 'object') return null;
+          const coa =
+            (lot as { certificate_of_analysis?: unknown }).certificate_of_analysis &&
+            typeof (lot as { certificate_of_analysis?: unknown }).certificate_of_analysis === 'object'
+              ? ((lot as { certificate_of_analysis: Record<string, unknown> }).certificate_of_analysis as Record<
+                  string,
+                  unknown
+                >)
+              : {};
+          const temp = typeof coa['receiving_temp_c'] === 'number' ? `${coa['receiving_temp_c']} °C` : '-';
+          const packaging =
+            coa['packaging_intact'] === false ? 'Fail' : coa['packaging_intact'] === true ? 'OK' : '-';
+          const odour = coa['odour_ok'] === false ? 'Fail' : coa['odour_ok'] === true ? 'OK' : '-';
+          const visual = coa['visual_ok'] === false ? 'Fail' : coa['visual_ok'] === true ? 'OK' : '-';
+          const result =
+            (lot as { passed_receiving_qa?: unknown }).passed_receiving_qa === false
+              ? 'Fail'
+              : (lot as { passed_receiving_qa?: unknown }).passed_receiving_qa === true
+              ? 'Pass'
+              : '-';
+          const checkedAt =
+            typeof coa['check_time'] === 'string' ? formatDateTime(coa['check_time']) : '';
+          const lotNumber =
+            typeof (lot as { lot_number?: unknown }).lot_number === 'string'
+              ? (lot as { lot_number: string }).lot_number
+              : '-';
+          const internalCode =
+            typeof (lot as { internal_lot_code?: unknown }).internal_lot_code === 'string'
+              ? (lot as { internal_lot_code: string }).internal_lot_code
+              : '-';
+          return [lotNumber, internalCode, temp, packaging, odour, visual, result, checkedAt || '-'];
+        })
+        .filter((row): row is string[] => Array.isArray(row));
+
+      if (beefQaRows.length > 0) {
+        autoTable(doc, {
+          startY: cursorY,
+          head: [['Lot #', 'Internal Code', 'Receiving Temp', 'Packaging', 'Odour', 'Visual', 'Result', 'Checked At']],
+          body: beefQaRows,
+          styles: { fontSize: 9, cellPadding: 2 },
+          headStyles: { fillColor: [120, 53, 15], textColor: 255 },
+        });
+        const beefTable = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable;
+        cursorY = (beefTable?.finalY ?? cursorY) + 8;
+      } else {
+        doc.setFontSize(10);
+        doc.text('No beef receiving QA recorded from lots.', marginLeft, cursorY);
+        cursorY += 8;
+      }
 
       doc.setFontSize(12);
       doc.text('Supporting Documents', marginLeft, cursorY);

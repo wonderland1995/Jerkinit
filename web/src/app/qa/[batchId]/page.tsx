@@ -100,6 +100,21 @@ export default function BatchQAPage() {
   const [exportingPdf, setExportingPdf] = useState(false);
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
   const excludedCheckpointCodes = useMemo(() => new Set(['PREP-BEEF-RECEIVE', 'PREP-CCP-001']), []);
+  const allowedCheckpointCodes = useMemo(
+    () =>
+      new Set([
+        'DRY-PREHEAT',
+        'DRY-CCP-004',
+        'MAR-FSP-SALT',
+        'MAR-FSP-TIME',
+        'DRY-FSP-OVEN',
+        'DRY-FSP-CORE',
+        'DRY-FSP-AW-LAB',
+        'DRY-FSP-VALIDATION',
+        'FIN-RELEASE',
+      ]),
+    [],
+  );
 
   const fetchData = useCallback(async () => {
     try {
@@ -117,7 +132,12 @@ export default function BatchQAPage() {
 
       // keep only active, order by display_order then required
       const cps = (checkpointsJson.checkpoints ?? [])
-        .filter((c) => c.active !== false && !excludedCheckpointCodes.has(c.code))
+        .filter(
+          (c) =>
+            c.active !== false &&
+            !excludedCheckpointCodes.has(c.code) &&
+            (allowedCheckpointCodes.size === 0 || allowedCheckpointCodes.has(c.code)),
+        )
         .sort((a, b) =>
           a.stage === b.stage
             ? a.display_order - b.display_order || (b.required ? 1 : -1)
@@ -346,10 +366,17 @@ export default function BatchQAPage() {
           typeof reading?.tempC === 'number'
             ? reading.tempC
             : typeof reading?.tempC === 'string'
-            ? Number(reading.tempC)
+          ? Number(reading.tempC)
+          : null;
+        const timeIso =
+          typeof reading?.time_iso === 'string'
+            ? reading.time_iso
+            : typeof reading?.timeISO === 'string'
+            ? reading.timeISO
             : null;
         if (tempValue != null && Number.isFinite(tempValue)) {
-          parts.push(`Piece ${idx + 1}: ${Number(tempValue).toFixed(1)} deg C`);
+          const timeText = timeIso ? ` @ ${formatDateTime(timeIso)}` : '';
+          parts.push(`Piece ${idx + 1}: ${Number(tempValue).toFixed(1)} deg C${timeText}`);
         }
       });
     }
@@ -406,7 +433,18 @@ export default function BatchQAPage() {
       const window = `${run.start_iso ? formatDateTime(run.start_iso) : '-'} -> ${
         run.end_iso ? formatDateTime(run.end_iso) : '-'
       }`;
-      parts.push(`Drying ${window}${formatDurationMinutes(duration) ? ` (${formatDurationMinutes(duration)})` : ''}`);
+      const adjusted =
+        typeof (metadata.drying_run as Record<string, unknown>).temp_adjusted === 'boolean'
+          ? (metadata.drying_run as Record<string, unknown>).temp_adjusted
+          : false;
+      const adjustNote =
+        typeof (metadata.drying_run as Record<string, unknown>).temp_adjust_note === 'string'
+          ? (metadata.drying_run as Record<string, unknown>).temp_adjust_note
+          : null;
+      const runtime = formatDurationMinutes(duration);
+      const baseText = `Drying ${window}${runtime ? ` (${runtime})` : ''}`;
+      const adjText = adjusted ? ' (temp adjusted during run)' : '';
+      parts.push(`${baseText}${adjText}${adjustNote ? ` - ${adjustNote}` : ''}`);
     }
 
     if (metadata && metadata.lab_aw && typeof metadata.lab_aw === 'object') {
@@ -918,15 +956,22 @@ const formatDurationMinutes = (minutes?: number | null) => {
   return `${mins}m`;
 };
 
-const extractTripleTemps = (metadata?: Record<string, unknown> | null): [string, string, string] => {
-  if (!metadata || typeof metadata !== 'object') return ['', '', ''];
+type CoreReading = { temp: string; time: string };
+
+const extractCoreReadings = (metadata?: Record<string, unknown> | null): [CoreReading, CoreReading] => {
+  if (!metadata || typeof metadata !== 'object') {
+    return [
+      { temp: '', time: '' },
+      { temp: '', time: '' },
+    ];
+  }
   const raw = Array.isArray((metadata as Record<string, unknown>)['readings'])
     ? ((metadata as Record<string, unknown>)['readings'] as Array<Record<string, unknown>>)
     : [];
 
-  return [0, 1, 2].map((idx) => {
+  return [0, 1].map((idx) => {
     const entry = raw[idx];
-    if (!entry || typeof entry !== 'object') return '';
+    if (!entry || typeof entry !== 'object') return { temp: '', time: '' };
     const numeric =
       typeof entry['tempC'] === 'number'
         ? entry['tempC']
@@ -937,8 +982,17 @@ const extractTripleTemps = (metadata?: Record<string, unknown> | null): [string,
         : typeof entry['temp'] === 'string'
         ? Number(entry['temp'])
         : null;
-    return Number.isFinite(numeric) ? String(numeric) : '';
-  }) as [string, string, string];
+    const timeVal =
+      typeof entry['time_iso'] === 'string'
+        ? entry['time_iso']
+        : typeof entry['timeISO'] === 'string'
+        ? entry['timeISO']
+        : null;
+    return {
+      temp: Number.isFinite(numeric) ? String(numeric) : '',
+      time: timeVal ? toLocalDateTimeInput(timeVal) : '',
+    };
+  }) as [CoreReading, CoreReading];
 };
 
 const extractDryingRun = (metadata?: Record<string, unknown> | null) => {
@@ -971,11 +1025,21 @@ const extractDryingRun = (metadata?: Record<string, unknown> | null) => {
     typeof raw['duration_minutes'] === 'number'
       ? raw['duration_minutes']
       : null;
+  const adjustedValue =
+    typeof raw['temp_adjusted'] === 'boolean'
+      ? raw['temp_adjusted']
+      : null;
+  const adjustNoteValue =
+    typeof raw['temp_adjust_note'] === 'string'
+      ? raw['temp_adjust_note']
+      : null;
   return {
     oven: Number.isFinite(ovenValue) ? String(ovenValue) : '',
     start: toLocalDateTimeInput(startRaw),
     end: toLocalDateTimeInput(endRaw),
     durationMinutes: durationValue ?? computeDurationMinutes(startRaw, endRaw),
+    adjusted: adjustedValue ?? false,
+    adjustNote: adjustNoteValue ?? '',
   };
 };
 
@@ -1150,13 +1214,15 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
   const [aw, setAw] = useState<string>(check?.water_activity?.toString() ?? '');
   const [notes, setNotes] = useState<string>(check?.notes ?? '');
   const [action, setAction] = useState<string>(check?.corrective_action ?? '');
-  const [pieceTemps, setPieceTemps] = useState<[string, string, string]>(() =>
-    extractTripleTemps((check?.metadata as Record<string, unknown> | null) ?? null),
+  const [coreReadings, setCoreReadings] = useState<[CoreReading, CoreReading]>(() =>
+    extractCoreReadings((check?.metadata as Record<string, unknown> | null) ?? null),
   );
   const initialDrying = extractDryingRun((check?.metadata as Record<string, unknown> | null) ?? null);
   const [ovenTemp, setOvenTemp] = useState<string>(initialDrying.oven);
   const [dryingStart, setDryingStart] = useState<string>(initialDrying.start);
   const [dryingEnd, setDryingEnd] = useState<string>(initialDrying.end);
+  const [dryingAdjusted, setDryingAdjusted] = useState<boolean>(initialDrying.adjusted ?? false);
+  const [dryingAdjustNote, setDryingAdjustNote] = useState<string>(initialDrying.adjustNote ?? '');
   const initialMarination = extractMarinationRun((check?.metadata as Record<string, unknown> | null) ?? null);
   const [marinationStart, setMarinationStart] = useState<string>(initialMarination.start);
   const [marinationEnd, setMarinationEnd] = useState<string>(initialMarination.end);
@@ -1186,17 +1252,21 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
     setNotes(check?.notes ?? '');
     setAction(check?.corrective_action ?? '');
     if (fields.tripleTemps) {
-      setPieceTemps(extractTripleTemps((check?.metadata as Record<string, unknown> | null) ?? null));
+      setCoreReadings(extractCoreReadings((check?.metadata as Record<string, unknown> | null) ?? null));
     }
     if (fields.dryingRun) {
       const parsed = extractDryingRun((check?.metadata as Record<string, unknown> | null) ?? null);
       setOvenTemp(parsed.oven);
       setDryingStart(parsed.start);
       setDryingEnd(parsed.end);
+      setDryingAdjusted(parsed.adjusted ?? false);
+      setDryingAdjustNote(parsed.adjustNote ?? '');
     } else {
       setOvenTemp('');
       setDryingStart('');
       setDryingEnd('');
+      setDryingAdjusted(false);
+      setDryingAdjustNote('');
     }
     if (fields.marinationRun) {
       const parsed = extractMarinationRun((check?.metadata as Record<string, unknown> | null) ?? null);
@@ -1246,8 +1316,8 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
       if (fields.aw && aw !== '' && Number.isNaN(Number(aw))) {
         return 'Water activity (aw) must be numeric.';
       }
-      if (fields.tripleTemps && pieceTemps.some((temp) => temp.trim() === '')) {
-        return 'All three cooking temperature readings are required.';
+      if (fields.tripleTemps && coreReadings.some((r) => r.temp.trim() === '' || r.time.trim() === '')) {
+        return 'Both internal temperature readings and their times are required.';
       }
     }
 
@@ -1279,15 +1349,16 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
     let mutated = false;
 
     if (fields.tripleTemps) {
-      const readings = pieceTemps
+      const readings = coreReadings
         .map((value, idx) => {
-          const trimmed = value.trim();
-          if (!trimmed) return null;
-          const num = Number(trimmed);
+          const tempTrim = value.temp.trim();
+          const timeTrim = value.time.trim();
+          if (!tempTrim) return null;
+          const num = Number(tempTrim);
           if (!Number.isFinite(num)) return null;
-          return { label: `Piece ${idx + 1}`, tempC: num };
+          return { label: `Piece ${idx + 1}`, tempC: num, time_iso: toIsoFromLocalInput(timeTrim) };
         })
-        .filter((entry): entry is { label: string; tempC: number } => Boolean(entry));
+        .filter((entry): entry is { label: string; tempC: number; time_iso: string | null } => Boolean(entry));
       if (readings.length > 0) {
         base['readings'] = readings;
       } else {
@@ -1307,6 +1378,8 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
           start_iso: startIso,
           end_iso: endIso,
           duration_minutes: dryingDurationMinutes,
+          temp_adjusted: dryingAdjusted,
+          temp_adjust_note: dryingAdjustNote.trim() || null,
         };
       } else {
         delete base['drying_run'];
@@ -1373,8 +1446,8 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
     }
 
     if (fields.tripleTemps) {
-      const numericTemps = pieceTemps
-        .map((value) => (value.trim() ? Number(value) : null))
+      const numericTemps = coreReadings
+        .map((value) => (value.temp.trim() ? Number(value.temp) : null))
         .filter((value): value is number => Number.isFinite(value));
       if (numericTemps.length > 0) {
         payload.temperature_c = Math.max(...numericTemps);
@@ -1425,14 +1498,6 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
   };
 
   const quickSkip = () => onChange('skipped', buildPayload('skipped'));
-
-  const updatePieceTemp = (index: 0 | 1 | 2, value: string) => {
-    setPieceTemps((prev) => {
-      const next = [...prev] as [string, string, string];
-      next[index] = value;
-      return next;
-    });
-  };
 
   return (
     <div
@@ -1583,18 +1648,37 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
 
             {fields.tripleTemps && (
               <div className="rounded-2xl border border-blue-100 bg-blue-50/40 p-3">
-                <p className="text-sm font-medium text-gray-700">Cooking temperature checks (3 pieces)</p>
-                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-                  {(['Piece 1', 'Piece 2', 'Piece 3'] as const).map((label, idx) => (
-                    <div key={label}>
-                      <label className="mb-1 block text-xs font-medium text-gray-600">{label}</label>
+                <p className="text-sm font-medium text-gray-700">Internal temperature checks (2 pieces)</p>
+                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {(['Piece 1', 'Piece 2'] as const).map((label, idx) => (
+                    <div key={label} className="rounded-lg border border-blue-100 bg-white/60 p-3">
+                      <label className="mb-1 block text-xs font-medium text-gray-600">{label} temp</label>
                       <input
                         type="number"
                         step="0.1"
-                        value={pieceTemps[idx]}
-                        onChange={(e) => updatePieceTemp(idx as 0 | 1 | 2, e.target.value)}
+                        value={coreReadings[idx].temp}
+                        onChange={(e) =>
+                          setCoreReadings((prev) => {
+                            const next = [...prev] as [CoreReading, CoreReading];
+                            next[idx] = { ...next[idx], temp: e.target.value };
+                            return next;
+                          })
+                        }
                         className="w-full rounded-lg border px-3 py-2"
                         placeholder="deg C"
+                      />
+                      <label className="mb-1 mt-2 block text-xs font-medium text-gray-600">Measured at</label>
+                      <input
+                        type="datetime-local"
+                        value={coreReadings[idx].time}
+                        onChange={(e) =>
+                          setCoreReadings((prev) => {
+                            const next = [...prev] as [CoreReading, CoreReading];
+                            next[idx] = { ...next[idx], time: e.target.value };
+                            return next;
+                          })
+                        }
+                        className="w-full rounded-lg border px-3 py-2"
                       />
                     </div>
                   ))}
@@ -1631,6 +1715,28 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
                     value={dryingEnd}
                     onChange={(e) => setDryingEnd(e.target.value)}
                     className="w-full rounded-lg border px-3 py-2"
+                  />
+                </div>
+                <div className="flex items-center gap-2 md:col-span-3">
+                  <input
+                    id={`temp-adjusted-${checkpoint.id}`}
+                    type="checkbox"
+                    checked={dryingAdjusted}
+                    onChange={(e) => setDryingAdjusted(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300"
+                  />
+                  <label htmlFor={`temp-adjusted-${checkpoint.id}`} className="text-sm text-gray-700">
+                    Temperature adjusted during run
+                  </label>
+                </div>
+                <div className="md:col-span-3">
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Adjustment note (optional)</label>
+                  <input
+                    type="text"
+                    value={dryingAdjustNote}
+                    onChange={(e) => setDryingAdjustNote(e.target.value)}
+                    className="w-full rounded-lg border px-3 py-2"
+                    placeholder="e.g. Raised to 72°C after 8 hours"
                   />
                 </div>
                 <div className="md:col-span-3 text-xs text-gray-600">

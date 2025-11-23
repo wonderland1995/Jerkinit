@@ -1259,14 +1259,8 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
       if (!marinationDurationMinutes) return 'Marination finish time must be after start time.';
     }
     if (fields.labAw && needsTime) {
-      if (!labSampleId.trim()) return 'Lab sample ID/reference is required for water activity.';
-      if (!labSentAt) return 'Lab sent date/time is required for water activity.';
-      if (labResultAw.trim() === '') return 'Water activity result from the lab is required.';
       if (labResultAw.trim() !== '' && Number.isNaN(Number(labResultAw))) {
         return 'Water activity result must be numeric.';
-      }
-      if (labResultAw.trim() !== '' && !labResultAt) {
-        return 'Result received date/time is required with the aw value.';
       }
     }
     return null;
@@ -1735,7 +1729,7 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
                   </div>
                 </div>
                 <p className="mt-2 text-xs text-gray-600">
-                  Use status "Conditional" while the sample is at the lab; mark Passed/Failed once the result is known.
+                  Use status &quot;Conditional&quot; while the sample is at the lab; mark Passed/Failed once the result is known.
                 </p>
               </div>
             )}

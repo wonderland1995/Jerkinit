@@ -99,6 +99,7 @@ export default function BatchQAPage() {
   const documentInputRef = useRef<HTMLInputElement | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+  const excludedCheckpointCodes = useMemo(() => new Set(['PREP-BEEF-RECEIVE', 'PREP-CCP-001']), []);
 
   const fetchData = useCallback(async () => {
     try {
@@ -116,7 +117,7 @@ export default function BatchQAPage() {
 
       // keep only active, order by display_order then required
       const cps = (checkpointsJson.checkpoints ?? [])
-        .filter((c) => c.active !== false)
+        .filter((c) => c.active !== false && !excludedCheckpointCodes.has(c.code))
         .sort((a, b) =>
           a.stage === b.stage
             ? a.display_order - b.display_order || (b.required ? 1 : -1)

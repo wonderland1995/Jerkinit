@@ -1052,6 +1052,7 @@ const FIELDS_BY_CODE: Record<string, FieldFlags> = {
   'DRY-FSP-CORE': { notes: true, tripleTemps: true },
   'DRY-FSP-AW-LAB': { labAw: true, notes: true },
   'DRY-FSP-VALIDATION': { notes: true },
+  'DRY-PREHEAT': { temperature: true, notes: true },
 
   // --- Preparation (some moved out of this page) ---
   // Raw Beef Receiving Temperature -> handled in Receiving flow, not here

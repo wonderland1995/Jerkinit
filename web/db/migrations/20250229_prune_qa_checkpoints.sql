@@ -5,6 +5,8 @@ update public.qa_checkpoints
 set active = true,
     required = true
 where code in (
+  'DRY-PREHEAT',
+  'DRY-CCP-004',
   'MAR-FSP-SALT',
   'MAR-FSP-TIME',
   'DRY-FSP-OVEN',
@@ -17,6 +19,8 @@ where code in (
 update public.qa_checkpoints
 set active = false
 where code not in (
+  'DRY-PREHEAT',
+  'DRY-CCP-004',
   'MAR-FSP-SALT',
   'MAR-FSP-TIME',
   'DRY-FSP-OVEN',

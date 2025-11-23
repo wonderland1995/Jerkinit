@@ -150,15 +150,22 @@ export default function QAPage() {
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-6 py-8">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center">
-                <ClipboardCheck className="w-7 h-7 text-white" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">QA Management</h1>
-                <p className="text-gray-600 mt-1">FSANZ compliant quality assurance tracking</p>
-              </div>
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center">
+              <ClipboardCheck className="w-7 h-7 text-white" />
             </div>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">QA Management</h1>
+              <p className="text-gray-600 mt-1">FSANZ compliant quality assurance tracking</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/qa/audit"
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
+            >
+              Audit mode
+            </Link>
             <Link
               href="/"
               className="text-blue-600 hover:text-blue-700 font-medium"
@@ -168,6 +175,7 @@ export default function QAPage() {
           </div>
         </div>
       </div>
+    </div>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Stats Cards */}

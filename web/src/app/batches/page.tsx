@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Trash2, Eye, ClipboardCheck } from 'lucide-react';
+import { Trash2, Eye, ClipboardCheck, FileDown } from 'lucide-react';
 import DeleteBatchModal from '@/components/DeleteBatchModal';
 import type { Route } from 'next';
 import { computeBestBefore, formatDate } from '@/lib/utils';
@@ -197,6 +197,10 @@ export default function BatchHistoryPage() {
   const bestBeforeText = (batch: BatchSummary) => {
     const date = effectiveBestBefore(batch);
     return date ? formatDate(date) : '--';
+  };
+
+  const handleCardExport = (batch: BatchSummary) => {
+    router.push((`/batches/${batch.id}?export=1` as `/batches/${string}`) as Route);
   };
 
   const filteredBatches = useMemo(() => {
@@ -438,6 +442,13 @@ export default function BatchHistoryPage() {
                   </div>
 
                   <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      onClick={() => handleCardExport(batch)}
+                      className="flex-1 min-w-[120px] rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    >
+                      <FileDown className="mr-1 h-4 w-4 inline-block" />
+                      Export PDF
+                    </button>
                     <button
                       onClick={() => router.push((`/batches/${batch.id}` as `/batches/${string}`) as Route)}
                       className="flex-1 min-w-[120px] rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"

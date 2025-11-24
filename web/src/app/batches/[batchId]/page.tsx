@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Check, Loader2, Trash2 } from 'lucide-react';
 import { AiFillEdit } from 'react-icons/ai';
 import { FaDeleteLeft } from 'react-icons/fa6';
@@ -9,7 +9,7 @@ import Breadcrumbs from '@/components/Breadcrumbs';
 import DeleteBatchModal from '@/components/DeleteBatchModal';
 import RecallModal from '@/components/RecallModal';
 import { useToast } from '@/components/ToastProvider';
-import { formatQuantity } from '@/lib/utils';
+import { computeBestBefore, formatDate, formatQuantity } from '@/lib/utils';
 import {
   CURE_BY_ID,
   DEFAULT_CURE_SETTINGS,
@@ -101,6 +101,8 @@ interface BatchDetails {
   beef_weight_kg: number;
   scaling_factor: number | null;
   production_date: string | null;
+  created_at?: string | null;
+  best_before_date?: string | null;
   status: BatchStatus;
   release_status?: 'pending' | 'approved' | 'rejected' | 'hold' | 'recalled' | null;
   recall_reason?: string | null;
@@ -219,6 +221,7 @@ function isOkResponse(res: Response) {
 export default function BatchDetailPage() {
   const params = useParams<{ batchId: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const batchId = params.batchId;
   const toast = useToast();
 
@@ -235,6 +238,7 @@ export default function BatchDetailPage() {
   const [recallError, setRecallError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [cureSettings, setCureSettings] = useState<CurePpmSettings>(DEFAULT_CURE_SETTINGS);
+  const [autoExportQueued, setAutoExportQueued] = useState(false);
 
   const [qaSummary, setQaSummary] = useState<QaSummaryResp | null>(null);
   const [actualInputs, setActualInputs] = useState<Record<string, string>>({});
@@ -481,6 +485,21 @@ export default function BatchDetailPage() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchId]);
+
+  useEffect(() => {
+    if (searchParams.get('export') === '1') {
+      setAutoExportQueued(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, batchId]);
+
+  useEffect(() => {
+    if (autoExportQueued && !loading && !exporting && batch) {
+      void handleExportPdf();
+      setAutoExportQueued(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoExportQueued, loading, exporting, batch]);
 
   useEffect(() => {
     loadBeefAllocations();
@@ -828,6 +847,14 @@ export default function BatchDetailPage() {
       let cursorY = 18;
 
       const batchLabel = resolveBatchDisplayId(batch);
+      const bestBeforeDate =
+        batch.best_before_date && new Date(batch.best_before_date)
+          ? new Date(batch.best_before_date)
+          : computeBestBefore(batch.production_date ?? batch.created_at ?? null);
+      const bestBeforeText =
+        bestBeforeDate && !Number.isNaN(bestBeforeDate.getTime())
+          ? formatDate(bestBeforeDate)
+          : 'Not set';
       doc.setFontSize(16);
       doc.text(`Batch ${batchLabel}`, marginLeft, cursorY);
       cursorY += 6;
@@ -838,6 +865,7 @@ export default function BatchDetailPage() {
           batch.recipe?.recipe_code ? ` (${batch.recipe.recipe_code})` : ''
         }`,
         `Production Date: ${formatDateTime(batch.production_date).split(',')[0]}`,
+        `Best Before: ${bestBeforeText}`,
         `Status: ${formatStatus(batch.status)}`,
         `Scale: ${scale.toFixed(2)} x`,
         `Beef Input: ${Number(batch.beef_weight_kg).toFixed(2)} kg`,

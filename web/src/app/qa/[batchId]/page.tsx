@@ -159,7 +159,7 @@ export default function BatchQAPage() {
     } finally {
       setLoading(false);
     }
-  }, [batchId]);
+  }, [batchId, allowedCheckpointCodes, excludedCheckpointCodes]);
 
   useEffect(() => {
     if (availableStages.length === 0) return;

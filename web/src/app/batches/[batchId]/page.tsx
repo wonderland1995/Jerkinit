@@ -959,11 +959,6 @@ export default function BatchDetailPage() {
         cursorY += 8;
       }
 
-      const beefQaCheckpoints = qaCheckpoints.filter((checkpoint) => {
-        const text = `${checkpoint.code ?? ''} ${checkpoint.name ?? ''}`.toLowerCase();
-        return text.includes('beef');
-      });
-
       doc.setFontSize(12);
       doc.text('Beef QA Checks', marginLeft, cursorY);
       cursorY += 4;

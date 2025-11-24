@@ -12,6 +12,7 @@ import {
   ClipboardCheck,
   Archive,
   Calendar,
+  ArrowUpRight,
   Search
 } from 'lucide-react';
 

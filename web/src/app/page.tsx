@@ -11,7 +11,8 @@ import {
   Beef,
   ClipboardCheck,
   Archive,
-  Calendar
+  Calendar,
+  Search
 } from 'lucide-react';
 
 import type { Route } from 'next';
@@ -31,6 +32,7 @@ import {
   Legend 
 } from 'recharts';
 import RecallLauncher from '@/components/RecallLauncher';
+import { computeBestBefore, formatDate } from '@/lib/utils';
 
 interface DashboardStats {
   total_batches: number;
@@ -79,6 +81,15 @@ interface RecallRecord {
   }>;
 }
 
+interface BatchLookupResult {
+  id: string;
+  batch_id: string;
+  status: string;
+  release_status: string | null;
+  created_at: string;
+  product_name: string | null;
+}
+
 export default function HomePage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentBatches, setRecentBatches] = useState<RecentBatch[]>([]);
@@ -86,6 +97,9 @@ export default function HomePage() {
   const [copiedRecallId, setCopiedRecallId] = useState<string | null>(null);
   const [recallLauncherOpen, setRecallLauncherOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [lookupTerm, setLookupTerm] = useState('');
+  const [lookupResults, setLookupResults] = useState<BatchLookupResult[]>([]);
+  const [lookupLoading, setLookupLoading] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
@@ -112,6 +126,39 @@ export default function HomePage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const trimmed = lookupTerm.trim();
+    if (trimmed.length < 2) {
+      setLookupResults([]);
+      setLookupLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setLookupLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/batches/search?q=${encodeURIComponent(trimmed)}&limit=8`, {
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error('Search failed');
+        const body = (await res.json()) as { batches?: BatchLookupResult[] };
+        setLookupResults(Array.isArray(body.batches) ? body.batches : []);
+      } catch (err) {
+        if ((err as { name?: string }).name !== 'AbortError') {
+          console.error('Batch lookup failed', err);
+        }
+      } finally {
+        setLookupLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [lookupTerm]);
 
   // Generate batch trend data (last 7 days)
   const batchTrendData = recentBatches
@@ -162,6 +209,11 @@ export default function HomePage() {
     } catch (error) {
       console.error('Failed to copy email body', error);
     }
+  };
+
+  const bestBeforeText = (date: string | Date | null | undefined) => {
+    const bestBefore = computeBestBefore(date);
+    return bestBefore ? formatDate(bestBefore) : '--';
   };
 
   if (loading) {
@@ -217,6 +269,84 @@ export default function HomePage() {
         <div className="mb-8">
           <h2 className="text-3xl font-bold text-gray-900 mb-2">Production Overview</h2>
           <p className="text-gray-600">Monitor your production metrics and quality assurance</p>
+        </div>
+
+        {/* Quick batch lookup */}
+        <div className="mb-8">
+          <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Batch finder</p>
+                <h3 className="text-lg font-semibold text-gray-900">Quick lookup</h3>
+                <p className="text-sm text-gray-600">Jump straight to QA or batch detail in two keystrokes.</p>
+              </div>
+              <Search className="h-5 w-5 text-gray-400" />
+            </div>
+            <div className="mt-4">
+              <label className="text-sm font-medium text-gray-700" htmlFor="batch-lookup">
+                Search by batch ID or product (min 2 characters)
+              </label>
+              <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
+                <input
+                  id="batch-lookup"
+                  type="text"
+                  value={lookupTerm}
+                  onChange={(e) => setLookupTerm(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  placeholder="e.g. JERK-0245 or Teriyaki"
+                />
+                <span className="text-xs text-gray-500 sm:w-32">
+                  {lookupLoading ? 'Searching…' : lookupResults.length ? `${lookupResults.length} match(es)` : 'No results yet'}
+                </span>
+              </div>
+            </div>
+            <div className="mt-4">
+              {lookupTerm.trim().length > 0 && lookupTerm.trim().length < 2 ? (
+                <p className="text-sm text-gray-500">Keep typing to search.</p>
+              ) : lookupResults.length === 0 ? (
+                <p className="text-sm text-gray-500">Type at least two characters to find a batch.</p>
+              ) : (
+                <div className="divide-y divide-gray-100 rounded-xl border border-gray-100">
+                  {lookupResults.map((batch) => (
+                    <div key={batch.id} className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-sm font-semibold text-gray-900">{batch.batch_id}</span>
+                          <span className="text-xs text-gray-500">{batch.product_name || 'Unknown product'}</span>
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          Best before: {bestBeforeText(batch.created_at)} · {new Date(batch.created_at).toLocaleDateString('en-AU')}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+                        <span className={`rounded-full border px-3 py-1 ${
+                          batch.status === 'completed'
+                            ? 'border-green-200 bg-green-50 text-green-800'
+                            : 'border-amber-200 bg-amber-50 text-amber-800'
+                        }`}>
+                          {batch.status.replace('_', ' ')}
+                        </span>
+                        <Link
+                          href={`/qa/${batch.id}` as Route}
+                          className="inline-flex items-center gap-1 rounded-full border border-blue-200 px-3 py-1 text-blue-700 hover:bg-blue-50"
+                        >
+                          QA
+                          <ArrowUpRight className="h-3 w-3" />
+                        </Link>
+                        <Link
+                          href={`/batches/${batch.id}` as Route}
+                          className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-3 py-1 text-gray-700 hover:bg-gray-50"
+                        >
+                          View
+                          <ArrowUpRight className="h-3 w-3" />
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Stats Grid */}
@@ -509,6 +639,9 @@ export default function HomePage() {
                     Weight
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    Best before
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                     Date
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
@@ -543,6 +676,9 @@ export default function HomePage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                       {batch.beef_weight_kg ? `${batch.beef_weight_kg} kg` : '—'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                      {bestBeforeText(batch.created_at)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {new Date(batch.created_at).toLocaleDateString('en-AU')}

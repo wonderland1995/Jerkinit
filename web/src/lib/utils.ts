@@ -123,3 +123,18 @@ export function formatQuantity(
   const unitLabel = typeof unit === 'string' && unit.trim().length > 0 ? unit : '';
   return unitLabel ? `${formatter.format(normalized)} ${unitLabel}` : formatter.format(normalized);
 }
+
+/**
+ * Calculate a best-before date by adding the given number of days to the source date.
+ * Default shelf life: 12 weeks + 2 days = 86 days.
+ */
+export function computeBestBefore(
+  date: string | Date | null | undefined,
+  shelfLifeDays: number = 86,
+): Date | null {
+  const parsed = parseDateInput(date);
+  if (!parsed || !Number.isFinite(shelfLifeDays)) return null;
+  const result = new Date(parsed);
+  result.setDate(result.getDate() + Math.round(shelfLifeDays));
+  return result;
+}

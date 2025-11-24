@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { Trash2, Eye, ClipboardCheck } from 'lucide-react';
 import DeleteBatchModal from '@/components/DeleteBatchModal';
 import type { Route } from 'next';
-import { formatDate } from '@/lib/utils';
+import { computeBestBefore, formatDate } from '@/lib/utils';
 
 interface BatchSummary {
   id: string;
@@ -25,6 +25,7 @@ interface BatchSummary {
   documents_required: number;
   release_status: 'approved' | 'pending' | 'hold' | 'rejected' | 'recalled' | null;
   release_number: string | null;
+  best_before_date?: string | null;
 }
 
 type Stage = 'preparation' | 'mixing' | 'marination' | 'drying' | 'packaging' | 'final';
@@ -63,6 +64,9 @@ export default function BatchHistoryPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState<BatchSummary | null>(null);
   const [qaStages, setQaStages] = useState<Record<string, QaStageSummary | null>>({});
+  const [bestBeforeDrafts, setBestBeforeDrafts] = useState<Record<string, string>>({});
+  const [bestBeforeSaving, setBestBeforeSaving] = useState<Record<string, boolean>>({});
+  const [bestBeforeFlash, setBestBeforeFlash] = useState<Record<string, 'saved' | 'error' | undefined>>({});
 
   useEffect(() => {
     const t = setTimeout(() => setSearchTerm(searchRaw.trim().toLowerCase()), 250);
@@ -72,6 +76,18 @@ export default function BatchHistoryPage() {
   useEffect(() => {
     fetchBatches();
   }, []);
+
+  useEffect(() => {
+    const map: Record<string, string> = {};
+    batches.forEach((batch) => {
+      const override = batch.best_before_date ?? null;
+      const date = override ? new Date(override) : computeBestBefore(batch.created_at);
+      if (date && !Number.isNaN(date.getTime())) {
+        map[batch.id] = date.toISOString().slice(0, 10);
+      }
+    });
+    setBestBeforeDrafts(map);
+  }, [batches]);
 
   useEffect(() => {
     if (batches.length === 0) {
@@ -170,6 +186,19 @@ export default function BatchHistoryPage() {
     [qaStages]
   );
 
+  const effectiveBestBefore = (batch: BatchSummary): Date | null => {
+    if (batch.best_before_date) {
+      const parsed = new Date(batch.best_before_date);
+      if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+    return computeBestBefore(batch.created_at);
+  };
+
+  const bestBeforeText = (batch: BatchSummary) => {
+    const date = effectiveBestBefore(batch);
+    return date ? formatDate(date) : '--';
+  };
+
   const filteredBatches = useMemo(() => {
     return batches.filter((batch) => {
       const derivedStatus = getDerivedStatus(batch);
@@ -215,6 +244,40 @@ export default function BatchHistoryPage() {
     const label = status.replace('_', ' ');
     return label.charAt(0).toUpperCase() + label.slice(1);
   }
+
+  const handleBestBeforeSave = async (batch: BatchSummary) => {
+    const draft = bestBeforeDrafts[batch.id]?.trim() ?? '';
+    const payload = { best_before_date: draft || null };
+
+    setBestBeforeSaving((s) => ({ ...s, [batch.id]: true }));
+    setBestBeforeFlash((f) => ({ ...f, [batch.id]: undefined }));
+
+    try {
+      const res = await fetch(`/api/batches/${batch.id}/best-before`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const body = (await res.json().catch(() => ({}))) as { best_before_date?: string | null; error?: string };
+      if (!res.ok) {
+        throw new Error(body.error ?? 'Failed to save best before');
+      }
+      const nextDate = body.best_before_date ?? payload.best_before_date;
+      setBatches((prev) =>
+        prev.map((b) => (b.id === batch.id ? { ...b, best_before_date: nextDate } : b))
+      );
+      if (nextDate) {
+        setBestBeforeDrafts((d) => ({ ...d, [batch.id]: nextDate }));
+      }
+      setBestBeforeFlash((f) => ({ ...f, [batch.id]: 'saved' }));
+      setTimeout(() => setBestBeforeFlash((f) => ({ ...f, [batch.id]: undefined })), 1500);
+    } catch (err) {
+      console.error(err);
+      setBestBeforeFlash((f) => ({ ...f, [batch.id]: 'error' }));
+    } finally {
+      setBestBeforeSaving((s) => ({ ...s, [batch.id]: false }));
+    }
+  };
 
   if (loading) {
     return (
@@ -283,78 +346,110 @@ export default function BatchHistoryPage() {
           <StatCard label="Released" value={released} accent="text-green-600" />
         </div>
 
-        <div className="space-y-4 md:hidden">
-          {filteredBatches.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-gray-300 bg-white p-6 text-center text-gray-500">
-              No batches found.
-            </div>
-          ) : (
-            filteredBatches.map((batch) => (
-              <div key={batch.id} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-                <div className="flex flex-col gap-3">
+        {filteredBatches.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-gray-300 bg-white p-6 text-center text-gray-500">
+            No batches found.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {filteredBatches.map((batch) => {
+              const summary = qaStages[batch.id];
+              const derivedStatus = getDerivedStatus(batch);
+              const fallbackBadge =
+                derivedStatus === 'completed'
+                  ? 'bg-green-100 text-green-800'
+                  : derivedStatus === 'released'
+                  ? 'bg-blue-100 text-blue-800'
+                  : derivedStatus === 'planned'
+                  ? 'bg-gray-100 text-gray-700'
+                  : 'bg-yellow-100 text-yellow-800';
+              const label = summary?.label ?? formatStatusLabel(derivedStatus);
+              const badgeClass = summary?.badgeClass ?? fallbackBadge;
+              const bestBeforeValue = bestBeforeDrafts[batch.id] ?? '';
+              return (
+                <div key={batch.id} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <div className="font-mono text-sm font-semibold text-gray-900">{batch.batch_id}</div>
-                      <div className="text-sm text-gray-600">{batch.product_name ?? '-'}</div>
-                      <div className="mt-1 text-xs text-gray-500">
+                      <p className="font-mono text-sm font-semibold text-gray-900">{batch.batch_id}</p>
+                      <p className="text-sm text-gray-600">{batch.product_name ?? '-'}</p>
+                      <p className="text-xs text-gray-500">
                         Created {formatDate(batch.created_at)}
-                        {batch.created_by ? ` - ${batch.created_by}` : ''}
-                      </div>
+                        {batch.created_by ? ` · ${batch.created_by}` : ''}
+                      </p>
                     </div>
-                    {(() => {
-                      const summary = qaStages[batch.id];
-                      const derivedStatus = getDerivedStatus(batch);
-                      const fallbackLabel = formatStatusLabel(derivedStatus);
-                      const fallbackBadge =
-                        derivedStatus === 'completed'
-                          ? 'bg-green-100 text-green-800'
-                          : derivedStatus === 'released'
-                          ? 'bg-blue-100 text-blue-800'
-                          : derivedStatus === 'planned'
-                          ? 'bg-gray-100 text-gray-700'
-                          : 'bg-yellow-100 text-yellow-800';
-                      const label = summary?.label ?? fallbackLabel;
-                      const badge = summary?.badgeClass ?? fallbackBadge;
-                      return (
-                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${badge}`}>{label}</span>
-                      );
-                    })()}
+                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${badgeClass}`}>{label}</span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 text-sm text-gray-700">
+                  <div className="mt-3 grid grid-cols-2 gap-3 text-sm text-gray-700">
                     <div>
-                      <div className="text-xs text-gray-500 uppercase">Weight</div>
-                      <div>{typeof batch.beef_weight_kg === 'number' ? `${batch.beef_weight_kg.toFixed(3)} kg` : '-'}</div>
+                      <p className="text-xs uppercase text-gray-500">Weight</p>
+                      <p>{typeof batch.beef_weight_kg === 'number' ? `${batch.beef_weight_kg.toFixed(3)} kg` : '-'}</p>
                     </div>
                     <div>
-                      <div className="text-xs text-gray-500 uppercase">Compliance</div>
-                      <div className={`font-semibold ${getComplianceColor(batch.tolerance_compliance_percent)}`}>
+                      <p className="text-xs uppercase text-gray-500">Compliance</p>
+                      <p className={`font-semibold ${getComplianceColor(batch.tolerance_compliance_percent)}`}>
                         {batch.tolerance_compliance_percent != null ? `${batch.tolerance_compliance_percent}%` : '-'}
-                      </div>
+                      </p>
                     </div>
                     <div>
-                      <div className="text-xs text-gray-500 uppercase">QA Progress</div>
-                      <div>CP: {batch.qa_checkpoints_passed}/{batch.qa_checkpoints_total}</div>
-                      <div>Doc: {batch.documents_approved}/{batch.documents_required}</div>
-                      <div>QA %: {qaStages[batch.id]?.percent != null ? Math.round(qaStages[batch.id]?.percent ?? 0) : '-'}%</div>
+                      <p className="text-xs uppercase text-gray-500">QA Progress</p>
+                      <p>CP: {batch.qa_checkpoints_passed}/{batch.qa_checkpoints_total}</p>
+                      <p>Doc: {batch.documents_approved}/{batch.documents_required}</p>
+                      <p>QA %: {summary?.percent != null ? Math.round(summary.percent) : '-'}</p>
                     </div>
                     <div>
-                      <div className="text-xs text-gray-500 uppercase">Release</div>
+                      <p className="text-xs uppercase text-gray-500">Release</p>
                       <ReleaseStatusBadge status={batch.release_status} />
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
+                  <div className="mt-4 space-y-2 rounded-lg border border-blue-100 bg-blue-50 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-blue-900">Best before</p>
+                      <span className="text-xs font-semibold text-blue-700">{bestBeforeText(batch)}</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="date"
+                        value={bestBeforeValue}
+                        onChange={(e) =>
+                          setBestBeforeDrafts((d) => ({
+                            ...d,
+                            [batch.id]: e.target.value,
+                          }))
+                        }
+                        className="flex-1 rounded-md border border-blue-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void handleBestBeforeSave(batch)}
+                        disabled={bestBeforeSaving[batch.id]}
+                        className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                      >
+                        {bestBeforeSaving[batch.id] ? 'Saving...' : 'Save'}
+                      </button>
+                    </div>
+                    {bestBeforeFlash[batch.id] === 'saved' && (
+                      <p className="text-xs font-semibold text-emerald-700">Saved</p>
+                    )}
+                    {bestBeforeFlash[batch.id] === 'error' && (
+                      <p className="text-xs font-semibold text-red-700">Failed to save. Try again.</p>
+                    )}
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
                     <button
                       onClick={() => router.push((`/batches/${batch.id}` as `/batches/${string}`) as Route)}
                       className="flex-1 min-w-[120px] rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"
                     >
+                      <Eye className="mr-1 h-4 w-4 inline-block" />
                       View
                     </button>
                     <button
                       onClick={() => router.push((`/qa/${batch.id}` as `/qa/${string}`) as Route)}
                       className="flex-1 min-w-[120px] rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-700 hover:bg-green-100"
                     >
+                      <ClipboardCheck className="mr-1 h-4 w-4 inline-block" />
                       QA
                     </button>
                     <button
@@ -364,123 +459,15 @@ export default function BatchHistoryPage() {
                       }}
                       className="flex-1 min-w-[120px] rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-100"
                     >
+                      <Trash2 className="mr-1 h-4 w-4 inline-block" />
                       Delete
                     </button>
                   </div>
                 </div>
-              </div>
-            ))
-          )}
-        </div>
-
-        <div className="hidden md:block bg-white rounded-lg shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-100 border-b border-gray-200">
-                <tr>
-                  <Th>Batch ID</Th>
-                  <Th>Product</Th>
-                  <Th align="center">Weight (kg)</Th>
-                  <Th align="center">Status</Th>
-                  <Th align="center">Compliance</Th>
-                  <Th align="center">QA Progress</Th>
-                  <Th align="center">Release</Th>
-                  <Th>Created</Th>
-                  <Th align="center">Actions</Th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filteredBatches.map((batch) => (
-                  <tr key={batch.id} className="hover:bg-gray-50">
-                    <Td>
-                      <span className="font-mono text-sm font-medium text-gray-900">{batch.batch_id}</span>
-                    </Td>
-                    <Td>{batch.product_name ?? '-'}</Td>
-                    <Td align="center">
-                      {typeof batch.beef_weight_kg === 'number' ? batch.beef_weight_kg.toFixed(3) : '-'}
-                    </Td>
-                    <Td align="center">
-                      {(() => {
-                        const summary = qaStages[batch.id];
-                        const derivedStatus = getDerivedStatus(batch);
-                        const fallbackBadge =
-                          derivedStatus === 'completed'
-                            ? 'bg-green-100 text-green-800'
-                            : derivedStatus === 'released'
-                            ? 'bg-blue-100 text-blue-800'
-                            : derivedStatus === 'planned'
-                            ? 'bg-gray-100 text-gray-700'
-                            : 'bg-yellow-100 text-yellow-800';
-                        const label = summary?.label ?? formatStatusLabel(derivedStatus);
-                        const badgeClass = summary?.badgeClass ?? fallbackBadge;
-                        return (
-                          <span className={`px-2 py-1 text-xs font-semibold rounded-full ${badgeClass}`}>
-                            {label}
-                          </span>
-                        );
-                      })()}
-                    </Td>
-                    <Td align="center">
-                      <span className={`font-semibold ${getComplianceColor(batch.tolerance_compliance_percent)}`}>
-                        {batch.tolerance_compliance_percent != null
-                          ? `${batch.tolerance_compliance_percent}%`
-                          : '-'}
-                      </span>
-                    </Td>
-                    <Td align="center">
-                      <div className="flex flex-col items-center text-sm text-gray-700">
-                        <span>CP: {batch.qa_checkpoints_passed}/{batch.qa_checkpoints_total}</span>
-                        <span>Doc: {batch.documents_approved}/{batch.documents_required}</span>
-                      </div>
-                    </Td>
-                    <Td align="center">
-                      <ReleaseStatusBadge status={batch.release_status} />
-                    </Td>
-                    <Td>
-                      <div>{formatDate(batch.created_at)}</div>
-                      <div className="text-xs text-gray-500">{batch.created_by ?? 'System'}</div>
-                    </Td>
-                    <Td align="center">
-                      <div className="flex flex-wrap justify-center gap-2">
-                        <button
-                          onClick={() => router.push((`/batches/${batch.id}` as `/batches/${string}`) as Route)}
-                          className="text-blue-600 hover:text-blue-900 inline-flex items-center gap-1"
-                          title="View batch"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => router.push((`/qa/${batch.id}` as `/qa/${string}`) as Route)}
-                          className="text-green-600 hover:text-green-900 inline-flex items-center gap-1"
-                          title="QA checks"
-                        >
-                          <ClipboardCheck className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            setSelectedBatch(batch);
-                            setShowDeleteModal(true);
-                          }}
-                          className="text-red-600 hover:text-red-900 inline-flex items-center gap-1"
-                          title="Delete batch"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </Td>
-                  </tr>
-                ))}
-                {filteredBatches.length === 0 && (
-                  <tr>
-                    <td className="px-6 py-12 text-center text-gray-500" colSpan={9}>
-                      No batches found matching your criteria.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+              );
+            })}
           </div>
-        </div>
+        )}
       </div>
 
       {selectedBatch && (
@@ -504,24 +491,5 @@ function StatCard({ label, value, accent = 'text-gray-900' }: { label: string; v
       <div className={`text-2xl font-bold ${accent}`}>{value}</div>
       <div className="text-sm text-gray-600">{label}</div>
     </div>
-  );
-}
-
-function Th({ children, align = 'left' }: { children: React.ReactNode; align?: 'left' | 'center' | 'right' }) {
-  return (
-    <th
-      className={`px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider`}
-      style={{ textAlign: align }}
-    >
-      {children}
-    </th>
-  );
-}
-
-function Td({ children, align = 'left' }: { children: React.ReactNode; align?: 'left' | 'center' | 'right' }) {
-  return (
-    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900" style={{ textAlign: align }}>
-      {children}
-    </td>
   );
 }

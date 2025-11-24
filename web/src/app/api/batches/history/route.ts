@@ -27,11 +27,13 @@ export async function GET(request: Request) {
     const { product, ...rest } = row as typeof row & {
       product?: { id: string; name: string | null; code: string | null } | null;
       product_name?: string | null;
+      best_before_date?: string | null;
     };
     return {
       ...rest,
       product_name: rest.product_name ?? product?.name ?? null,
       product_code: product?.code ?? null,
+      best_before_date: rest.best_before_date ?? null,
       product,
     };
   });

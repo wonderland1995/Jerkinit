@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
         status,
         release_status,
         created_at,
+        best_before_date,
         product:products(name)
       `,
     )
@@ -43,6 +44,7 @@ export async function GET(request: NextRequest) {
       release_status: row.release_status,
       created_at: row.created_at,
       product_name: product?.name ?? null,
+      best_before_date: (row as { best_before_date?: string | null }).best_before_date ?? null,
     };
   });
 

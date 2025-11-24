@@ -54,6 +54,7 @@ interface RecentBatch {
   batch_id: string;
   status: string;
   created_at: string;
+  best_before_date?: string | null;
   beef_weight_kg: number;
   product?: {
     name: string;
@@ -89,6 +90,7 @@ interface BatchLookupResult {
   release_status: string | null;
   created_at: string;
   product_name: string | null;
+  best_before_date?: string | null;
 }
 
 export default function HomePage() {
@@ -212,8 +214,8 @@ export default function HomePage() {
     }
   };
 
-  const bestBeforeText = (date: string | Date | null | undefined) => {
-    const bestBefore = computeBestBefore(date);
+  const bestBeforeText = (createdAt: string | Date | null | undefined, override?: string | null) => {
+    const bestBefore = override ? new Date(override) : computeBestBefore(createdAt);
     return bestBefore ? formatDate(bestBefore) : '--';
   };
 
@@ -316,7 +318,7 @@ export default function HomePage() {
                           <span className="text-xs text-gray-500">{batch.product_name || 'Unknown product'}</span>
                         </div>
                         <p className="text-xs text-gray-500">
-                          Best before: {bestBeforeText(batch.created_at)} · {new Date(batch.created_at).toLocaleDateString('en-AU')}
+                          Best before: {bestBeforeText(batch.created_at, batch.best_before_date)} · {new Date(batch.created_at).toLocaleDateString('en-AU')}
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
@@ -679,7 +681,7 @@ export default function HomePage() {
                       {batch.beef_weight_kg ? `${batch.beef_weight_kg} kg` : '—'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {bestBeforeText(batch.created_at)}
+                      {bestBeforeText(batch.created_at, batch.best_before_date ?? null)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {new Date(batch.created_at).toLocaleDateString('en-AU')}

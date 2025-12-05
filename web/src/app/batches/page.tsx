@@ -446,7 +446,7 @@ export default function BatchHistoryPage() {
                   key={batch.id}
                   className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-xl shadow-slate-200/70"
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-white via-transparent to-emerald-50 opacity-0 transition group-hover:opacity-100" />
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white via-transparent to-emerald-50 opacity-0 transition group-hover:opacity-100" />
                   <div className="relative flex flex-wrap items-start justify-between gap-3">
                     <div className="space-y-1">
                       <p className="flex items-center gap-2 font-mono text-xs uppercase tracking-wide text-emerald-700">

@@ -26,7 +26,11 @@ export async function POST(
     return NextResponse.json({ error: 'Recipe not found' }, { status: 404 });
   }
 
-  const scaling_factor = beef_input_weight / recipe.base_beef_weight;
+  const baseBeefKg =
+    typeof recipe.base_beef_weight === 'number' && recipe.base_beef_weight > 0
+      ? recipe.base_beef_weight / 1000
+      : 0;
+  const scaling_factor = baseBeefKg > 0 ? beef_input_weight / baseBeefKg : 1;
 
   const scaled_ingredients = recipe.ingredients.map((ing: { material: { id: string; name: string; material_code: string | null }; quantity: number; unit: string; is_critical: boolean | null; }) => ({
     material_id: ing.material.id,

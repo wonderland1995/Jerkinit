@@ -136,7 +136,7 @@ export default function RecipeDetailPage() {
             <div className="grid grid-cols-3 gap-4 mb-4">
               <div>
                 <p className="text-sm text-gray-600">Base Beef Weight</p>
-                <p className="font-medium text-lg">{recipe.base_beef_weight}g</p>
+                <p className="font-medium text-lg">{(recipe.base_beef_weight / 1000).toFixed(2)} kg</p>
               </div>
               {recipe.target_yield_weight && (
                 <div>

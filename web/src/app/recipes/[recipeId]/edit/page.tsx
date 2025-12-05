@@ -41,7 +41,7 @@ type Recipe = {
   id: string;
   name: string;
   recipe_code: string;
-  base_beef_weight: number;         // grams
+  base_beef_weight: number;         // grams (storage)
   target_yield_weight: number | null;
   description: string | null;
   instructions: string | null;
@@ -68,7 +68,7 @@ export default function EditRecipePage() {
   const [description, setDescription] = useState<string>('');
   const [instructions, setInstructions] = useState<string>('');
   const [isActive, setIsActive] = useState<boolean>(true);
-  const [baseBeefGrams, setBaseBeefGrams] = useState<number>(1000);
+  const [baseBeefKg, setBaseBeefKg] = useState<number>(1);
   const [targetYield, setTargetYield] = useState<number | null>(null);
   const [rows, setRows] = useState<IngredientRow[]>([]);
 
@@ -99,7 +99,7 @@ export default function EditRecipePage() {
       setDescription(rec.description ?? '');
       setInstructions(rec.instructions ?? '');
       setIsActive(Boolean(rec.is_active));
-      setBaseBeefGrams(Number(rec.base_beef_weight || 1000));
+      setBaseBeefKg(Number.isFinite(rec.base_beef_weight) ? Number(rec.base_beef_weight) / 1000 : 1);
       setTargetYield(
         typeof rec.target_yield_weight === 'number' ? rec.target_yield_weight : null
       );
@@ -107,15 +107,19 @@ export default function EditRecipePage() {
       // map existing ingredients -> editable rows
       const mapped: IngredientRow[] = [...(rec.recipe_ingredients ?? [])]
         .sort((a, b) => a.display_order - b.display_order)
-        .map((ri) => ({
-          material_id: ri.material_id,
-          quantity: Number(ri.quantity),
-          unit: ri.unit,
-          is_critical: Boolean(ri.is_critical),
-          notes: ri.notes ?? null,
-          is_cure: Boolean(ri.is_cure),
-          cure_type: ri.cure_type ?? parseCureNote(ri.notes ?? null),
-        }));
+        .map((ri) => {
+          const unit = ri.unit as Unit;
+          const quantity = unit === 'kg' ? Number(ri.quantity) * 1000 : Number(ri.quantity);
+          return {
+            material_id: ri.material_id,
+            quantity,
+            unit: unit === 'kg' ? 'g' : unit,
+            is_critical: Boolean(ri.is_critical),
+            notes: ri.notes ?? null,
+            is_cure: Boolean(ri.is_cure),
+            cure_type: ri.cure_type ?? parseCureNote(ri.notes ?? null),
+          };
+        });
       setRows(mapped);
       setLoading(false);
     })();
@@ -135,8 +139,8 @@ export default function EditRecipePage() {
   const addRow = () => {
     // default: first material (if any)
     const defaultMaterial = materials[0]?.id ?? '';
-    // default unit: material’s native or g
-    const defaultUnit = materials[0]?.unit ?? 'g';
+    // default unit: always grams for consistency
+    const defaultUnit: Unit = 'g';
     setRows((prev) => [
       ...prev,
       {
@@ -200,13 +204,13 @@ export default function EditRecipePage() {
         description: description.trim() || null,
         instructions: instructions.trim() || null,
         is_active: isActive,
-        base_beef_weight: Number(baseBeefGrams), // grams
+        base_beef_weight: Math.round(baseBeefKg * 1000), // grams
         target_yield_weight: targetYield === null ? null : Number(targetYield),
         ingredients: rows
           .map((r) => ({
             material_id: r.material_id,
             quantity: Number(r.quantity),
-            unit: r.unit,
+            unit: 'g',
             is_critical: Boolean(r.is_critical),
             notes: r.notes && r.notes.trim() ? r.notes.trim() : null,
             is_cure: r.is_cure,
@@ -276,7 +280,7 @@ export default function EditRecipePage() {
               type="number"
               min={1}
               className="mt-1 w-full rounded border px-3 py-2"
-              value={baseBeefGrams}
+              value={baseBeefKg}
               onChange={(e) => setBaseBeefGrams(Number(e.currentTarget.value || 0))}
               required
             />
@@ -359,11 +363,8 @@ export default function EditRecipePage() {
                         value={r.material_id}
                         onChange={(e) => {
                           const id = e.currentTarget.value;
-                          const mat = materials.find((m) => m.id === id);
                           updateRow(idx, 'material_id', id);
-                          if (mat) {
-                            updateRow(idx, 'unit', mat.unit as Unit);
-                          }
+                          updateRow(idx, 'unit', 'g');
                         }}
                         required
                       >
@@ -387,17 +388,11 @@ export default function EditRecipePage() {
                       />
                     </td>
                     <td className="p-2">
-                      <select
-                        className="w-full rounded border px-2 py-1.5"
-                        value={r.unit}
-                        onChange={(e) => updateRow(idx, 'unit', e.currentTarget.value as Unit)}
-                      >
-                        <option value="g">g</option>
-                        <option value="kg">kg</option>
-                        <option value="ml">ml</option>
-                        <option value="L">L</option>
-                        <option value="units">units</option>
-                      </select>
+                      <input
+                        className="w-full rounded border px-2 py-1.5 bg-gray-50 text-gray-700"
+                        value="g"
+                        disabled
+                      />
                     </td>
                     <td className="p-2">
                       <input

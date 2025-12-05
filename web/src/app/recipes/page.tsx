@@ -105,7 +105,7 @@ export default function RecipesPage() {
                 <div className="border-t pt-3 mt-3">
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Base Beef:</span>
-                    <span className="font-medium">{recipe.base_beef_weight}g</span>
+                    <span className="font-medium">{(recipe.base_beef_weight / 1000).toFixed(2)} kg</span>
                   </div>
                   {recipe.target_yield_weight && (
                     <div className="flex justify-between text-sm mt-1">

@@ -122,7 +122,11 @@ export async function POST(request: Request) {
         );
       }
 
-      scaling_factor = beef_weight_kg / recipe.base_beef_weight;
+      const baseBeefKg =
+        typeof recipe.base_beef_weight === 'number' && recipe.base_beef_weight > 0
+          ? recipe.base_beef_weight / 1000
+          : 0;
+      scaling_factor = baseBeefKg > 0 ? beef_weight_kg / baseBeefKg : null;
       recipeIngredients = recipe.ingredients;
     }
 

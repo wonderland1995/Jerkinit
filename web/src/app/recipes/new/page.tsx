@@ -16,7 +16,7 @@ export default function CreateRecipePage() {
     name: '',
     recipe_code: '',
     product_category: '',
-    base_beef_weight: 1,
+    base_beef_weight: 1, // kg in UI; convert to grams when saving
     target_yield_weight: null,
     description: '',
     instructions: '',
@@ -202,7 +202,12 @@ const quickCreateMaterial = async () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       // product_id is optional; API will auto-create/reuse from recipe_code
-      body: JSON.stringify({ ...formData, ingredients: validIngredients, product_id: productId || undefined }),
+      body: JSON.stringify({
+        ...formData,
+        base_beef_weight: Math.round(formData.base_beef_weight * 1000), // store as grams
+        ingredients: validIngredients,
+        product_id: productId || undefined,
+      }),
     });
 
     const data: { id?: string; error?: string } = await res.json().catch(() => ({} as never));
@@ -309,7 +314,7 @@ const quickCreateMaterial = async () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Base Beef Weight (g) *
+                Base Beef Weight (kg) *
               </label>
               <input
                 type="number"
@@ -448,11 +453,8 @@ const quickCreateMaterial = async () => {
                         value={ingredient.material_id}
                         onChange={(e) => {
                           const id = e.currentTarget.value;
-                          const mat = materials.find((m) => m.id === id);
                           updateIngredient(index, 'material_id', id);
-                          if (mat) {
-                            updateIngredient(index, 'unit', mat.unit as CreateRecipeRequest['ingredients'][number]['unit']);
-                          }
+                          updateIngredient(index, 'unit', 'g');
                         }}
                         className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
                       >
@@ -480,17 +482,11 @@ const quickCreateMaterial = async () => {
 
                     <div className="w-24">
                       <label className="block text-xs font-semibold uppercase text-gray-500">Unit</label>
-                      <select
-                        value={ingredient.unit}
-                        onChange={(e) => updateIngredient(index, 'unit', e.currentTarget.value as CreateRecipeRequest['ingredients'][number]['unit'])}
-                        className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-                      >
-                        <option value="g">g</option>
-                        <option value="kg">kg</option>
-                        <option value="ml">ml</option>
-                        <option value="L">L</option>
-                        <option value="units">units</option>
-                      </select>
+                      <input
+                        value="g"
+                        disabled
+                        className="mt-1 w-full rounded border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700"
+                      />
                     </div>
 
                     <div className="flex flex-col gap-2 px-2">

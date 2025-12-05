@@ -293,14 +293,21 @@ export default function BatchHistoryPage() {
     setReleasing((s) => ({ ...s, [batch.id]: true }));
     setReleaseFlash((f) => ({ ...f, [batch.id]: undefined }));
     try {
-      const res = await fetch(`/api/batches/${batch.id}/release`, { method: 'POST' });
-      const body = (await res.json().catch(() => ({}))) as {
+      let res = await fetch(`/api/batches/${batch.id}/release`, { method: 'POST' });
+      let body = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         error?: string;
         status?: BatchSummary['status'];
         release_status?: BatchSummary['release_status'];
         release_number?: string | null;
       };
+
+      // Fallback: older deployments may not have the release route; use complete instead.
+      if (res.status === 404) {
+        res = await fetch(`/api/batches/${batch.id}/complete`, { method: 'POST' });
+        body = (await res.json().catch(() => ({}))) as typeof body;
+      }
+
       if (!res.ok || body.ok !== true) {
         throw new Error(body.error ?? 'Failed to release batch');
       }

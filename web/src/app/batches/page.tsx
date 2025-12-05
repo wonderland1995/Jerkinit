@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Trash2, Eye, ClipboardCheck, FileDown } from 'lucide-react';
+import { Trash2, Eye, ClipboardCheck, FileDown, Sparkles, CheckCircle2, Loader2 } from 'lucide-react';
 import DeleteBatchModal from '@/components/DeleteBatchModal';
 import type { Route } from 'next';
 import { computeBestBefore, formatDate } from '@/lib/utils';
@@ -67,6 +67,8 @@ export default function BatchHistoryPage() {
   const [bestBeforeDrafts, setBestBeforeDrafts] = useState<Record<string, string>>({});
   const [bestBeforeSaving, setBestBeforeSaving] = useState<Record<string, boolean>>({});
   const [bestBeforeFlash, setBestBeforeFlash] = useState<Record<string, 'saved' | 'error' | undefined>>({});
+  const [releasing, setReleasing] = useState<Record<string, boolean>>({});
+  const [releaseFlash, setReleaseFlash] = useState<Record<string, 'ok' | 'error' | undefined>>({});
 
   useEffect(() => {
     const t = setTimeout(() => setSearchTerm(searchRaw.trim().toLowerCase()), 250);
@@ -222,23 +224,27 @@ export default function BatchHistoryPage() {
   }, [batches, filter, searchTerm, getDerivedStatus]);
 
   function getComplianceColor(percent: number | null) {
-    if (percent === null) return 'text-gray-400';
-    if (percent >= 95) return 'text-green-600';
-    if (percent >= 80) return 'text-yellow-600';
-    return 'text-red-600';
+    if (percent === null) return 'text-slate-400';
+    if (percent >= 95) return 'text-emerald-200';
+    if (percent >= 80) return 'text-amber-200';
+    return 'text-rose-200';
   }
 
   function ReleaseStatusBadge({ status }: { status: BatchSummary['release_status'] }) {
     if (!status) return null;
     const colors = {
-      approved: 'bg-green-100 text-green-800',
-      pending: 'bg-yellow-100 text-yellow-800',
-      hold: 'bg-orange-100 text-orange-800',
-      rejected: 'bg-red-100 text-red-800',
-      recalled: 'bg-purple-100 text-purple-800',
+      approved: 'bg-emerald-500/15 text-emerald-100 border border-emerald-400/30',
+      pending: 'bg-amber-500/15 text-amber-100 border border-amber-400/30',
+      hold: 'bg-orange-500/15 text-orange-100 border border-orange-400/30',
+      rejected: 'bg-rose-500/15 text-rose-100 border border-rose-400/30',
+      recalled: 'bg-purple-500/15 text-purple-100 border border-purple-400/30',
     } as const;
     return (
-      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${colors[status] ?? 'bg-gray-100 text-gray-800'}`}>
+      <span
+        className={`px-2 py-1 text-xs font-semibold rounded-full ${
+          colors[status] ?? 'bg-white/10 text-slate-100 border border-white/10'
+        }`}
+      >
         {status.toUpperCase()}
       </span>
     );
@@ -283,10 +289,39 @@ export default function BatchHistoryPage() {
     }
   };
 
+  const handleRelease = async (batch: BatchSummary) => {
+    setReleasing((s) => ({ ...s, [batch.id]: true }));
+    setReleaseFlash((f) => ({ ...f, [batch.id]: undefined }));
+    try {
+      const res = await fetch(`/api/batches/${batch.id}/release`, { method: 'POST' });
+      const body = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        status?: BatchSummary['status'];
+        release_status?: BatchSummary['release_status'];
+        release_number?: string | null;
+      };
+      if (!res.ok || body.ok !== true) {
+        throw new Error(body.error ?? 'Failed to release batch');
+      }
+      await fetchBatches();
+      setReleaseFlash((f) => ({ ...f, [batch.id]: 'ok' }));
+      setTimeout(() => setReleaseFlash((f) => ({ ...f, [batch.id]: undefined })), 1500);
+    } catch (err) {
+      console.error(err);
+      setReleaseFlash((f) => ({ ...f, [batch.id]: 'error' }));
+    } finally {
+      setReleasing((s) => ({ ...s, [batch.id]: false }));
+    }
+  };
+
   if (loading) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-200">
+        <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-6 py-3 shadow-lg shadow-black/40 backdrop-blur">
+          <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-emerald-400" />
+          <span className="text-sm font-semibold tracking-wide text-emerald-100">Loading batches</span>
+        </div>
       </div>
     );
   }
@@ -297,122 +332,182 @@ export default function BatchHistoryPage() {
   const released = batches.filter((b) => b.release_status === 'approved').length;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Batch History</h1>
-          <p className="mt-2 text-gray-600">View all production batches and their QA status</p>
-        </div>
+    <div className="relative min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-slate-100">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -left-24 top-16 h-64 w-64 rounded-full bg-indigo-500/20 blur-3xl" />
+        <div className="absolute right-0 top-32 h-72 w-72 rounded-full bg-emerald-500/20 blur-3xl" />
+      </div>
 
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <div className="flex flex-col gap-4 lg:grid lg:grid-cols-3">
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Search</label>
-              <input
-                type="text"
-                placeholder="Search batch ID, product, or operator..."
-                value={searchRaw}
-                onChange={(e) => setSearchRaw(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                inputMode="search"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Filter Status</label>
-              <select
-                value={filter}
-                onChange={(e) => setFilter(e.target.value as typeof filter)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="all">All Batches</option>
-                <option value="in_progress">In Progress</option>
-                <option value="completed">Completed</option>
-                <option value="released">Released</option>
-              </select>
-            </div>
-
-            <div className="flex items-end">
-              <Link
-                href="/recipe/new"
-                className="w-full px-6 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 text-center"
-              >
-                + New Batch
-              </Link>
+      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10">
+        <div className="mb-8 overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-500 p-[1px] shadow-2xl shadow-indigo-900/30">
+          <div className="relative rounded-[calc(1.5rem-1px)] bg-slate-950/85 px-6 py-6 sm:px-10 sm:py-10">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.25em] text-indigo-100">Operations Control</p>
+                <h1 className="text-3xl font-semibold text-white sm:text-4xl">Batch history & release</h1>
+                <p className="mt-2 max-w-3xl text-sm text-slate-300">
+                  Track QA progress, tweak best before dates, and release finished batches with modern, glassy controls.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-semibold text-slate-100">
+                  {released} released
+                </span>
+                <span className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-semibold text-slate-100">
+                  {inProgress} active
+                </span>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+        <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur">
+            <label className="block text-sm font-medium text-slate-200">Search</label>
+            <input
+              type="text"
+              placeholder="Search batch ID, product, or operator..."
+              value={searchRaw}
+              onChange={(e) => setSearchRaw(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-white/10 bg-slate-900/60 px-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-400/60 focus:outline-none focus:ring-2 focus:ring-emerald-400/30"
+              inputMode="search"
+            />
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur">
+            <label className="block text-sm font-medium text-slate-200">Filter Status</label>
+            <select
+              value={filter}
+              onChange={(e) => setFilter(e.target.value as typeof filter)}
+              className="mt-2 w-full rounded-xl border border-white/10 bg-slate-900/60 px-4 py-2.5 text-sm text-slate-100 focus:border-emerald-400/60 focus:outline-none focus:ring-2 focus:ring-emerald-400/30"
+            >
+              <option value="all">All Batches</option>
+              <option value="in_progress">In Progress</option>
+              <option value="completed">Completed</option>
+              <option value="released">Released</option>
+            </select>
+          </div>
+
+          <div className="flex items-end">
+            <Link
+              href="/recipe/new"
+              className="w-full rounded-2xl bg-gradient-to-r from-emerald-400 to-teal-400 px-6 py-2.5 text-center text-sm font-semibold text-slate-900 shadow-lg shadow-emerald-500/20 transition hover:shadow-emerald-500/30"
+            >
+              + New Batch
+            </Link>
+          </div>
+        </div>
+
+        <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard label="Total Batches" value={total} />
-          <StatCard label="In Progress" value={inProgress} accent="text-yellow-600" />
-          <StatCard label="Completed" value={completed} accent="text-blue-600" />
-          <StatCard label="Released" value={released} accent="text-green-600" />
+          <StatCard label="In Progress" value={inProgress} accent="text-amber-200" />
+          <StatCard label="Completed" value={completed} accent="text-sky-200" />
+          <StatCard label="Released" value={released} accent="text-emerald-200" />
         </div>
 
         {filteredBatches.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-gray-300 bg-white p-6 text-center text-gray-500">
+          <div className="rounded-2xl border border-dashed border-white/20 bg-white/5 p-6 text-center text-slate-400">
             No batches found.
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
             {filteredBatches.map((batch) => {
               const summary = qaStages[batch.id];
               const derivedStatus = getDerivedStatus(batch);
-              const fallbackBadge =
-                derivedStatus === 'completed'
-                  ? 'bg-green-100 text-green-800'
-                  : derivedStatus === 'released'
-                  ? 'bg-blue-100 text-blue-800'
-                  : derivedStatus === 'planned'
-                  ? 'bg-gray-100 text-gray-700'
-                  : 'bg-yellow-100 text-yellow-800';
-              const label = summary?.label ?? formatStatusLabel(derivedStatus);
-              const badgeClass = summary?.badgeClass ?? fallbackBadge;
               const bestBeforeValue = bestBeforeDrafts[batch.id] ?? '';
+              const qaPercent = Math.min(100, Math.max(0, summary?.percent ?? 0));
+              const modernStageTone: Partial<Record<Stage, string>> = {
+                preparation: 'bg-slate-500/15 text-slate-100 border border-slate-400/30',
+                mixing: 'bg-sky-500/15 text-sky-100 border border-sky-400/30',
+                marination: 'bg-amber-500/15 text-amber-100 border border-amber-400/30',
+                drying: 'bg-orange-500/15 text-orange-100 border border-orange-400/30',
+                packaging: 'bg-indigo-500/15 text-indigo-100 border border-indigo-400/30',
+                final: 'bg-emerald-500/15 text-emerald-100 border border-emerald-400/30',
+              };
+              const label = summary?.label ?? formatStatusLabel(derivedStatus);
+              const badgeClass =
+                summary?.completed
+                  ? 'bg-emerald-500/15 text-emerald-100 border border-emerald-400/30'
+                  : summary?.stage
+                  ? modernStageTone[summary.stage] ?? 'bg-white/10 text-slate-100 border border-white/15'
+                  : derivedStatus === 'released'
+                  ? 'bg-indigo-500/15 text-indigo-100 border border-indigo-400/30'
+                  : derivedStatus === 'completed'
+                  ? 'bg-emerald-500/15 text-emerald-100 border border-emerald-400/30'
+                  : 'bg-amber-500/15 text-amber-100 border border-amber-400/30';
+              const releaseLocked = batch.release_status === 'approved';
+              const releaseBusy = releasing[batch.id];
+              const releaseEligible =
+                !releaseLocked &&
+                (summary?.completed || derivedStatus === 'completed' || qaPercent >= 95);
+              const releaseState = releaseFlash[batch.id];
               return (
-                <div key={batch.id} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="font-mono text-sm font-semibold text-gray-900">{batch.batch_id}</p>
-                      <p className="text-sm text-gray-600">{batch.product_name ?? '-'}</p>
-                      <p className="text-xs text-gray-500">
+                <div
+                  key={batch.id}
+                  className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-5 shadow-xl shadow-black/30 backdrop-blur"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-emerald-500/10 opacity-0 transition group-hover:opacity-100" />
+                  <div className="relative flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <p className="flex items-center gap-2 font-mono text-xs uppercase tracking-wide text-emerald-200">
+                        {batch.batch_id}
+                        {batch.release_status ? <ReleaseStatusBadge status={batch.release_status} /> : null}
+                      </p>
+                      <p className="text-lg font-semibold text-white">{batch.product_name ?? '-'}</p>
+                      <p className="text-xs text-slate-400">
                         Created {formatDate(batch.created_at)}
-                        {batch.created_by ? ` · ${batch.created_by}` : ''}
+                        {batch.created_by ? ` - ${batch.created_by}` : ''}
                       </p>
                     </div>
-                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${badgeClass}`}>{label}</span>
+                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badgeClass}`}>{label}</span>
                   </div>
 
-                  <div className="mt-3 grid grid-cols-2 gap-3 text-sm text-gray-700">
-                    <div>
-                      <p className="text-xs uppercase text-gray-500">Weight</p>
-                      <p>{typeof batch.beef_weight_kg === 'number' ? `${batch.beef_weight_kg.toFixed(3)} kg` : '-'}</p>
+                  <div className="relative mt-4 grid grid-cols-2 gap-4 text-sm text-slate-200">
+                    <div className="space-y-2">
+                      <p className="text-xs uppercase text-slate-400">QA Progress</p>
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-white">
+                          CP {batch.qa_checkpoints_passed}/{batch.qa_checkpoints_total}
+                        </span>
+                        <span className="text-xs text-slate-400">
+                          Doc {batch.documents_approved}/{batch.documents_required}
+                        </span>
+                      </div>
+                      <div className="h-2 w-full rounded-full bg-white/10">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-sky-400 to-indigo-400 transition-all"
+                          style={{ width: `${qaPercent}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-slate-400">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-300" />
+                        <span>{summary?.checkpoint ?? summary?.label ?? label}</span>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs uppercase text-gray-500">Compliance</p>
-                      <p className={`font-semibold ${getComplianceColor(batch.tolerance_compliance_percent)}`}>
+                    <div className="space-y-2">
+                      <p className="text-xs uppercase text-slate-400">Weight</p>
+                      <p className="text-base font-semibold text-white">
+                        {typeof batch.beef_weight_kg === 'number' ? `${batch.beef_weight_kg.toFixed(3)} kg` : '-'}
+                      </p>
+                      <p className="text-xs uppercase text-slate-400">Compliance</p>
+                      <p className={`text-lg font-semibold ${getComplianceColor(batch.tolerance_compliance_percent)}`}>
                         {batch.tolerance_compliance_percent != null ? `${batch.tolerance_compliance_percent}%` : '-'}
                       </p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase text-gray-500">QA Progress</p>
-                      <p>CP: {batch.qa_checkpoints_passed}/{batch.qa_checkpoints_total}</p>
-                      <p>Doc: {batch.documents_approved}/{batch.documents_required}</p>
-                      <p>QA %: {summary?.percent != null ? Math.round(summary.percent) : '-'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase text-gray-500">Release</p>
-                      <ReleaseStatusBadge status={batch.release_status} />
+                      <p className="text-xs uppercase text-slate-400">Release</p>
+                      <div className="flex items-center gap-2">
+                        <ReleaseStatusBadge status={batch.release_status} />
+                        {releaseState === 'ok' && <span className="text-xs text-emerald-200">Released</span>}
+                        {releaseState === 'error' && <span className="text-xs text-rose-200">Failed to release</span>}
+                      </div>
                     </div>
                   </div>
 
-                  <div className="mt-4 space-y-2 rounded-lg border border-blue-100 bg-blue-50 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-semibold text-blue-900">Best before</p>
-                      <span className="text-xs font-semibold text-blue-700">{bestBeforeText(batch)}</span>
+                  <div className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-sm text-emerald-50">
+                    <div className="flex items-center justify-between">
+                      <p className="font-semibold">Best before</p>
+                      <span className="text-xs text-emerald-200">{bestBeforeText(batch)}</span>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
                       <input
                         type="date"
                         value={bestBeforeValue}
@@ -422,55 +517,70 @@ export default function BatchHistoryPage() {
                             [batch.id]: e.target.value,
                           }))
                         }
-                        className="flex-1 rounded-md border border-blue-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                        className="flex-1 rounded-lg border border-emerald-500/30 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/30"
                       />
                       <button
                         type="button"
                         onClick={() => void handleBestBeforeSave(batch)}
                         disabled={bestBeforeSaving[batch.id]}
-                        className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                        className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-400 px-3 py-2 text-sm font-semibold text-slate-900 shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 disabled:opacity-60"
                       >
-                        {bestBeforeSaving[batch.id] ? 'Saving...' : 'Save'}
+                        {bestBeforeSaving[batch.id] ? 'Saving...' : 'Save date'}
                       </button>
                     </div>
                     {bestBeforeFlash[batch.id] === 'saved' && (
-                      <p className="text-xs font-semibold text-emerald-700">Saved</p>
+                      <p className="mt-2 text-xs font-semibold text-emerald-200">Saved</p>
                     )}
                     {bestBeforeFlash[batch.id] === 'error' && (
-                      <p className="text-xs font-semibold text-red-700">Failed to save. Try again.</p>
+                      <p className="mt-2 text-xs font-semibold text-rose-200">Failed to save. Try again.</p>
                     )}
                   </div>
 
                   <div className="mt-4 flex flex-wrap gap-2">
                     <button
                       onClick={() => handleCardExport(batch)}
-                      className="flex-1 min-w-[120px] rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      className="flex-1 min-w-[130px] inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-white/20"
                     >
-                      <FileDown className="mr-1 h-4 w-4 inline-block" />
+                      <FileDown className="h-4 w-4" />
                       Export PDF
                     </button>
                     <button
                       onClick={() => router.push((`/batches/${batch.id}` as `/batches/${string}`) as Route)}
-                      className="flex-1 min-w-[120px] rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"
+                      className="flex-1 min-w-[130px] inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-slate-900/70 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-white/20"
                     >
-                      <Eye className="mr-1 h-4 w-4 inline-block" />
+                      <Eye className="h-4 w-4" />
                       View
                     </button>
                     <button
                       onClick={() => router.push((`/qa/${batch.id}` as `/qa/${string}`) as Route)}
-                      className="flex-1 min-w-[120px] rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-700 hover:bg-green-100"
+                      className="flex-1 min-w-[130px] inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-400 px-3 py-2 text-sm font-semibold text-slate-900 shadow-lg shadow-emerald-500/20 transition hover:shadow-emerald-500/30"
                     >
-                      <ClipboardCheck className="mr-1 h-4 w-4 inline-block" />
+                      <ClipboardCheck className="h-4 w-4" />
                       QA
+                    </button>
+                    <button
+                      onClick={() => void handleRelease(batch)}
+                      disabled={releaseLocked || releaseBusy || !releaseEligible}
+                      className={`flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                        releaseLocked
+                          ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-100'
+                          : releaseEligible
+                          ? 'border-emerald-400/50 bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-900 shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30'
+                          : 'border-white/10 bg-white/5 text-slate-400'
+                      } disabled:opacity-60`}
+                      title={releaseEligible ? 'Mark batch as released' : 'Finish QA to release'}
+                    >
+                      {releaseBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                      {releaseLocked ? 'Released' : releaseBusy ? 'Releasing...' : 'Release'}
                     </button>
                     <button
                       onClick={() => {
                         setSelectedBatch(batch);
                         setShowDeleteModal(true);
                       }}
-                      className="flex-1 min-w-[120px] rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-100"
+                      className="flex-1 min-w-[120px] inline-flex items-center justify-center gap-2 rounded-lg border border-rose-400/30 bg-rose-500/15 px-3 py-2 text-sm font-semibold text-rose-100 transition hover:border-rose-300/50"
                     >
-                      <Trash2 className="mr-1 h-4 w-4 inline-block" />
+                      <Trash2 className="h-4 w-4" />
                       Delete
                     </button>
                   </div>
@@ -496,11 +606,19 @@ export default function BatchHistoryPage() {
   );
 }
 
-function StatCard({ label, value, accent = 'text-gray-900' }: { label: string; value: number; accent?: string }) {
+function StatCard({ label, value, accent = 'text-white' }: { label: string; value: number; accent?: string }) {
   return (
-    <div className="bg-white rounded-lg shadow-sm p-4">
-      <div className={`text-2xl font-bold ${accent}`}>{value}</div>
-      <div className="text-sm text-gray-600">{label}</div>
+    <div className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-4 shadow-lg shadow-black/30 backdrop-blur">
+      <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-white/10 opacity-0 transition group-hover:opacity-100" />
+      <div className="relative flex items-center justify-between">
+        <div>
+          <div className={`text-3xl font-semibold ${accent}`}>{value}</div>
+          <div className="text-sm text-slate-300">{label}</div>
+        </div>
+        <div className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-slate-200">
+          <CheckCircle2 className="h-5 w-5" />
+        </div>
+      </div>
     </div>
   );
 }

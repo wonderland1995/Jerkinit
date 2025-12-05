@@ -318,9 +318,9 @@ export default function BatchHistoryPage() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-200">
-        <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-6 py-3 shadow-lg shadow-black/40 backdrop-blur">
-          <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-emerald-400" />
-          <span className="text-sm font-semibold tracking-wide text-emerald-100">Loading batches</span>
+      <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-6 py-3 shadow-lg shadow-slate-200/70">
+        <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-emerald-500" />
+        <span className="text-sm font-semibold tracking-wide text-emerald-700">Loading batches</span>
         </div>
       </div>
     );
@@ -332,28 +332,28 @@ export default function BatchHistoryPage() {
   const released = batches.filter((b) => b.release_status === 'approved').length;
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-slate-100">
+    <div className="relative min-h-screen bg-gradient-to-b from-white via-slate-50 to-white text-slate-900">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -left-24 top-16 h-64 w-64 rounded-full bg-indigo-500/20 blur-3xl" />
-        <div className="absolute right-0 top-32 h-72 w-72 rounded-full bg-emerald-500/20 blur-3xl" />
+        <div className="absolute -left-24 top-16 h-64 w-64 rounded-full bg-sky-200/40 blur-3xl" />
+        <div className="absolute right-0 top-32 h-72 w-72 rounded-full bg-emerald-200/40 blur-3xl" />
       </div>
 
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10">
-        <div className="mb-8 overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-500 p-[1px] shadow-2xl shadow-indigo-900/30">
-          <div className="relative rounded-[calc(1.5rem-1px)] bg-slate-950/85 px-6 py-6 sm:px-10 sm:py-10">
+        <div className="mb-8 overflow-hidden rounded-3xl border border-slate-100 bg-gradient-to-r from-sky-100 via-white to-emerald-50 p-[1px] shadow-2xl shadow-slate-200/80">
+          <div className="relative rounded-[calc(1.5rem-1px)] bg-white px-6 py-6 sm:px-10 sm:py-10">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.25em] text-indigo-100">Operations Control</p>
-                <h1 className="text-3xl font-semibold text-white sm:text-4xl">Batch history & release</h1>
-                <p className="mt-2 max-w-3xl text-sm text-slate-300">
-                  Track QA progress, tweak best before dates, and release finished batches with modern, glassy controls.
+                <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Operations Control</p>
+                <h1 className="text-3xl font-semibold text-slate-900 sm:text-4xl">Batch history & release</h1>
+                <p className="mt-2 max-w-3xl text-sm text-slate-600">
+                  Track QA progress, tweak best before dates, and release finished batches with bright, airy controls.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <span className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-semibold text-slate-100">
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700">
                   {released} released
                 </span>
-                <span className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-semibold text-slate-100">
+                <span className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-xs font-semibold text-sky-700">
                   {inProgress} active
                 </span>
               </div>
@@ -362,24 +362,24 @@ export default function BatchHistoryPage() {
         </div>
 
         <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur">
-            <label className="block text-sm font-medium text-slate-200">Search</label>
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <label className="block text-sm font-medium text-slate-700">Search</label>
             <input
               type="text"
               placeholder="Search batch ID, product, or operator..."
               value={searchRaw}
               onChange={(e) => setSearchRaw(e.target.value)}
-              className="mt-2 w-full rounded-xl border border-white/10 bg-slate-900/60 px-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-400/60 focus:outline-none focus:ring-2 focus:ring-emerald-400/30"
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-400/60 focus:outline-none focus:ring-2 focus:ring-emerald-300"
               inputMode="search"
             />
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur">
-            <label className="block text-sm font-medium text-slate-200">Filter Status</label>
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <label className="block text-sm font-medium text-slate-700">Filter Status</label>
             <select
               value={filter}
               onChange={(e) => setFilter(e.target.value as typeof filter)}
-              className="mt-2 w-full rounded-xl border border-white/10 bg-slate-900/60 px-4 py-2.5 text-sm text-slate-100 focus:border-emerald-400/60 focus:outline-none focus:ring-2 focus:ring-emerald-400/30"
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 focus:border-emerald-400/60 focus:outline-none focus:ring-2 focus:ring-emerald-300"
             >
               <option value="all">All Batches</option>
               <option value="in_progress">In Progress</option>
@@ -391,7 +391,7 @@ export default function BatchHistoryPage() {
           <div className="flex items-end">
             <Link
               href="/recipe/new"
-              className="w-full rounded-2xl bg-gradient-to-r from-emerald-400 to-teal-400 px-6 py-2.5 text-center text-sm font-semibold text-slate-900 shadow-lg shadow-emerald-500/20 transition hover:shadow-emerald-500/30"
+              className="w-full rounded-2xl bg-gradient-to-r from-emerald-400 to-teal-400 px-6 py-2.5 text-center text-sm font-semibold text-white shadow-lg shadow-emerald-200 transition hover:shadow-emerald-300"
             >
               + New Batch
             </Link>
@@ -406,7 +406,7 @@ export default function BatchHistoryPage() {
         </div>
 
         {filteredBatches.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-white/20 bg-white/5 p-6 text-center text-slate-400">
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center text-slate-500">
             No batches found.
           </div>
         ) : (
@@ -427,14 +427,14 @@ export default function BatchHistoryPage() {
               const label = summary?.label ?? formatStatusLabel(derivedStatus);
               const badgeClass =
                 summary?.completed
-                  ? 'bg-emerald-500/15 text-emerald-100 border border-emerald-400/30'
+                  ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
                   : summary?.stage
-                  ? modernStageTone[summary.stage] ?? 'bg-white/10 text-slate-100 border border-white/15'
+                  ? modernStageTone[summary.stage] ?? 'bg-slate-100 text-slate-700 border border-slate-200'
                   : derivedStatus === 'released'
-                  ? 'bg-indigo-500/15 text-indigo-100 border border-indigo-400/30'
+                  ? 'bg-indigo-100 text-indigo-700 border border-indigo-200'
                   : derivedStatus === 'completed'
-                  ? 'bg-emerald-500/15 text-emerald-100 border border-emerald-400/30'
-                  : 'bg-amber-500/15 text-amber-100 border border-amber-400/30';
+                  ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                  : 'bg-amber-100 text-amber-700 border border-amber-200';
               const releaseLocked = batch.release_status === 'approved';
               const releaseBusy = releasing[batch.id];
               const releaseEligible =
@@ -444,17 +444,17 @@ export default function BatchHistoryPage() {
               return (
                 <div
                   key={batch.id}
-                  className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-5 shadow-xl shadow-black/30 backdrop-blur"
+                  className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-xl shadow-slate-200/70"
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-emerald-500/10 opacity-0 transition group-hover:opacity-100" />
+                  <div className="absolute inset-0 bg-gradient-to-br from-white via-transparent to-emerald-50 opacity-0 transition group-hover:opacity-100" />
                   <div className="relative flex flex-wrap items-start justify-between gap-3">
                     <div className="space-y-1">
-                      <p className="flex items-center gap-2 font-mono text-xs uppercase tracking-wide text-emerald-200">
+                      <p className="flex items-center gap-2 font-mono text-xs uppercase tracking-wide text-emerald-700">
                         {batch.batch_id}
                         {batch.release_status ? <ReleaseStatusBadge status={batch.release_status} /> : null}
                       </p>
-                      <p className="text-lg font-semibold text-white">{batch.product_name ?? '-'}</p>
-                      <p className="text-xs text-slate-400">
+                      <p className="text-lg font-semibold text-slate-900">{batch.product_name ?? '-'}</p>
+                      <p className="text-xs text-slate-500">
                         Created {formatDate(batch.created_at)}
                         {batch.created_by ? ` - ${batch.created_by}` : ''}
                       </p>
@@ -462,50 +462,50 @@ export default function BatchHistoryPage() {
                     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badgeClass}`}>{label}</span>
                   </div>
 
-                  <div className="relative mt-4 grid grid-cols-2 gap-4 text-sm text-slate-200">
+                  <div className="relative mt-4 grid grid-cols-2 gap-4 text-sm text-slate-700">
                     <div className="space-y-2">
-                      <p className="text-xs uppercase text-slate-400">QA Progress</p>
+                      <p className="text-xs uppercase text-slate-500">QA Progress</p>
                       <div className="flex items-center justify-between">
-                        <span className="font-semibold text-white">
+                        <span className="font-semibold text-slate-900">
                           CP {batch.qa_checkpoints_passed}/{batch.qa_checkpoints_total}
                         </span>
-                        <span className="text-xs text-slate-400">
+                        <span className="text-xs text-slate-500">
                           Doc {batch.documents_approved}/{batch.documents_required}
                         </span>
                       </div>
-                      <div className="h-2 w-full rounded-full bg-white/10">
+                      <div className="h-2 w-full rounded-full bg-slate-100">
                         <div
                           className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-sky-400 to-indigo-400 transition-all"
                           style={{ width: `${qaPercent}%` }}
                         />
                       </div>
-                      <div className="flex items-center gap-2 text-xs text-slate-400">
-                        <CheckCircle2 className="h-4 w-4 text-emerald-300" />
+                      <div className="flex items-center gap-2 text-xs text-slate-500">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                         <span>{summary?.checkpoint ?? summary?.label ?? label}</span>
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <p className="text-xs uppercase text-slate-400">Weight</p>
-                      <p className="text-base font-semibold text-white">
+                      <p className="text-xs uppercase text-slate-500">Weight</p>
+                      <p className="text-base font-semibold text-slate-900">
                         {typeof batch.beef_weight_kg === 'number' ? `${batch.beef_weight_kg.toFixed(3)} kg` : '-'}
                       </p>
-                      <p className="text-xs uppercase text-slate-400">Compliance</p>
+                      <p className="text-xs uppercase text-slate-500">Compliance</p>
                       <p className={`text-lg font-semibold ${getComplianceColor(batch.tolerance_compliance_percent)}`}>
                         {batch.tolerance_compliance_percent != null ? `${batch.tolerance_compliance_percent}%` : '-'}
                       </p>
-                      <p className="text-xs uppercase text-slate-400">Release</p>
+                      <p className="text-xs uppercase text-slate-500">Release</p>
                       <div className="flex items-center gap-2">
                         <ReleaseStatusBadge status={batch.release_status} />
-                        {releaseState === 'ok' && <span className="text-xs text-emerald-200">Released</span>}
-                        {releaseState === 'error' && <span className="text-xs text-rose-200">Failed to release</span>}
+                        {releaseState === 'ok' && <span className="text-xs text-emerald-600">Released</span>}
+                        {releaseState === 'error' && <span className="text-xs text-rose-600">Failed to release</span>}
                       </div>
                     </div>
                   </div>
 
-                  <div className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-sm text-emerald-50">
+                  <div className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-900">
                     <div className="flex items-center justify-between">
                       <p className="font-semibold">Best before</p>
-                      <span className="text-xs text-emerald-200">{bestBeforeText(batch)}</span>
+                      <span className="text-xs text-emerald-700">{bestBeforeText(batch)}</span>
                     </div>
                     <div className="mt-3 flex flex-wrap items-center gap-3">
                       <input
@@ -517,43 +517,43 @@ export default function BatchHistoryPage() {
                             [batch.id]: e.target.value,
                           }))
                         }
-                        className="flex-1 rounded-lg border border-emerald-500/30 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/30"
+                        className="flex-1 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200"
                       />
                       <button
                         type="button"
                         onClick={() => void handleBestBeforeSave(batch)}
                         disabled={bestBeforeSaving[batch.id]}
-                        className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-400 px-3 py-2 text-sm font-semibold text-slate-900 shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 disabled:opacity-60"
+                        className="rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-200 hover:shadow-emerald-300 disabled:opacity-60"
                       >
                         {bestBeforeSaving[batch.id] ? 'Saving...' : 'Save date'}
                       </button>
                     </div>
                     {bestBeforeFlash[batch.id] === 'saved' && (
-                      <p className="mt-2 text-xs font-semibold text-emerald-200">Saved</p>
+                      <p className="mt-2 text-xs font-semibold text-emerald-700">Saved</p>
                     )}
                     {bestBeforeFlash[batch.id] === 'error' && (
-                      <p className="mt-2 text-xs font-semibold text-rose-200">Failed to save. Try again.</p>
+                      <p className="mt-2 text-xs font-semibold text-rose-600">Failed to save. Try again.</p>
                     )}
                   </div>
 
                   <div className="mt-4 flex flex-wrap gap-2">
                     <button
                       onClick={() => handleCardExport(batch)}
-                      className="flex-1 min-w-[130px] inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-white/20"
+                      className="flex-1 min-w-[130px] inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300"
                     >
                       <FileDown className="h-4 w-4" />
                       Export PDF
                     </button>
                     <button
                       onClick={() => router.push((`/batches/${batch.id}` as `/batches/${string}`) as Route)}
-                      className="flex-1 min-w-[130px] inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-slate-900/70 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-white/20"
+                      className="flex-1 min-w-[130px] inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-800 transition hover:border-slate-300"
                     >
                       <Eye className="h-4 w-4" />
                       View
                     </button>
                     <button
                       onClick={() => router.push((`/qa/${batch.id}` as `/qa/${string}`) as Route)}
-                      className="flex-1 min-w-[130px] inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-400 px-3 py-2 text-sm font-semibold text-slate-900 shadow-lg shadow-emerald-500/20 transition hover:shadow-emerald-500/30"
+                      className="flex-1 min-w-[130px] inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-2 text-sm font-semibold text-white shadow-md shadow-emerald-200 transition hover:shadow-emerald-300"
                     >
                       <ClipboardCheck className="h-4 w-4" />
                       QA
@@ -563,10 +563,10 @@ export default function BatchHistoryPage() {
                       disabled={releaseLocked || releaseBusy || !releaseEligible}
                       className={`flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition ${
                         releaseLocked
-                          ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-100'
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                           : releaseEligible
-                          ? 'border-emerald-400/50 bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-900 shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30'
-                          : 'border-white/10 bg-white/5 text-slate-400'
+                          ? 'border-emerald-300 bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-md shadow-emerald-200 hover:shadow-emerald-300'
+                          : 'border-slate-200 bg-slate-50 text-slate-500'
                       } disabled:opacity-60`}
                       title={releaseEligible ? 'Mark batch as released' : 'Finish QA to release'}
                     >
@@ -578,7 +578,7 @@ export default function BatchHistoryPage() {
                         setSelectedBatch(batch);
                         setShowDeleteModal(true);
                       }}
-                      className="flex-1 min-w-[120px] inline-flex items-center justify-center gap-2 rounded-lg border border-rose-400/30 bg-rose-500/15 px-3 py-2 text-sm font-semibold text-rose-100 transition hover:border-rose-300/50"
+                      className="flex-1 min-w-[120px] inline-flex items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:border-rose-300"
                     >
                       <Trash2 className="h-4 w-4" />
                       Delete
@@ -606,16 +606,16 @@ export default function BatchHistoryPage() {
   );
 }
 
-function StatCard({ label, value, accent = 'text-white' }: { label: string; value: number; accent?: string }) {
+function StatCard({ label, value, accent = 'text-emerald-600' }: { label: string; value: number; accent?: string }) {
   return (
-    <div className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-4 shadow-lg shadow-black/30 backdrop-blur">
-      <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-white/10 opacity-0 transition group-hover:opacity-100" />
+    <div className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-lg shadow-slate-200/70">
+      <div className="absolute inset-0 bg-gradient-to-br from-white via-transparent to-emerald-50 opacity-0 transition group-hover:opacity-100" />
       <div className="relative flex items-center justify-between">
         <div>
           <div className={`text-3xl font-semibold ${accent}`}>{value}</div>
-          <div className="text-sm text-slate-300">{label}</div>
+          <div className="text-sm text-slate-600">{label}</div>
         </div>
-        <div className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-slate-200">
+        <div className="grid h-10 w-10 place-items-center rounded-full bg-emerald-50 text-emerald-600">
           <CheckCircle2 className="h-5 w-5" />
         </div>
       </div>

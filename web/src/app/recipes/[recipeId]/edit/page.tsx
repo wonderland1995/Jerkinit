@@ -281,7 +281,7 @@ export default function EditRecipePage() {
               min={1}
               className="mt-1 w-full rounded border px-3 py-2"
               value={baseBeefKg}
-              onChange={(e) => setBaseBeefGrams(Number(e.currentTarget.value || 0))}
+              onChange={(e) => setBaseBeefKg(Number(e.currentTarget.value || 0))}
               required
             />
           </label>

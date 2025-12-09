@@ -13,7 +13,8 @@ import {
   Archive,
   Calendar,
   ArrowUpRight,
-  Search
+  Search,
+  Thermometer
 } from 'lucide-react';
 
 import type { Route } from 'next';
@@ -296,7 +297,7 @@ export default function HomePage() {
                   value={lookupTerm}
                   onChange={(e) => setLookupTerm(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                  placeholder="e.g. JERK-0245 or Teriyaki"
+                  placeholder="e.g. JERK-0245 or Desert Spice"
                 />
                 <span className="text-xs text-gray-500 sm:w-32">
                   {lookupLoading ? 'Searching…' : lookupResults.length ? `${lookupResults.length} match(es)` : 'No results yet'}
@@ -503,6 +504,13 @@ export default function HomePage() {
               >
                 <ClipboardCheck className="w-5 h-5" />
                 <span className="font-medium">QA Management</span>
+              </Link>
+              <Link 
+                href="/equipment-calibration"
+                className="flex items-center gap-3 p-3 bg-white/10 hover:bg-white/20 rounded-lg transition backdrop-blur-sm"
+              >
+                <Thermometer className="w-5 h-5" />
+                <span className="font-medium">Calibration Lab</span>
               </Link>
               <Link 
                 href="/inventory/receive"

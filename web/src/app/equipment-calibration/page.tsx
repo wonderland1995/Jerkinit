@@ -241,43 +241,43 @@ export default function EquipmentCalibrationPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-emerald-100">
-        <div className="flex items-center gap-3 rounded-full border border-emerald-500/30 bg-slate-900 px-5 py-3 shadow-lg shadow-emerald-500/20">
-          <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-emerald-400" />
-          <span className="text-sm font-semibold tracking-wide">Booting calibration console...</span>
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 text-emerald-700">
+        <div className="flex items-center gap-3 rounded-full border border-emerald-200 bg-white px-5 py-3 shadow-lg shadow-emerald-100">
+          <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-emerald-500" />
+          <span className="text-sm font-semibold tracking-wide">Loading calibration workspace...</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={`${space.className} ${space.variable} ${orbitron.variable} relative min-h-screen overflow-hidden bg-slate-950 text-slate-50`}>
+    <div className={`${space.className} ${space.variable} ${orbitron.variable} relative min-h-screen overflow-hidden bg-gradient-to-b from-slate-50 via-white to-sky-50 text-slate-900`}>
       <FuturisticBackdrop />
 
-      <div className="relative mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-        <header className="mb-8 flex flex-col gap-4 rounded-3xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 via-slate-900 to-sky-500/10 p-6 shadow-2xl shadow-emerald-500/20 sm:flex-row sm:items-center sm:justify-between">
+      <div className="relative mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+        <header className="mb-8 flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-xl shadow-slate-200 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-2">
-            <p className="flex items-center gap-2 text-xs uppercase tracking-[0.32em] text-emerald-200">
+            <p className="flex items-center gap-2 text-xs uppercase tracking-[0.24em] text-emerald-700">
               <Sparkles className="h-4 w-4" />
               Calibration Lab
             </p>
             <h1 className={`${orbitron.className} text-3xl font-semibold tracking-tight sm:text-4xl`}>
-              Equipment calibration (FSANZ ready)
+              Equipment calibration (FSANZ aligned)
             </h1>
-            <p className="max-w-3xl text-sm text-slate-200">
-              Add any instrument (we only had thermometers before), capture ice + boiling checks, and print sci-fi grade labels to stick on the device.
+            <p className="max-w-3xl text-sm text-slate-600">
+              Register instruments, record the ice and boiling point checks, and print clear labels for quick compliance verification.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
-            <StatPill label="Total" value={stats.total} accent="from-emerald-400 to-teal-400" />
-            <StatPill label="In tolerance" value={stats.clean} accent="from-sky-400 to-cyan-400" />
-            <StatPill label="Due soon" value={stats.dueSoon} accent="from-amber-400 to-orange-400" />
-            <StatPill label="Overdue" value={stats.overdue} accent="from-rose-400 to-pink-500" />
+            <StatPill label="Total" value={stats.total} accent="from-emerald-500 to-teal-500" />
+            <StatPill label="In tolerance" value={stats.clean} accent="from-sky-500 to-cyan-500" />
+            <StatPill label="Due soon" value={stats.dueSoon} accent="from-amber-500 to-orange-500" />
+            <StatPill label="Overdue" value={stats.overdue} accent="from-rose-500 to-pink-500" />
           </div>
         </header>
 
         {error ? (
-          <div className="mb-6 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 text-rose-100">
+          <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-700">
             {error}
           </div>
         ) : null}
@@ -285,12 +285,12 @@ export default function EquipmentCalibrationPage() {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2 space-y-4">
             {equipment.length === 0 ? (
-              <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-8 text-slate-200 shadow-xl shadow-emerald-500/10">
+              <div className="rounded-3xl border border-slate-200 bg-white p-8 text-slate-700 shadow-md shadow-slate-200">
                 <div className="flex items-start gap-3">
-                  <Thermometer className="h-6 w-6 text-emerald-300" />
+                  <Thermometer className="h-6 w-6 text-emerald-600" />
                   <div>
-                    <p className="text-lg font-semibold">No equipment yet</p>
-                    <p className="text-sm text-slate-400">Add your first thermometer or scale to generate a calibration label.</p>
+                    <p className="text-lg font-semibold text-slate-900">No equipment yet</p>
+                    <p className="text-sm text-slate-600">Add your first thermometer or scale to generate a calibration label.</p>
                   </div>
                 </div>
               </div>
@@ -380,21 +380,21 @@ function EquipmentCard({
 
   const toneClass =
     status.tone === 'emerald'
-      ? 'from-emerald-400/30 to-cyan-400/10 text-emerald-100 border-emerald-500/30'
+      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
       : status.tone === 'amber'
-      ? 'from-amber-400/30 to-orange-500/10 text-amber-100 border-amber-400/40'
+      ? 'bg-amber-50 text-amber-700 border-amber-200'
       : status.tone === 'rose'
-      ? 'from-rose-400/30 to-pink-500/10 text-rose-100 border-rose-400/40'
-      : 'from-slate-500/20 to-slate-800/20 text-slate-100 border-slate-400/30';
+      ? 'bg-rose-50 text-rose-700 border-rose-200'
+      : 'bg-slate-50 text-slate-700 border-slate-200';
 
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/60 p-5 shadow-2xl shadow-emerald-500/10">
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-emerald-500/5 via-transparent to-sky-500/5" />
+    <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 shadow-lg shadow-slate-200">
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-emerald-100/40 via-transparent to-sky-100/30" />
       <div className="relative flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-[0.3em] text-emerald-200">Instrument</p>
-          <h2 className="text-xl font-semibold text-slate-50">{item.name}</h2>
-          <p className="text-sm text-slate-400">
+          <p className="text-xs uppercase tracking-[0.3em] text-emerald-700">Instrument</p>
+          <h2 className="text-xl font-semibold text-slate-900">{item.name}</h2>
+          <p className="text-sm text-slate-600">
             {item.type} | {item.model || 'Model N/A'} | {item.location || 'Location N/A'}
           </p>
         </div>
@@ -407,7 +407,7 @@ function EquipmentCard({
         </span>
       </div>
 
-      <div className="relative mt-4 grid grid-cols-2 gap-3 text-sm text-slate-200 sm:grid-cols-4">
+      <div className="relative mt-4 grid grid-cols-2 gap-3 text-sm text-slate-800 sm:grid-cols-4">
         <InfoTile label="Label code" value={item.label_code} icon={<Cpu className="h-4 w-4" />} />
         <InfoTile label="Last calibration" value={last} icon={<Radar className="h-4 w-4" />} />
         <InfoTile label="Next due" value={dueDate} icon={<ClockBadge />} />
@@ -418,19 +418,19 @@ function EquipmentCard({
         />
       </div>
 
-      <div className="relative mt-4 grid gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-4 sm:grid-cols-2">
+      <div className="relative mt-4 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
         <div className="space-y-2">
-          <p className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-emerald-200">
-            <Thermometer className="h-4 w-4 text-emerald-300" />
+          <p className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-emerald-700">
+            <Thermometer className="h-4 w-4 text-emerald-600" />
             Enter FSANZ check
           </p>
-          <div className="grid grid-cols-2 gap-2 text-xs text-slate-300">
+          <div className="grid grid-cols-2 gap-2 text-xs text-slate-700">
             <div>
-              <label className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Ice slurry (C)</label>
+              <label className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Ice slurry (C)</label>
               <input
                 type="number"
                 step="0.1"
-                className="mt-1 w-full rounded-lg border border-emerald-500/30 bg-slate-950/80 px-3 py-2 text-sm text-slate-50 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/60"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200"
                 value={draftState.observed_ice_c}
                 onChange={(e) =>
                   setDraft({ ...draftState, observed_ice_c: e.target.value })
@@ -439,11 +439,11 @@ function EquipmentCard({
               />
             </div>
             <div>
-              <label className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Boiling (C)</label>
+              <label className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Boiling (C)</label>
               <input
                 type="number"
                 step="0.1"
-                className="mt-1 w-full rounded-lg border border-emerald-500/30 bg-slate-950/80 px-3 py-2 text-sm text-slate-50 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/60"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200"
                 value={draftState.observed_boiling_c}
                 onChange={(e) =>
                   setDraft({ ...draftState, observed_boiling_c: e.target.value })
@@ -452,17 +452,17 @@ function EquipmentCard({
               />
             </div>
           </div>
-          <label className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Technician</label>
+          <label className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Technician</label>
           <input
             type="text"
-            className="w-full rounded-lg border border-emerald-500/30 bg-slate-950/80 px-3 py-2 text-sm text-slate-50 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/60"
+            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200"
             value={draftState.performed_by}
             onChange={(e) => setDraft({ ...draftState, performed_by: e.target.value })}
             placeholder="Drift / FSANZ check by..."
           />
-          <label className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Notes</label>
+          <label className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Notes</label>
           <textarea
-            className="w-full rounded-lg border border-emerald-500/30 bg-slate-950/80 px-3 py-2 text-sm text-slate-50 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/60"
+            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200"
             rows={2}
             value={draftState.notes}
             onChange={(e) => setDraft({ ...draftState, notes: e.target.value })}
@@ -470,20 +470,20 @@ function EquipmentCard({
           />
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div>
-              <label className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Result</label>
+              <label className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Result</label>
               <input
                 type="text"
-                className="mt-1 w-full rounded-lg border border-emerald-500/30 bg-slate-950/80 px-3 py-2 text-sm text-slate-50 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/60"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200"
                 value={draftState.result}
                 onChange={(e) => setDraft({ ...draftState, result: e.target.value })}
                 placeholder="Pass (+/-0.5 C)"
               />
             </div>
             <div>
-              <label className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Next due</label>
+              <label className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Next due</label>
               <input
                 type="date"
-                className="mt-1 w-full rounded-lg border border-emerald-500/30 bg-slate-950/80 px-3 py-2 text-sm text-slate-50 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/60"
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200"
                 value={draftState.next_due_at}
                 onChange={(e) => setDraft({ ...draftState, next_due_at: e.target.value })}
               />
@@ -491,21 +491,21 @@ function EquipmentCard({
           </div>
         </div>
 
-        <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-          <p className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-cyan-200">
-            <TestTube2 className="h-4 w-4 text-cyan-300" />
+        <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+          <p className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-cyan-700">
+            <TestTube2 className="h-4 w-4 text-cyan-600" />
             Label + print
           </p>
-          <div className="flex flex-wrap gap-2 text-xs text-slate-300">
+          <div className="flex flex-wrap gap-2 text-xs text-slate-700">
             <Badge>Interval: {item.calibration_interval_days} days</Badge>
             <Badge>Drift target +/-0.5 C</Badge>
             <Badge>{item.serial_number || 'No serial'}</Badge>
           </div>
-          <div className="flex flex-col gap-2 text-sm text-slate-200">
-            <p className="text-slate-300">
+          <div className="flex flex-col gap-2 text-sm text-slate-700">
+            <p className="text-slate-700">
               Latest: {item.latest_calibration_result ?? 'Awaiting check'}
             </p>
-            <p className="text-slate-400">
+            <p className="text-slate-600">
               Ice @0C / boil @100C, adjust offset if drift &gt;0.5C. Sanitize probe between points.
             </p>
           </div>
@@ -514,11 +514,11 @@ function EquipmentCard({
               type="button"
               onClick={onCalibrate}
               disabled={calibrating}
-              className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-emerald-500/30 transition hover:shadow-emerald-500/50 disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-emerald-200 transition hover:shadow-emerald-300 disabled:opacity-60"
             >
               {calibrating ? (
                 <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-slate-900" />
+                  <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-white" />
                   Saving...
                 </>
               ) : (
@@ -531,7 +531,7 @@ function EquipmentCard({
             <button
               type="button"
               onClick={onPrint}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/80 px-4 py-2 text-sm font-semibold text-slate-50 shadow-inner shadow-slate-800 transition hover:border-emerald-400/60 hover:text-emerald-100"
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-inner shadow-slate-100 transition hover:border-emerald-300 hover:text-emerald-700"
             >
               <Printer className="h-4 w-4" />
               Print label
@@ -545,12 +545,12 @@ function EquipmentCard({
 
 function InfoTile({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
-      <p className="flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-slate-400">
+    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-inner shadow-slate-100">
+      <p className="flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-slate-500">
         {icon}
         {label}
       </p>
-      <p className="mt-1 text-sm font-semibold text-slate-100">{value || '--'}</p>
+      <p className="mt-1 text-sm font-semibold text-slate-900">{value || '--'}</p>
     </div>
   );
 }
@@ -579,23 +579,23 @@ function AddEquipmentCard({
   return (
     <form
       onSubmit={onSubmit}
-      className="relative overflow-hidden rounded-3xl border border-emerald-500/20 bg-slate-900/70 p-5 shadow-2xl shadow-emerald-500/20"
+      className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 shadow-lg shadow-slate-200"
     >
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-transparent to-cyan-500/10" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-emerald-100/40 via-transparent to-cyan-100/40" />
       <div className="relative space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-emerald-200">Add instrument</p>
-            <h3 className="text-xl font-semibold text-slate-50">Expand beyond thermometers</h3>
+            <p className="text-xs uppercase tracking-[0.3em] text-emerald-700">Add instrument</p>
+            <h3 className="text-xl font-semibold text-slate-900">Expand beyond thermometers</h3>
           </div>
-          <Rocket className="h-6 w-6 text-emerald-300" />
+          <Rocket className="h-6 w-6 text-emerald-600" />
         </div>
 
-        <label className="block text-xs uppercase tracking-[0.2em] text-slate-400">
+        <label className="block text-xs uppercase tracking-[0.2em] text-slate-500">
           Equipment name
           <input
             required
-            className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-950/80 px-3 py-2 text-sm text-slate-50 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/60"
+            className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200"
             placeholder="Core Thermometer 01"
             value={form.name}
             onChange={(e) => onChange({ ...form, name: e.target.value })}
@@ -603,19 +603,19 @@ function AddEquipmentCard({
         </label>
 
         <div className="grid grid-cols-2 gap-3 text-sm">
-          <label className="text-xs uppercase tracking-[0.2em] text-slate-400">
+          <label className="text-xs uppercase tracking-[0.2em] text-slate-500">
             Type
             <input
-              className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-950/80 px-3 py-2 text-sm text-slate-50 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/60"
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200"
               placeholder="thermometer / scale / probe"
               value={form.type}
               onChange={(e) => onChange({ ...form, type: e.target.value })}
             />
           </label>
-          <label className="text-xs uppercase tracking-[0.2em] text-slate-400">
+          <label className="text-xs uppercase tracking-[0.2em] text-slate-500">
             Model
             <input
-              className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-950/80 px-3 py-2 text-sm text-slate-50 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/60"
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200"
               placeholder="Testo / Tanita / etc"
               value={form.model}
               onChange={(e) => onChange({ ...form, model: e.target.value })}
@@ -624,19 +624,19 @@ function AddEquipmentCard({
         </div>
 
         <div className="grid grid-cols-2 gap-3 text-sm">
-          <label className="text-xs uppercase tracking-[0.2em] text-slate-400">
+          <label className="text-xs uppercase tracking-[0.2em] text-slate-500">
             Serial / asset tag
             <input
-              className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-950/80 px-3 py-2 text-sm text-slate-50 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/60"
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200"
               placeholder="THERM-001"
               value={form.serial_number}
               onChange={(e) => onChange({ ...form, serial_number: e.target.value })}
             />
           </label>
-          <label className="text-xs uppercase tracking-[0.2em] text-slate-400">
+          <label className="text-xs uppercase tracking-[0.2em] text-slate-500">
             Location
             <input
-              className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-950/80 px-3 py-2 text-sm text-slate-50 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/60"
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200"
               placeholder="Packaging bench / chill room"
               value={form.location}
               onChange={(e) => onChange({ ...form, location: e.target.value })}
@@ -645,20 +645,20 @@ function AddEquipmentCard({
         </div>
 
         <div className="grid grid-cols-2 gap-3 text-sm">
-          <label className="text-xs uppercase tracking-[0.2em] text-slate-400">
+          <label className="text-xs uppercase tracking-[0.2em] text-slate-500">
             Interval (days)
             <input
               type="number"
               min="1"
-              className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-950/80 px-3 py-2 text-sm text-slate-50 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/60"
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200"
               value={form.calibration_interval_days}
               onChange={(e) => onChange({ ...form, calibration_interval_days: Number(e.target.value) })}
             />
           </label>
-          <label className="text-xs uppercase tracking-[0.2em] text-slate-400">
+          <label className="text-xs uppercase tracking-[0.2em] text-slate-500">
             Label code (optional)
             <input
-              className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-950/80 px-3 py-2 text-sm text-slate-50 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/60"
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200"
               placeholder="EQ-THERM-01"
               value={form.label_code}
               onChange={(e) => onChange({ ...form, label_code: e.target.value })}
@@ -668,7 +668,7 @@ function AddEquipmentCard({
 
         <button
           type="submit"
-          className="w-full rounded-xl bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 px-4 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-emerald-500/30 transition hover:shadow-emerald-400/50 disabled:opacity-60"
+          className="w-full rounded-xl bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-emerald-200 transition hover:shadow-emerald-300 disabled:opacity-60"
           disabled={adding}
         >
           {adding ? 'Seeding to console...' : 'Add equipment + generate label'}
@@ -707,13 +707,13 @@ function FsanzSteps() {
   ];
 
   return (
-    <div className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/80 p-5 shadow-2xl shadow-sky-500/10">
+    <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 shadow-lg shadow-slate-200">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.3em] text-cyan-200">FSANZ flow</p>
-          <h3 className="text-lg font-semibold text-slate-50">Thermometer calibration steps</h3>
+          <p className="text-xs uppercase tracking-[0.3em] text-cyan-700">FSANZ flow</p>
+          <h3 className="text-lg font-semibold text-slate-900">Thermometer calibration steps</h3>
         </div>
-        <div className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-cyan-100">
+        <div className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-cyan-700">
           +/-0.5 C
         </div>
       </div>
@@ -721,15 +721,15 @@ function FsanzSteps() {
         {steps.map((step, idx) => (
           <div
             key={step.title}
-            className="group rounded-2xl border border-slate-800 bg-slate-950/60 p-4 transition hover:border-cyan-400/40 hover:shadow-lg hover:shadow-cyan-500/10"
+            className="group rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:border-cyan-200 hover:shadow-lg hover:shadow-cyan-100"
           >
             <div className="flex items-start gap-3">
-              <div className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-cyan-500/20 to-emerald-500/20 text-cyan-100">
+              <div className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-cyan-100 to-emerald-100 text-cyan-700">
                 <span className="font-semibold">{idx + 1}</span>
               </div>
               <div>
-                <p className="text-sm font-semibold text-slate-50">{step.title}</p>
-                <p className="text-xs text-slate-300">{step.detail}</p>
+                <p className="text-sm font-semibold text-slate-900">{step.title}</p>
+                <p className="text-xs text-slate-600">{step.detail}</p>
               </div>
             </div>
           </div>
@@ -741,18 +741,18 @@ function FsanzSteps() {
 
 function StatPill({ label, value, accent }: { label: string; value: number; accent: string }) {
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 shadow-inner shadow-emerald-500/10">
+    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-inner shadow-slate-100">
       <div className={`text-lg font-semibold bg-clip-text text-transparent bg-gradient-to-r ${accent}`}>
         {value}
       </div>
-      <p className="text-[11px] uppercase tracking-[0.2em] text-slate-300">{label}</p>
+      <p className="text-[11px] uppercase tracking-[0.2em] text-slate-600">{label}</p>
     </div>
   );
 }
 
 function Badge({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center rounded-full border border-slate-700 bg-slate-900/70 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-200">
+    <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-700">
       {children}
     </span>
   );

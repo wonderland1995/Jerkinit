@@ -14,7 +14,8 @@ import {
   Calendar,
   ArrowUpRight,
   Search,
-  Thermometer
+  Thermometer,
+  Sparkles
 } from 'lucide-react';
 
 import type { Route } from 'next';
@@ -232,62 +233,66 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      {/* Header */}
-      {/*<header className="bg-white border-b border-gray-200 sticky top-0 z-10 shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center">
-                <Beef className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Jerky Production</h1>
-                <p className="text-sm text-gray-500">FSANZ Compliant Manufacturing</p>
-              </div>
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-sky-50 text-slate-900">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        <div className="rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-xl shadow-slate-200/60">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="flex items-center gap-2 text-xs uppercase tracking-[0.28em] text-emerald-700">
+                <Sparkles className="h-4 w-4" />
+                Operations dashboard
+              </p>
+              <h2 className="text-3xl font-semibold text-slate-900">Production oversight</h2>
+              <p className="text-sm text-slate-600">
+                Live view of batches, QA, and compliance—designed for quick tablet workflows.
+              </p>
             </div>
-            <nav className="hidden md:flex gap-2">
-              <Link href="/recipe/new" className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-gray-100 transition">
-                <Package className="w-4 h-4" />
-                New Batch
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href="/recipe/new"
+                className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-emerald-200 transition hover:shadow-emerald-300"
+              >
+                <Package className="h-4 w-4" />
+                New batch
               </Link>
-              <Link href="/batches" className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-gray-100 transition">
-                <Archive className="w-4 h-4" />
-                Batches
+              <Link
+                href="/qa"
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-sm hover:border-emerald-300 hover:text-emerald-700"
+              >
+                <ClipboardCheck className="h-4 w-4" />
+                QA hub
               </Link>
-              <Link href="/inventory" className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-gray-100 transition">
-                <Package className="w-4 h-4" />
+              <Link
+                href="/equipment-calibration"
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-sm hover:border-emerald-300 hover:text-emerald-700"
+              >
+                <Thermometer className="h-4 w-4" />
+                Calibration
+              </Link>
+              <Link
+                href="/inventory"
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-sm hover:border-emerald-300 hover:text-emerald-700"
+              >
+                <Archive className="h-4 w-4" />
                 Inventory
               </Link>
-              <Link href="/qa" className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-gray-100 transition">
-                <ClipboardCheck className="w-4 h-4" />
-                QA
-              </Link>
-            </nav>
+            </div>
           </div>
-        </div>
-      </header>*/}
-
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Welcome Section */}
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-2">Production Overview</h2>
-          <p className="text-gray-600">Monitor your production metrics and quality assurance</p>
         </div>
 
         {/* Quick batch lookup */}
         <div className="mb-8">
-          <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-5">
+          <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-emerald-50 p-5 shadow-lg shadow-slate-200/60">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Batch finder</p>
-                <h3 className="text-lg font-semibold text-gray-900">Quick lookup</h3>
-                <p className="text-sm text-gray-600">Jump straight to QA or batch detail in two keystrokes.</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Batch finder</p>
+                <h3 className="text-lg font-semibold text-slate-900">Quick lookup</h3>
+                <p className="text-sm text-slate-600">Jump to QA or batch detail with a short search.</p>
               </div>
-              <Search className="h-5 w-5 text-gray-400" />
+              <Search className="h-5 w-5 text-slate-400" />
             </div>
             <div className="mt-4">
-              <label className="text-sm font-medium text-gray-700" htmlFor="batch-lookup">
+              <label className="text-sm font-medium text-slate-800" htmlFor="batch-lookup">
                 Search by batch ID or product (min 2 characters)
               </label>
               <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -296,50 +301,50 @@ export default function HomePage() {
                   type="text"
                   value={lookupTerm}
                   onChange={(e) => setLookupTerm(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200"
                   placeholder="e.g. JERK-0245 or Desert Spice"
                 />
-                <span className="text-xs text-gray-500 sm:w-32">
-                  {lookupLoading ? 'Searching…' : lookupResults.length ? `${lookupResults.length} match(es)` : 'No results yet'}
+                <span className="text-xs text-slate-500 sm:w-32">
+                  {lookupLoading ? 'Searching...' : lookupResults.length ? `${lookupResults.length} match(es)` : 'No results yet'}
                 </span>
               </div>
             </div>
             <div className="mt-4">
               {lookupTerm.trim().length > 0 && lookupTerm.trim().length < 2 ? (
-                <p className="text-sm text-gray-500">Keep typing to search.</p>
+                <p className="text-sm text-slate-500">Keep typing to search.</p>
               ) : lookupResults.length === 0 ? (
-                <p className="text-sm text-gray-500">Type at least two characters to find a batch.</p>
+                <p className="text-sm text-slate-500">Type at least two characters to find a batch.</p>
               ) : (
-                <div className="divide-y divide-gray-100 rounded-xl border border-gray-100">
+                <div className="divide-y divide-slate-100 rounded-xl border border-slate-100 bg-white/70">
                   {lookupResults.map((batch) => (
                     <div key={batch.id} className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-sm font-semibold text-gray-900">{batch.batch_id}</span>
-                          <span className="text-xs text-gray-500">{batch.product_name || 'Unknown product'}</span>
+                          <span className="font-mono text-sm font-semibold text-slate-900">{batch.batch_id}</span>
+                          <span className="text-xs text-slate-600">{batch.product_name || 'Unknown product'}</span>
                         </div>
-                        <p className="text-xs text-gray-500">
-                          Best before: {bestBeforeText(batch.created_at, batch.best_before_date)} · {new Date(batch.created_at).toLocaleDateString('en-AU')}
+                        <p className="text-xs text-slate-500">
+                          Best before: {bestBeforeText(batch.created_at, batch.best_before_date)} • {new Date(batch.created_at).toLocaleDateString('en-AU')}
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
                         <span className={`rounded-full border px-3 py-1 ${
                           batch.status === 'completed'
-                            ? 'border-green-200 bg-green-50 text-green-800'
-                            : 'border-amber-200 bg-amber-50 text-amber-800'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            : 'border-amber-200 bg-amber-50 text-amber-700'
                         }`}>
                           {batch.status.replace('_', ' ')}
                         </span>
                         <Link
                           href={`/qa/${batch.id}` as Route}
-                          className="inline-flex items-center gap-1 rounded-full border border-blue-200 px-3 py-1 text-blue-700 hover:bg-blue-50"
+                          className="inline-flex items-center gap-1 rounded-full border border-emerald-200 px-3 py-1 text-emerald-700 hover:bg-emerald-50"
                         >
                           QA
                           <ArrowUpRight className="h-3 w-3" />
                         </Link>
                         <Link
                           href={`/batches/${batch.id}` as Route}
-                          className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-3 py-1 text-gray-700 hover:bg-gray-50"
+                          className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-slate-700 hover:bg-slate-50"
                         >
                           View
                           <ArrowUpRight className="h-3 w-3" />
@@ -488,43 +493,43 @@ export default function HomePage() {
           </div>
 
           {/* Quick Actions Card */}
-          <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl shadow-lg p-6 text-white">
-            <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-md shadow-slate-200/80">
+            <h3 className="text-lg font-semibold text-slate-900 mb-4">Quick actions</h3>
             <div className="space-y-3">
               <Link 
                 href="/recipe/new"
-                className="flex items-center gap-3 p-3 bg-white/10 hover:bg-white/20 rounded-lg transition backdrop-blur-sm"
+                className="flex items-center gap-3 p-3 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-md shadow-emerald-200 transition hover:shadow-emerald-300"
               >
                 <Package className="w-5 h-5" />
-                <span className="font-medium">Create New Batch</span>
+                <span className="font-medium">Create new batch</span>
               </Link>
               <Link 
                 href="/qa"
-                className="flex items-center gap-3 p-3 bg-white/10 hover:bg-white/20 rounded-lg transition backdrop-blur-sm"
+                className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 bg-white text-slate-900 shadow-sm hover:border-emerald-300 hover:text-emerald-700"
               >
                 <ClipboardCheck className="w-5 h-5" />
-                <span className="font-medium">QA Management</span>
+                <span className="font-medium">QA management</span>
               </Link>
               <Link 
                 href="/equipment-calibration"
-                className="flex items-center gap-3 p-3 bg-white/10 hover:bg-white/20 rounded-lg transition backdrop-blur-sm"
+                className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 bg-white text-slate-900 shadow-sm hover:border-emerald-300 hover:text-emerald-700"
               >
                 <Thermometer className="w-5 h-5" />
-                <span className="font-medium">Calibration Lab</span>
+                <span className="font-medium">Calibration lab</span>
               </Link>
               <Link 
                 href="/inventory/receive"
-                className="flex items-center gap-3 p-3 bg-white/10 hover:bg-white/20 rounded-lg transition backdrop-blur-sm"
+                className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 bg-white text-slate-900 shadow-sm hover:border-emerald-300 hover:text-emerald-700"
               >
                 <Archive className="w-5 h-5" />
-                <span className="font-medium">Receive Materials</span>
+                <span className="font-medium">Receive materials</span>
               </Link>
               <Link 
                 href="/recipes"
-                className="flex items-center gap-3 p-3 bg-white/10 hover:bg-white/20 rounded-lg transition backdrop-blur-sm"
+                className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 bg-white text-slate-900 shadow-sm hover:border-emerald-300 hover:text-emerald-700"
               >
                 <Calendar className="w-5 h-5" />
-                <span className="font-medium">Manage Recipes</span>
+                <span className="font-medium">Manage recipes</span>
               </Link>
             </div>
           </div>
@@ -737,26 +742,26 @@ interface StatCardProps {
 
 function StatCard({ title, value, icon: Icon, color, trend, alert }: StatCardProps) {
   const colorClasses = {
-    blue: 'from-blue-500 to-blue-600',
-    amber: 'from-amber-500 to-amber-600',
-    green: 'from-green-500 to-green-600',
-    red: 'from-red-500 to-red-600',
+    blue: 'from-sky-500/20 via-sky-500/10 to-sky-500/5 text-sky-700',
+    amber: 'from-amber-500/20 via-amber-500/10 to-amber-500/5 text-amber-700',
+    green: 'from-emerald-500/20 via-emerald-500/10 to-emerald-500/5 text-emerald-700',
+    red: 'from-rose-500/20 via-rose-500/10 to-rose-500/5 text-rose-700',
   };
 
   return (
-    <div className={`bg-white rounded-2xl border shadow-sm p-6 ${alert ? 'ring-2 ring-red-400' : 'border-gray-200'}`}>
-      <div className="flex items-start justify-between mb-4">
+    <div className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-md shadow-slate-200/80 ${alert ? 'ring-2 ring-rose-200' : ''}`}>
+      <div className="flex items-start justify-between mb-3">
         <div className={`p-3 rounded-xl bg-gradient-to-br ${colorClasses[color]}`}>
-          <Icon className="w-6 h-6 text-white" />
+          <Icon className="w-6 h-6 text-current" />
         </div>
-        {trend && (
-          <span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">
+        {trend ? (
+          <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">
             {trend}
           </span>
-        )}
+        ) : null}
       </div>
-      <h3 className="text-sm font-medium text-gray-600 mb-1">{title}</h3>
-      <p className="text-3xl font-bold text-gray-900">{value}</p>
+      <h3 className="text-sm font-medium text-slate-600 mb-1">{title}</h3>
+      <p className="text-3xl font-bold text-slate-900">{value}</p>
     </div>
   );
 }

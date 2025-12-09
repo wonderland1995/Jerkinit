@@ -56,9 +56,9 @@ interface RecentBatch {
   batch_id: string;
   status: string;
   created_at: string;
-  best_before_date|: string | null;
+  best_before_date?: string | null;
   beef_weight_kg: number;
-  product|: {
+  product?: {
     name: string;
   };
 }
@@ -68,7 +68,7 @@ interface RecallRecord {
   reason: string;
   notes: string | null;
   initiated_at: string;
-  initiated_by|: string | null;
+  initiated_by?: string | null;
   status: string;
   lot|: {
     id: string;

@@ -114,7 +114,7 @@ export default function HomePage() {
     try {
       const [statsRes, batchesRes, recallsRes] = await Promise.all([
         fetch('/api/dashboard/stats'),
-        fetch('/api/batches/history|limit=10'),
+        fetch('/api/batches/history?limit=10'),
         fetch('/api/recalls'),
       ]);
 
@@ -188,39 +188,22 @@ export default function HomePage() {
         ? record.batches
             .map(
               (batch) =>
-                `? Batch ${batch.batch_id}${
+                `• Batch ${batch.batch_id}${
                   batch.product_name ? ` (${batch.product_name})` : ''
                 }`,
             )
-            .join('
-')
-        : '? No finished batches recorded';
+            .join('\n')
+        : '• No finished batches recorded';
 
     return (
-      `Subject: URGENT Recall ? Lot ${lotLabel}
-
-` +
-      `Reason: ${record.reason}
-` +
-      (record.notes ? `Notes: ${record.notes}
-` : '') +
-      `Initiated: ${new Date(record.initiated_at).toLocaleString()}
-
-` +
-      `Affected Batches:
-${batchLines}
-
-` +
-      `Actions:
-1. Quarantine all finished goods listed above.
-2. Notify customers/distributors if product has shipped.
-3. Document corrective actions in QA log.
-
-` +
-      `Please reply confirming receipt of this recall notice.
-`
+      `Subject: URGENT Recall – Lot ${lotLabel}\n\n` +
+      `Reason: ${record.reason}\n` +
+      (record.notes ? `Notes: ${record.notes}\n` : '') +
+      `Initiated: ${new Date(record.initiated_at).toLocaleString()}\n\n` +
+      `Affected Batches:\n${batchLines}\n\n` +
+      `Actions:\n1. Quarantine all finished goods listed above.\n2. Notify customers/distributors if product has shipped.\n3. Document corrective actions in QA log.\n\n` +
+      `Please reply confirming receipt of this recall notice.\n`
     );
-  };
   };
 
   const handleCopyEmail = async (record: RecallRecord) => {
@@ -233,9 +216,9 @@ ${batchLines}
     }
   };
 
-  const bestBeforeText = (createdAt: string | Date | null | undefined, override|: string | null) => {
-    const bestBefore = override | new Date(override) : computeBestBefore(createdAt);
-    return bestBefore | formatDate(bestBefore) : '--';
+  const bestBeforeText = (createdAt: string | Date | null | undefined, override?: string | null) => {
+    const bestBefore = override ? new Date(override) : computeBestBefore(createdAt);
+    return bestBefore ? formatDate(bestBefore) : '--';
   };
 
   if (loading) {
@@ -322,14 +305,18 @@ ${batchLines}
                   placeholder="e.g. JERK-0245 or Desert Spice"
                 />
                 <span className="text-xs text-slate-500 sm:w-32">
-                  {lookupLoading | 'Searching...' : lookupResults.length | `${lookupResults.length} match(es)` : 'No results yet'}
+                  {lookupLoading
+                    ? 'Searching...'
+                    : lookupResults.length
+                    ? `${lookupResults.length} match(es)`
+                    : 'No results yet'}
                 </span>
               </div>
             </div>
             <div className="mt-4">
-              {lookupTerm.trim().length > 0 && lookupTerm.trim().length < 2 | (
+              {lookupTerm.trim().length > 0 && lookupTerm.trim().length < 2 ? (
                 <p className="text-sm text-slate-500">Keep typing to search.</p>
-              ) : lookupResults.length === 0 | (
+              ) : lookupResults.length === 0 ? (
                 <p className="text-sm text-slate-500">Type at least two characters to find a batch.</p>
               ) : (
                 <div className="divide-y divide-slate-100 rounded-xl border border-slate-100 bg-white/70">
@@ -380,29 +367,29 @@ ${batchLines}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <StatCard
             title="Total Batches"
-            value={stats|.total_batches || 0}
+            value={stats?.total_batches || 0}
             icon={Package}
             color="blue"
             trend="+12%"
           />
           <StatCard
             title="In Progress"
-            value={stats|.in_progress || 0}
+            value={stats?.in_progress || 0}
             icon={Clock}
             color="amber"
           />
           <StatCard
             title="Completed"
-            value={stats|.completed || 0}
+            value={stats?.completed || 0}
             icon={CheckCircle2}
             color="green"
           />
           <StatCard
             title="Low Stock Items"
-            value={stats|.inventory.low_stock_count || 0}
+            value={stats?.inventory.low_stock_count || 0}
             icon={AlertTriangle}
             color="red"
-            alert={stats|.inventory.low_stock_count | stats.inventory.low_stock_count > 0 : false}
+            alert={stats?.inventory.low_stock_count ? stats.inventory.low_stock_count > 0 : false}
           />
         </div>
 
@@ -561,7 +548,7 @@ ${batchLines}
               <div>
                 <h3 className="text-lg font-semibold text-red-800">Open Recalls</h3>
                 <p className="text-sm text-red-600">
-                  {recalls.length | `${recalls.length} active` : 'No open recalls'}
+                  {recalls.length ? `${recalls.length} active` : 'No open recalls'}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -575,7 +562,7 @@ ${batchLines}
                 <AlertTriangle className="h-6 w-6 text-red-600" />
               </div>
             </div>
-            {recalls.length === 0 | (
+            {recalls.length === 0 ? (
               <p className="px-6 py-8 text-sm text-gray-500">No recalls recorded.</p>
             ) : (
               <div className="divide-y divide-red-100">
@@ -584,10 +571,10 @@ ${batchLines}
                     <div className="flex items-center justify-between text-sm">
                       <div>
                         <p className="font-semibold text-gray-900">
-                          Lot {recall.lot|.lot_number || 'Unknown'}
+                          Lot {recall.lot?.lot_number || 'Unknown'}
                         </p>
                         <p className="text-xs text-gray-500">
-                          {recall.lot|.material_name || 'Material unknown'}
+                          {recall.lot?.material_name || 'Material unknown'}
                         </p>
                       </div>
                       <span className="text-xs font-medium text-gray-500">
@@ -602,11 +589,11 @@ ${batchLines}
                           .map((batch) => batch.batch_id)
                           .slice(0, 3)
                           .join(', ')}
-                        {recall.batches.length > 3 | '…' : ''}
+                        {recall.batches.length > 3 ? '…' : ''}
                       </div>
                     )}
                     <div className="flex flex-wrap gap-2 pt-2">
-                      {recall.lot|.id && (
+                      {recall.lot?.id && (
                         <Link
                           href={`/lots/${recall.lot.id}` as Route}
                           className="inline-flex items-center rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
@@ -619,7 +606,7 @@ ${batchLines}
                         onClick={() => void handleCopyEmail(recall)}
                         className="inline-flex items-center rounded-full border border-blue-200 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50"
                       >
-                        {copiedRecallId === recall.id | 'Copied!' : 'Generate email'}
+                        {copiedRecallId === recall.id ? 'Copied!' : 'Generate email'}
                       </button>
                     </div>
                   </div>
@@ -692,16 +679,16 @@ ${batchLines}
                         {batch.batch_id}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {batch.product|.name || 'Unknown'}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                      {batch.product?.name || 'Unknown'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${
                         batch.status === 'completed'
-                          | 'bg-green-100 text-green-800'
+                          ? 'bg-green-100 text-green-800'
                           : 'bg-amber-100 text-amber-800'
                       }`}>
-                        {batch.status === 'completed' | (
+                        {batch.status === 'completed' ? (
                           <CheckCircle2 className="w-3 h-3" />
                         ) : (
                           <Clock className="w-3 h-3" />
@@ -710,7 +697,7 @@ ${batchLines}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {batch.beef_weight_kg | `${batch.beef_weight_kg} kg` : '—'}
+                      {batch.beef_weight_kg ? `${batch.beef_weight_kg} kg` : '—'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                       {bestBeforeText(batch.created_at, batch.best_before_date || null)}
@@ -755,8 +742,8 @@ interface StatCardProps {
   value: number;
   icon: React.ElementType;
   color: 'blue' | 'amber' | 'green' | 'red';
-  trend|: string;
-  alert|: boolean;
+  trend?: string;
+  alert?: boolean;
 }
 
 function StatCard({ title, value, icon: Icon, color, trend, alert }: StatCardProps) {
@@ -768,12 +755,12 @@ function StatCard({ title, value, icon: Icon, color, trend, alert }: StatCardPro
   };
 
   return (
-    <div className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-md shadow-slate-200/80 ${alert | 'ring-2 ring-rose-200' : ''}`}>
+    <div className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-md shadow-slate-200/80 ${alert ? 'ring-2 ring-rose-200' : ''}`}>
       <div className="flex items-start justify-between mb-3">
         <div className={`p-3 rounded-xl bg-gradient-to-br ${colorClasses[color]}`}>
           <Icon className="w-6 h-6 text-current" />
         </div>
-        {trend | (
+        {trend ? (
           <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">
             {trend}
           </span>

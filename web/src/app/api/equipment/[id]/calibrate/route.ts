@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@/lib/db';
 
@@ -16,10 +16,10 @@ const calibrateSchema = z.object({
 });
 
 export async function POST(
-  request: Request,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
 ) {
-  const equipmentId = params.id;
+  const { id: equipmentId } = await context.params;
   const supabase = createClient();
 
   const { data: equipment, error: loadErr } = await supabase

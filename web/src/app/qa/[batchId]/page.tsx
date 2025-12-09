@@ -1015,24 +1015,18 @@ type FieldFlags = {
   processConfirm?: boolean;
 };
 
+// Treat datetime-local strings as wall-clock (no timezone shifting). Store and render as-entered.
 const toLocalDateTimeInput = (value?: string | null) => {
   if (!value) return '';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return '';
-  // Force AEST (UTC+10) regardless of browser timezone
-  const aestOffsetMinutes = 600;
-  const adjusted = new Date(parsed.getTime() + aestOffsetMinutes * 60000);
-  return adjusted.toISOString().slice(0, 16);
+  // Accept full ISO, trim seconds/zone if present
+  const t = value.split('.')[0].replace('Z', '');
+  return t.length >= 16 ? t.slice(0, 16) : t;
 };
 
 const toIsoFromLocalInput = (value?: string) => {
   if (!value) return null;
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return null;
-  // Input is treated as AEST local; convert to UTC ISO by subtracting fixed offset
-  const aestOffsetMinutes = 600;
-  const adjusted = new Date(parsed.getTime() - aestOffsetMinutes * 60000);
-  return adjusted.toISOString();
+  // Persist literal wall time (append seconds) without applying timezone math
+  return `${value}:00`;
 };
 
 const computeDurationMinutes = (startIso?: string | null, endIso?: string | null) => {

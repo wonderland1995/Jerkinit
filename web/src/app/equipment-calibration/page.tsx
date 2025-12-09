@@ -555,22 +555,24 @@ function InfoTile({ label, value, icon }: { label: string; value: string; icon: 
   );
 }
 
+type EquipmentForm = {
+  name: string;
+  type: string;
+  model: string;
+  serial_number: string;
+  location: string;
+  calibration_interval_days: number;
+  label_code: string;
+};
+
 function AddEquipmentCard({
   form,
   onChange,
   onSubmit,
   adding,
 }: {
-  form: {
-    name: string;
-    type: string;
-    model: string;
-    serial_number: string;
-    location: string;
-    calibration_interval_days: number;
-    label_code: string;
-  };
-  onChange: (form: typeof form) => void;
+  form: EquipmentForm;
+  onChange: (form: EquipmentForm) => void;
   onSubmit: (ev: React.FormEvent) => void;
   adding: boolean;
 }) {

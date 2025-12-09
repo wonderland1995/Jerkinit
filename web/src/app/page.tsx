@@ -177,8 +177,8 @@ export default function HomePage() {
 
   // Status distribution for pie chart
   const statusData = [
-    { name: 'In Progress', value: stats|.in_progress || 0, color: '#f59e0b' },
-    { name: 'Completed', value: stats|.completed || 0, color: '#10b981' },
+    { name: 'In Progress', value: stats?.in_progress || 0, color: '#f59e0b' },
+    { name: 'Completed', value: stats?.completed || 0, color: '#10b981' },
   ];
 
   const generateRecallEmail = (record: RecallRecord) => {

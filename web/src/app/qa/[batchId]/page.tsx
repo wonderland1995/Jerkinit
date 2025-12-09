@@ -1502,12 +1502,14 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
       const ovenValue = Number.isFinite(ovenNumeric) ? ovenNumeric : null;
       const startIso = toIsoFromLocalInput(dryingStart);
       const endIso = toIsoFromLocalInput(dryingEnd);
+      const duration =
+        dryingDurationMinutes != null ? dryingDurationMinutes : computeDurationMinutes(dryingStart, dryingEnd);
       if (ovenValue != null || startIso || endIso) {
         base['drying_run'] = {
           oven_temp_c: ovenValue,
           start_iso: startIso,
           end_iso: endIso,
-          duration_minutes: dryingDurationMinutes,
+          duration_minutes: duration,
           temp_adjusted: dryingAdjusted,
           temp_adjust_note: dryingAdjustNote.trim() || null,
         };
@@ -1522,11 +1524,13 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
       const endIso = toIsoFromLocalInput(marinationEnd);
       const marinadeNumeric = temperature.trim() ? Number(temperature) : null;
       const marinadeTemp = Number.isFinite(marinadeNumeric) ? marinadeNumeric : null;
+      const duration =
+        marinationDurationMinutes != null ? marinationDurationMinutes : computeDurationMinutes(marinationStart, marinationEnd);
       if (startIso || endIso) {
         base['marination_run'] = {
           start_iso: startIso,
           end_iso: endIso,
-          duration_minutes: marinationDurationMinutes,
+          duration_minutes: duration,
           marinade_temp_c: fields.temperature ? marinadeTemp : null,
         };
       } else {

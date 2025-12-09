@@ -6,6 +6,7 @@ type QAStatus = 'pending' | 'passed' | 'failed' | 'skipped' | 'conditional';
 
 interface PostBody {
   status: QAStatus;
+  checked_at?: string | null;
   notes?: string | null;
   corrective_action?: string | null;
   recheck_required?: boolean;
@@ -34,6 +35,12 @@ export async function POST(
     return NextResponse.json({ error: 'status is required' }, { status: 400 });
   }
 
+  const checkedAtIso = (() => {
+    if (!body.checked_at) return null;
+    const d = new Date(body.checked_at);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  })();
+
   const fields = {
     status: body.status,
     notes: body.notes ?? null,
@@ -44,8 +51,11 @@ export async function POST(
     ph_level: body.ph_level ?? null,
     water_activity: body.water_activity ?? null,
     metadata: body.metadata ?? {},
-    checked_at: new Date().toISOString(),
   };
+
+  if (checkedAtIso) {
+    (fields as { checked_at?: string }).checked_at = checkedAtIso;
+  }
 
   // Check if a row already exists for this batch/checkpoint
   const { data: existingRows, error: selErr } = await supabase
@@ -61,6 +71,9 @@ export async function POST(
 
   if (existingRows && existingRows.length > 0) {
     const id = existingRows[0].id as string;
+    if (!checkedAtIso) {
+      delete (fields as { checked_at?: string }).checked_at;
+    }
     const { error: updErr } = await supabase
       .from('batch_qa_checks')
       .update(fields)
@@ -70,9 +83,10 @@ export async function POST(
       return NextResponse.json({ error: updErr.message }, { status: 400 });
     }
   } else {
+    const insertCheckedAt = checkedAtIso ?? new Date().toISOString();
     const { error: insErr } = await supabase
       .from('batch_qa_checks')
-      .insert([{ batch_id: batchId, checkpoint_id: checkpointId, ...fields }]);
+      .insert([{ batch_id: batchId, checkpoint_id: checkpointId, checked_at: insertCheckedAt, ...fields }]);
 
     if (insErr) {
       return NextResponse.json({ error: insErr.message }, { status: 400 });

@@ -483,33 +483,28 @@ export default function BatchDetailPage() {
         setLoading(false);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batchId]);
+      }, [batchId]);
 
   useEffect(() => {
     if (searchParams.get('export') === '1') {
       setAutoExportQueued(true);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, batchId]);
+      }, [searchParams, batchId]);
 
   useEffect(() => {
     if (autoExportQueued && !loading && !exporting && batch) {
       void handleExportPdf();
       setAutoExportQueued(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoExportQueued, loading, exporting, batch]);
+      }, [autoExportQueued, loading, exporting, batch]);
 
   useEffect(() => {
     loadBeefAllocations();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batchId]);
+      }, [batchId]);
 
   useEffect(() => {
     searchBeefLots(beefQuery);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+      }, []);
 
   const addBeef = async () => {
     if (!selectedLotId || beefQty <= 0) return;

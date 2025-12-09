@@ -8,6 +8,7 @@ interface PostBody {
   batch_id: string;
   checkpoint_id: string;
   status: QAStatus;
+  checked_at?: string | null;
   checked_by?: string | null;
   notes?: string | null;
   corrective_action?: string | null;
@@ -33,7 +34,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'batch_id, checkpoint_id, and status are required' }, { status: 400 });
   }
 
-  const fields: Record<string, unknown> = {
+  const checkedAtIso = (() => {
+    if (!body.checked_at) return null;
+    const d = new Date(body.checked_at);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  })();
+
+  const baseFields: Record<string, unknown> = {
     status: body.status,
     checked_by: body.checked_by ?? null,
     notes: body.notes ?? null,
@@ -43,8 +50,12 @@ export async function POST(req: NextRequest) {
     humidity_percent: body.humidity_percent ?? null,
     ph_level: body.ph_level ?? null,
     water_activity: body.water_activity ?? null,
-    checked_at: new Date().toISOString(),
   };
+
+  const fields: Record<string, unknown> = { ...baseFields };
+  if (checkedAtIso) {
+    fields.checked_at = checkedAtIso;
+  }
 
   if (Object.prototype.hasOwnProperty.call(body, 'metadata')) {
     fields.metadata = body.metadata ?? {};
@@ -64,6 +75,10 @@ export async function POST(req: NextRequest) {
 
   if (existingRows && existingRows.length > 0) {
     const id = existingRows[0].id as string;
+    // Preserve existing checked_at when not supplied
+    if (!checkedAtIso) {
+      delete fields.checked_at;
+    }
     const { error: updErr } = await supabase
       .from('batch_qa_checks')
       .update(fields)
@@ -73,9 +88,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: updErr.message }, { status: 400 });
     }
   } else {
+    const insertCheckedAt = checkedAtIso ?? new Date().toISOString();
     const { error: insErr } = await supabase
       .from('batch_qa_checks')
-      .insert([{ batch_id: body.batch_id, checkpoint_id: body.checkpoint_id, ...fields }]);
+      .insert([{ batch_id: body.batch_id, checkpoint_id: body.checkpoint_id, checked_at: insertCheckedAt, ...fields }]);
 
     if (insErr) {
       return NextResponse.json({ error: insErr.message }, { status: 400 });

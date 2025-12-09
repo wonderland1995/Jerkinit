@@ -19,7 +19,7 @@ type CalibrationDraft = {
   next_due_at: string;
 };
 
-const DEFAULT_METHOD = 'FSANZ ice slurry + boiling water two-point';
+const DEFAULT_METHOD = 'Two-point check (ice slurry + boiling water)';
 
 export default function EquipmentCalibrationPage() {
   const [equipment, setEquipment] = useState<EquipmentWithCalibration[]>([]);
@@ -133,7 +133,7 @@ export default function EquipmentCalibrationPage() {
         drift == null ? 'Recorded' : drift <= 0.5 ? 'Pass (+/-0.5 C)' : `Adjust/flag (${drift.toFixed(1)} C drift)`;
 
       const payload = {
-        performed_by: draft?.performed_by || 'FSANZ verification',
+        performed_by: draft?.performed_by || 'QA technician',
         method: draft?.method || DEFAULT_METHOD,
         observed_ice_c: observedIce,
         observed_boiling_c: observedBoiling,
@@ -244,7 +244,7 @@ export default function EquipmentCalibrationPage() {
       <div className="flex min-h-screen items-center justify-center bg-slate-50 text-emerald-700">
         <div className="flex items-center gap-3 rounded-full border border-emerald-200 bg-white px-5 py-3 shadow-lg shadow-emerald-100">
           <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-emerald-500" />
-          <span className="text-sm font-semibold tracking-wide">Loading calibration workspace...</span>
+          <span className="text-sm font-semibold tracking-wide">Loading calibration program...</span>
         </div>
       </div>
     );
@@ -259,13 +259,13 @@ export default function EquipmentCalibrationPage() {
           <div className="space-y-2">
             <p className="flex items-center gap-2 text-xs uppercase tracking-[0.24em] text-emerald-700">
               <Sparkles className="h-4 w-4" />
-              Calibration Lab
+              Calibration program
             </p>
             <h1 className={`${orbitron.className} text-3xl font-semibold tracking-tight sm:text-4xl`}>
-              Equipment calibration (FSANZ aligned)
+              Equipment calibration
             </h1>
             <p className="max-w-3xl text-sm text-slate-600">
-              Register instruments, record the ice and boiling point checks, and print clear labels for quick compliance verification.
+              Register instruments, record ice and boiling point checks, and print clear labels for audit-ready traceability.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
@@ -321,7 +321,7 @@ export default function EquipmentCalibrationPage() {
               onSubmit={handleAddEquipment}
               adding={adding}
             />
-            <FsanzSteps />
+            <CalibrationSteps />
           </aside>
         </div>
       </div>
@@ -422,7 +422,7 @@ function EquipmentCard({
         <div className="space-y-2">
           <p className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-emerald-700">
             <Thermometer className="h-4 w-4 text-emerald-600" />
-            Enter FSANZ check
+            Enter calibration data
           </p>
           <div className="grid grid-cols-2 gap-2 text-xs text-slate-700">
             <div>
@@ -458,7 +458,7 @@ function EquipmentCard({
             className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200"
             value={draftState.performed_by}
             onChange={(e) => setDraft({ ...draftState, performed_by: e.target.value })}
-            placeholder="Drift / FSANZ check by..."
+            placeholder="Calibration performed by..."
           />
           <label className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Notes</label>
           <textarea
@@ -678,31 +678,31 @@ function AddEquipmentCard({
   );
 }
 
-function FsanzSteps() {
+function CalibrationSteps() {
   const steps = [
     {
-      title: 'Sanitize and stabilize',
-      detail: 'Clean probe tip, let the thermometer acclimate for 5 minutes in the processing room.',
+      title: 'Prepare instrument',
+      detail: 'Sanitize the probe and let it stabilise at room temperature for at least 5 minutes.',
     },
     {
       title: 'Ice slurry @ 0C',
       detail:
-        'Crushed ice + small amount of potable water, stir to a slush. Insert probe 5 cm deep, avoid touching sides. Wait for a stable reading (FSANZ thermometer check).',
+        'Crushed ice with a splash of potable water, stirred to a slush. Insert probe 5 cm deep, avoid vessel contact, and record the stabilised reading.',
     },
     {
       title: 'Boiling point @ 100C',
       detail:
-        'Rolling boil distilled/filtered water. Suspend probe in steam pocket above bubbles. Allow stabilisation; adjust for altitude if needed.',
+        'Rolling boil distilled/filtered water. Suspend probe in steam pocket above bubbles. Allow stabilisation; adjust for altitude if required.',
     },
     {
-      title: 'Compare vs tolerance',
+      title: 'Evaluate tolerance',
       detail:
-        'Target drift <= +/-0.5 C. If outside tolerance, adjust offset/replace unit, label as out-of-service, and retest.',
+        'Target drift <= +/-0.5 C. If outside tolerance, adjust or quarantine the instrument and retest after correction.',
     },
     {
-      title: 'Document + label',
+      title: 'Document and label',
       detail:
-        'Record ice/boil readings, technician, corrective actions, next due date, and print a fresh label for the device.',
+        'Record readings, technician, corrective action, and next due date. Print and apply a fresh label to the instrument.',
     },
   ];
 
@@ -710,8 +710,8 @@ function FsanzSteps() {
     <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 shadow-lg shadow-slate-200">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.3em] text-cyan-700">FSANZ flow</p>
-          <h3 className="text-lg font-semibold text-slate-900">Thermometer calibration steps</h3>
+          <p className="text-xs uppercase tracking-[0.3em] text-cyan-700">Calibration procedure</p>
+          <h3 className="text-lg font-semibold text-slate-900">Thermometer steps</h3>
         </div>
         <div className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-cyan-700">
           +/-0.5 C

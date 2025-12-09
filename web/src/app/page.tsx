@@ -56,9 +56,9 @@ interface RecentBatch {
   batch_id: string;
   status: string;
   created_at: string;
-  best_before_date?: string | null;
+  best_before_date|: string | null;
   beef_weight_kg: number;
-  product?: {
+  product|: {
     name: string;
   };
 }
@@ -68,9 +68,9 @@ interface RecallRecord {
   reason: string;
   notes: string | null;
   initiated_at: string;
-  initiated_by?: string | null;
+  initiated_by|: string | null;
   status: string;
-  lot?: {
+  lot|: {
     id: string;
     lot_number: string;
     internal_lot_code: string | null;
@@ -92,7 +92,7 @@ interface BatchLookupResult {
   release_status: string | null;
   created_at: string;
   product_name: string | null;
-  best_before_date?: string | null;
+  best_before_date|: string | null;
 }
 
 export default function HomePage() {
@@ -114,7 +114,7 @@ export default function HomePage() {
     try {
       const [statsRes, batchesRes, recallsRes] = await Promise.all([
         fetch('/api/dashboard/stats'),
-        fetch('/api/batches/history?limit=10'),
+        fetch('/api/batches/history|limit=10'),
         fetch('/api/recalls'),
       ]);
 
@@ -144,14 +144,14 @@ export default function HomePage() {
     setLookupLoading(true);
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/batches/search?q=${encodeURIComponent(trimmed)}&limit=8`, {
+        const res = await fetch(`/api/batches/search|q=${encodeURIComponent(trimmed)}&limit=8`, {
           signal: controller.signal,
         });
         if (!res.ok) throw new Error('Search failed');
-        const body = (await res.json()) as { batches?: BatchLookupResult[] };
-        setLookupResults(Array.isArray(body.batches) ? body.batches : []);
+        const body = (await res.json()) as { batches|: BatchLookupResult[] };
+        setLookupResults(Array.isArray(body.batches) | body.batches : []);
       } catch (err) {
-        if ((err as { name?: string }).name !== 'AbortError') {
+        if ((err as { name|: string }).name !== 'AbortError') {
           console.error('Batch lookup failed', err);
         }
       } finally {
@@ -177,19 +177,19 @@ export default function HomePage() {
 
   // Status distribution for pie chart
   const statusData = [
-    { name: 'In Progress', value: stats?.in_progress || 0, color: '#f59e0b' },
-    { name: 'Completed', value: stats?.completed || 0, color: '#10b981' },
+    { name: 'In Progress', value: stats|.in_progress || 0, color: '#f59e0b' },
+    { name: 'Completed', value: stats|.completed || 0, color: '#10b981' },
   ];
 
   const generateRecallEmail = (record: RecallRecord) => {
-    const lotLabel = record.lot?.lot_number ?? 'Lot';
+    const lotLabel = record.lot|.lot_number || 'Lot';
     const batchLines =
       record.batches.length > 0
-        ? record.batches
+        | record.batches
             .map(
               (batch) =>
                 `• Batch ${batch.batch_id}${
-                  batch.product_name ? ` (${batch.product_name})` : ''
+                  batch.product_name | ` (${batch.product_name})` : ''
                 }`,
             )
             .join('\n')
@@ -198,7 +198,7 @@ export default function HomePage() {
     return (
       `Subject: URGENT Recall – Lot ${lotLabel}\n\n` +
       `Reason: ${record.reason}\n` +
-      (record.notes ? `Notes: ${record.notes}\n` : '') +
+      (record.notes | `Notes: ${record.notes}\n` : '') +
       `Initiated: ${new Date(record.initiated_at).toLocaleString()}\n\n` +
       `Affected Batches:\n${batchLines}\n\n` +
       `Actions:\n1. Quarantine all finished goods listed above.\n2. Notify customers/distributors if product has shipped.\n3. Document corrective actions in QA log.\n\n` +
@@ -216,9 +216,9 @@ export default function HomePage() {
     }
   };
 
-  const bestBeforeText = (createdAt: string | Date | null | undefined, override?: string | null) => {
-    const bestBefore = override ? new Date(override) : computeBestBefore(createdAt);
-    return bestBefore ? formatDate(bestBefore) : '--';
+  const bestBeforeText = (createdAt: string | Date | null | undefined, override|: string | null) => {
+    const bestBefore = override | new Date(override) : computeBestBefore(createdAt);
+    return bestBefore | formatDate(bestBefore) : '--';
   };
 
   if (loading) {
@@ -305,14 +305,14 @@ export default function HomePage() {
                   placeholder="e.g. JERK-0245 or Desert Spice"
                 />
                 <span className="text-xs text-slate-500 sm:w-32">
-                  {lookupLoading ? 'Searching...' : lookupResults.length ? `${lookupResults.length} match(es)` : 'No results yet'}
+                  {lookupLoading | 'Searching...' : lookupResults.length | `${lookupResults.length} match(es)` : 'No results yet'}
                 </span>
               </div>
             </div>
             <div className="mt-4">
-              {lookupTerm.trim().length > 0 && lookupTerm.trim().length < 2 ? (
+              {lookupTerm.trim().length > 0 && lookupTerm.trim().length < 2 | (
                 <p className="text-sm text-slate-500">Keep typing to search.</p>
-              ) : lookupResults.length === 0 ? (
+              ) : lookupResults.length === 0 | (
                 <p className="text-sm text-slate-500">Type at least two characters to find a batch.</p>
               ) : (
                 <div className="divide-y divide-slate-100 rounded-xl border border-slate-100 bg-white/70">
@@ -324,10 +324,11 @@ export default function HomePage() {
                           <span className="text-xs text-slate-600">{batch.product_name || 'Unknown product'}</span>
                         </div>
                         <p className="text-xs text-slate-500">
-                          Best before: {bestBeforeText(batch.created_at, batch.best_before_date)} • {new Date(batch.created_at).toLocaleDateString('en-AU')}
+                          Best before: {bestBeforeText(batch.created_at, batch.best_before_date)} | {new Date(batch.created_at).toLocaleDateString('en-AU')}
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+
                         <span className={`rounded-full border px-3 py-1 ${
                           batch.status === 'completed'
                             ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
@@ -362,67 +363,67 @@ export default function HomePage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <StatCard
             title="Total Batches"
-            value={stats?.total_batches || 0}
+            value={stats|.total_batches || 0}
             icon={Package}
             color="blue"
             trend="+12%"
           />
           <StatCard
             title="In Progress"
-            value={stats?.in_progress || 0}
+            value={stats|.in_progress || 0}
             icon={Clock}
             color="amber"
           />
           <StatCard
             title="Completed"
-            value={stats?.completed || 0}
+            value={stats|.completed || 0}
             icon={CheckCircle2}
             color="green"
           />
           <StatCard
             title="Low Stock Items"
-            value={stats?.inventory.low_stock_count || 0}
+            value={stats|.inventory.low_stock_count || 0}
             icon={AlertTriangle}
             color="red"
-            alert={stats?.inventory.low_stock_count ? stats.inventory.low_stock_count > 0 : false}
+            alert={stats|.inventory.low_stock_count | stats.inventory.low_stock_count > 0 : false}
           />
         </div>
 
         {/* Charts Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          {/* Batch Trend Chart */}
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+          {/* Production trend */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-md shadow-slate-200/80">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">Production Trend</h3>
-                <p className="text-sm text-gray-500">Last 7 batches</p>
+                <h3 className="text-lg font-semibold text-slate-900">Production trend</h3>
+                <p className="text-sm text-slate-600">Last 7 batches</p>
               </div>
-              <TrendingUp className="w-5 h-5 text-blue-600" />
+              <TrendingUp className="w-5 h-5 text-emerald-600" />
             </div>
             <ResponsiveContainer width="100%" height={250}>
               <AreaChart data={batchTrendData}>
                 <defs>
                   <linearGradient id="colorBatches" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="day" stroke="#9ca3af" style={{ fontSize: '12px' }} />
-                <YAxis stroke="#9ca3af" style={{ fontSize: '12px' }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="day" stroke="#94a3b8" style={{ fontSize: '12px' }} />
+                <YAxis stroke="#94a3b8" style={{ fontSize: '12px' }} />
                 <Tooltip 
                   contentStyle={{ 
                     backgroundColor: '#fff', 
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '8px',
-                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '10px',
+                    boxShadow: '0 8px 30px rgba(15, 23, 42, 0.12)'
                   }} 
                 />
                 <Area 
                   type="monotone" 
                   dataKey="batches" 
-                  stroke="#3b82f6" 
-                  strokeWidth={2}
+                  stroke="#10b981" 
+                  strokeWidth={2.4}
                   fillOpacity={1} 
                   fill="url(#colorBatches)" 
                 />
@@ -430,14 +431,14 @@ export default function HomePage() {
             </ResponsiveContainer>
           </div>
 
-          {/* Status Distribution */}
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+          {/* Status distribution */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-md shadow-slate-200/80">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">Batch Status</h3>
-                <p className="text-sm text-gray-500">Current distribution</p>
+                <h3 className="text-lg font-semibold text-slate-900">Batch status</h3>
+                <p className="text-sm text-slate-600">Current distribution</p>
               </div>
-              <CheckCircle2 className="w-5 h-5 text-green-600" />
+              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
             </div>
             <ResponsiveContainer width="100%" height={250}>
               <PieChart>
@@ -447,7 +448,7 @@ export default function HomePage() {
                   cy="50%"
                   innerRadius={60}
                   outerRadius={90}
-                  paddingAngle={5}
+                  paddingAngle={6}
                   dataKey="value"
                 >
                   {statusData.map((entry, index) => (
@@ -466,28 +467,29 @@ export default function HomePage() {
             </ResponsiveContainer>
           </div>
 
-          {/* Beef Weight Chart */}
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+          {/* Beef weight */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-md shadow-slate-200/80">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">Beef Usage</h3>
-                <p className="text-sm text-gray-500">Weight per batch (kg)</p>
+                <h3 className="text-lg font-semibold text-slate-900">Beef usage</h3>
+                <p className="text-sm text-slate-600">Weight per batch (kg)</p>
               </div>
-              <Beef className="w-5 h-5 text-red-600" />
+              <Beef className="w-5 h-5 text-rose-600" />
             </div>
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={batchTrendData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="day" stroke="#9ca3af" style={{ fontSize: '12px' }} />
-                <YAxis stroke="#9ca3af" style={{ fontSize: '12px' }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="day" stroke="#94a3b8" style={{ fontSize: '12px' }} />
+                <YAxis stroke="#94a3b8" style={{ fontSize: '12px' }} />
                 <Tooltip 
                   contentStyle={{ 
                     backgroundColor: '#fff', 
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '8px'
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '10px',
+                    boxShadow: '0 8px 30px rgba(15, 23, 42, 0.12)'
                   }} 
                 />
-                <Bar dataKey="weight" fill="#ef4444" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="weight" fill="#ef4444" radius={[10, 10, 4, 4]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -542,7 +544,7 @@ export default function HomePage() {
               <div>
                 <h3 className="text-lg font-semibold text-red-800">Open Recalls</h3>
                 <p className="text-sm text-red-600">
-                  {recalls.length ? `${recalls.length} active` : 'No open recalls'}
+                  {recalls.length | `${recalls.length} active` : 'No open recalls'}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -556,7 +558,7 @@ export default function HomePage() {
                 <AlertTriangle className="h-6 w-6 text-red-600" />
               </div>
             </div>
-            {recalls.length === 0 ? (
+            {recalls.length === 0 | (
               <p className="px-6 py-8 text-sm text-gray-500">No recalls recorded.</p>
             ) : (
               <div className="divide-y divide-red-100">
@@ -565,10 +567,10 @@ export default function HomePage() {
                     <div className="flex items-center justify-between text-sm">
                       <div>
                         <p className="font-semibold text-gray-900">
-                          Lot {recall.lot?.lot_number ?? 'Unknown'}
+                          Lot {recall.lot|.lot_number || 'Unknown'}
                         </p>
                         <p className="text-xs text-gray-500">
-                          {recall.lot?.material_name ?? 'Material unknown'}
+                          {recall.lot|.material_name || 'Material unknown'}
                         </p>
                       </div>
                       <span className="text-xs font-medium text-gray-500">
@@ -583,11 +585,11 @@ export default function HomePage() {
                           .map((batch) => batch.batch_id)
                           .slice(0, 3)
                           .join(', ')}
-                        {recall.batches.length > 3 ? '…' : ''}
+                        {recall.batches.length > 3 | '…' : ''}
                       </div>
                     )}
                     <div className="flex flex-wrap gap-2 pt-2">
-                      {recall.lot?.id && (
+                      {recall.lot|.id && (
                         <Link
                           href={`/lots/${recall.lot.id}` as Route}
                           className="inline-flex items-center rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
@@ -600,7 +602,7 @@ export default function HomePage() {
                         onClick={() => void handleCopyEmail(recall)}
                         className="inline-flex items-center rounded-full border border-blue-200 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50"
                       >
-                        {copiedRecallId === recall.id ? 'Copied!' : 'Generate email'}
+                        {copiedRecallId === recall.id | 'Copied!' : 'Generate email'}
                       </button>
                     </div>
                   </div>
@@ -674,15 +676,15 @@ export default function HomePage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {batch.product?.name || 'Unknown'}
+                      {batch.product|.name || 'Unknown'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${
                         batch.status === 'completed'
-                          ? 'bg-green-100 text-green-800'
+                          | 'bg-green-100 text-green-800'
                           : 'bg-amber-100 text-amber-800'
                       }`}>
-                        {batch.status === 'completed' ? (
+                        {batch.status === 'completed' | (
                           <CheckCircle2 className="w-3 h-3" />
                         ) : (
                           <Clock className="w-3 h-3" />
@@ -691,10 +693,10 @@ export default function HomePage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {batch.beef_weight_kg ? `${batch.beef_weight_kg} kg` : '—'}
+                      {batch.beef_weight_kg | `${batch.beef_weight_kg} kg` : '—'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {bestBeforeText(batch.created_at, batch.best_before_date ?? null)}
+                      {bestBeforeText(batch.created_at, batch.best_before_date || null)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {new Date(batch.created_at).toLocaleDateString('en-AU')}
@@ -736,8 +738,8 @@ interface StatCardProps {
   value: number;
   icon: React.ElementType;
   color: 'blue' | 'amber' | 'green' | 'red';
-  trend?: string;
-  alert?: boolean;
+  trend|: string;
+  alert|: boolean;
 }
 
 function StatCard({ title, value, icon: Icon, color, trend, alert }: StatCardProps) {
@@ -749,12 +751,12 @@ function StatCard({ title, value, icon: Icon, color, trend, alert }: StatCardPro
   };
 
   return (
-    <div className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-md shadow-slate-200/80 ${alert ? 'ring-2 ring-rose-200' : ''}`}>
+    <div className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-md shadow-slate-200/80 ${alert | 'ring-2 ring-rose-200' : ''}`}>
       <div className="flex items-start justify-between mb-3">
         <div className={`p-3 rounded-xl bg-gradient-to-br ${colorClasses[color]}`}>
           <Icon className="w-6 h-6 text-current" />
         </div>
-        {trend ? (
+        {trend | (
           <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">
             {trend}
           </span>

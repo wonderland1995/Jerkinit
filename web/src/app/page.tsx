@@ -92,7 +92,7 @@ interface BatchLookupResult {
   release_status: string | null;
   created_at: string;
   product_name: string | null;
-  best_before_date|: string | null;
+  best_before_date?: string | null;
 }
 
 export default function HomePage() {

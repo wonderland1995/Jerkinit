@@ -70,7 +70,7 @@ interface RecallRecord {
   initiated_at: string;
   initiated_by?: string | null;
   status: string;
-  lot|: {
+  lot?: {
     id: string;
     lot_number: string;
     internal_lot_code: string | null;

@@ -182,28 +182,45 @@ export default function HomePage() {
   ];
 
   const generateRecallEmail = (record: RecallRecord) => {
-    const lotLabel = record.lot|.lot_number || 'Lot';
+    const lotLabel = record.lot?.lot_number || 'Lot';
     const batchLines =
       record.batches.length > 0
-        | record.batches
+        ? record.batches
             .map(
               (batch) =>
-                `• Batch ${batch.batch_id}${
-                  batch.product_name | ` (${batch.product_name})` : ''
+                `? Batch ${batch.batch_id}${
+                  batch.product_name ? ` (${batch.product_name})` : ''
                 }`,
             )
-            .join('\n')
-        : '• No finished batches recorded';
+            .join('
+')
+        : '? No finished batches recorded';
 
     return (
-      `Subject: URGENT Recall – Lot ${lotLabel}\n\n` +
-      `Reason: ${record.reason}\n` +
-      (record.notes | `Notes: ${record.notes}\n` : '') +
-      `Initiated: ${new Date(record.initiated_at).toLocaleString()}\n\n` +
-      `Affected Batches:\n${batchLines}\n\n` +
-      `Actions:\n1. Quarantine all finished goods listed above.\n2. Notify customers/distributors if product has shipped.\n3. Document corrective actions in QA log.\n\n` +
-      `Please reply confirming receipt of this recall notice.\n`
+      `Subject: URGENT Recall ? Lot ${lotLabel}
+
+` +
+      `Reason: ${record.reason}
+` +
+      (record.notes ? `Notes: ${record.notes}
+` : '') +
+      `Initiated: ${new Date(record.initiated_at).toLocaleString()}
+
+` +
+      `Affected Batches:
+${batchLines}
+
+` +
+      `Actions:
+1. Quarantine all finished goods listed above.
+2. Notify customers/distributors if product has shipped.
+3. Document corrective actions in QA log.
+
+` +
+      `Please reply confirming receipt of this recall notice.
+`
     );
+  };
   };
 
   const handleCopyEmail = async (record: RecallRecord) => {

@@ -144,14 +144,14 @@ export default function HomePage() {
     setLookupLoading(true);
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/batches/search|q=${encodeURIComponent(trimmed)}&limit=8`, {
+        const res = await fetch(`/api/batches/search?q=${encodeURIComponent(trimmed)}&limit=8`, {
           signal: controller.signal,
         });
         if (!res.ok) throw new Error('Search failed');
-        const body = (await res.json()) as { batches|: BatchLookupResult[] };
-        setLookupResults(Array.isArray(body.batches) | body.batches : []);
+        const body = (await res.json()) as { batches?: BatchLookupResult[] };
+        setLookupResults(Array.isArray(body.batches) ? body.batches : []);
       } catch (err) {
-        if ((err as { name|: string }).name !== 'AbortError') {
+        if ((err as { name?: string }).name !== 'AbortError') {
           console.error('Batch lookup failed', err);
         }
       } finally {

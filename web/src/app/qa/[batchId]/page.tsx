@@ -1019,14 +1019,20 @@ const toLocalDateTimeInput = (value?: string | null) => {
   if (!value) return '';
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return '';
-  return new Date(parsed.getTime() - parsed.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  // Force AEST (UTC+10) regardless of browser timezone
+  const aestOffsetMinutes = 600;
+  const adjusted = new Date(parsed.getTime() + aestOffsetMinutes * 60000);
+  return adjusted.toISOString().slice(0, 16);
 };
 
 const toIsoFromLocalInput = (value?: string) => {
   if (!value) return null;
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return null;
-  return new Date(parsed.getTime() + parsed.getTimezoneOffset() * 60000).toISOString();
+  // Input is treated as AEST local; convert to UTC ISO by subtracting fixed offset
+  const aestOffsetMinutes = 600;
+  const adjusted = new Date(parsed.getTime() - aestOffsetMinutes * 60000);
+  return adjusted.toISOString();
 };
 
 const computeDurationMinutes = (startIso?: string | null, endIso?: string | null) => {

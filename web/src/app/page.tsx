@@ -188,15 +188,15 @@ export default function HomePage() {
         ? record.batches
             .map(
               (batch) =>
-                `• Batch ${batch.batch_id}${
+                `- Batch ${batch.batch_id}${
                   batch.product_name ? ` (${batch.product_name})` : ''
                 }`,
             )
             .join('\n')
-        : '• No finished batches recorded';
+        : '- No finished batches recorded';
 
     return (
-      `Subject: URGENT Recall – Lot ${lotLabel}\n\n` +
+      `Subject: URGENT Recall - Lot ${lotLabel}\n\n` +
       `Reason: ${record.reason}\n` +
       (record.notes ? `Notes: ${record.notes}\n` : '') +
       `Initiated: ${new Date(record.initiated_at).toLocaleString()}\n\n` +
@@ -589,7 +589,7 @@ export default function HomePage() {
                           .map((batch) => batch.batch_id)
                           .slice(0, 3)
                           .join(', ')}
-                        {recall.batches.length > 3 ? '…' : ''}
+                        {recall.batches.length > 3 ? '...' : ''}
                       </div>
                     )}
                     <div className="flex flex-wrap gap-2 pt-2">

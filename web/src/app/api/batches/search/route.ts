@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
         release_status,
         created_at,
         best_before_date,
+        product_name,
         product:products(name)
       `,
     )
@@ -26,7 +27,8 @@ export async function GET(request: NextRequest) {
 
   if (q.length >= 2) {
     const escaped = q.replace(/[%_]/g, '');
-    query = query.or(`batch_id.ilike.%${escaped}%,product.name.ilike.%${escaped}%`);
+    const like = `%${escaped}%`;
+    query = query.or(`batch_id.ilike.${like},product_name.ilike.${like}`);
   }
 
   const { data, error } = await query;
@@ -43,7 +45,7 @@ export async function GET(request: NextRequest) {
       status: row.status,
       release_status: row.release_status,
       created_at: row.created_at,
-      product_name: product?.name ?? null,
+      product_name: (row as { product_name?: string | null }).product_name ?? product?.name ?? null,
       best_before_date: (row as { best_before_date?: string | null }).best_before_date ?? null,
     };
   });

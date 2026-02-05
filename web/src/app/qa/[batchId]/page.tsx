@@ -262,6 +262,27 @@ export default function BatchQAPage() {
     return stageColor[overallStage] ?? 'bg-gray-100 text-gray-700';
   }, [overallStage, qaComplete]);
 
+  const marinationWetWeight = useMemo(() => {
+    const marinationCp = checkpoints.find((c) => c.code === 'MAR-FSP-TIME');
+    if (!marinationCp) return null;
+    const marCheck = qaChecks[marinationCp.id];
+    const metadata =
+      marCheck?.metadata && typeof marCheck.metadata === 'object'
+        ? (marCheck.metadata as Record<string, unknown>)
+        : null;
+    const rawLog =
+      metadata && typeof metadata['weight_log'] === 'object'
+        ? (metadata['weight_log'] as Record<string, unknown>)
+        : null;
+    const wet =
+      rawLog && typeof rawLog['wet_weight_kg'] === 'number'
+        ? rawLog['wet_weight_kg']
+        : rawLog && typeof rawLog['wet_weight_kg'] === 'string'
+        ? Number(rawLog['wet_weight_kg'])
+        : null;
+    return Number.isFinite(wet) ? (wet as number) : null;
+  }, [checkpoints, qaChecks]);
+
   // Determine current/next checkpoint within the active stage
   const currentCheckpoint = useMemo(() => {
     const ordered = [...stageCheckpoints].sort((a, b) => a.display_order - b.display_order);
@@ -422,6 +443,38 @@ export default function BatchQAPage() {
       check.metadata && typeof check.metadata === 'object'
         ? (check.metadata as Record<string, unknown>)
         : null;
+
+    if (metadata && typeof metadata.weight_log === 'object') {
+      const wl = metadata.weight_log as Record<string, unknown>;
+      const wet =
+        typeof wl.wet_weight_kg === 'number'
+          ? wl.wet_weight_kg
+          : typeof wl.wet_weight_kg === 'string'
+          ? Number(wl.wet_weight_kg)
+          : null;
+      const dry =
+        typeof wl.dry_weight_kg === 'number'
+          ? wl.dry_weight_kg
+          : typeof wl.dry_weight_kg === 'string'
+          ? Number(wl.dry_weight_kg)
+          : null;
+      const loss =
+        typeof wl.weight_loss_percent === 'number'
+          ? wl.weight_loss_percent
+          : typeof wl.weight_loss_percent === 'string'
+          ? Number(wl.weight_loss_percent)
+          : wet && dry && wet > 0
+          ? ((wet - dry) / wet) * 100
+          : null;
+      const weightPieces = [
+        wet != null && Number.isFinite(wet) ? `wet ${wet.toFixed(2)} kg` : null,
+        dry != null && Number.isFinite(dry) ? `dry ${dry.toFixed(2)} kg` : null,
+        loss != null && Number.isFinite(loss) ? `loss ${loss.toFixed(1)}%` : null,
+      ].filter(Boolean);
+      if (weightPieces.length > 0) {
+        parts.push(`Weight ${weightPieces.join(', ')}`);
+      }
+    }
 
     if (metadata && metadata.marination_run && typeof metadata.marination_run === 'object') {
       const run = metadata.marination_run as { start_iso?: string; end_iso?: string; duration_minutes?: number | null };
@@ -958,6 +1011,7 @@ export default function BatchQAPage() {
                 key={cp.id}
                 checkpoint={cp}
                 check={qaChecks[cp.id]}
+                wetWeightHint={marinationWetWeight}
                 onChange={async (status, data) => {
                   try {
                     const res = await fetch('/api/qa/checkpoint', {
@@ -998,6 +1052,7 @@ export default function BatchQAPage() {
 interface CheckpointCardProps {
   checkpoint: Checkpoint;
   check: QACheck | undefined;
+  wetWeightHint?: number | null;
   onChange: (status: QAStatus, data: Partial<QACheck>) => void;
 }
 
@@ -1006,6 +1061,8 @@ type FieldFlags = {
   humidity?: boolean;
   ph?: boolean;
   aw?: boolean;
+  wetWeight?: boolean;
+  dryWeight?: boolean;
   notes?: boolean;       // default true
   managedExternally?: boolean; // shows banner, hides actions
   tripleTemps?: boolean;
@@ -1215,16 +1272,50 @@ const extractProcessConfirm = (metadata?: Record<string, unknown> | null) => {
   };
 };
 
+const extractWeightLog = (
+  metadata?: Record<string, unknown> | null,
+  fallbackWet?: number | null,
+) => {
+  if (!metadata || typeof metadata !== 'object') {
+    return { wet: fallbackWet != null ? String(fallbackWet) : '', dry: '' };
+  }
+  const raw = (metadata as Record<string, unknown>)['weight_log'];
+  const wetRaw =
+    raw && typeof raw === 'object'
+      ? (raw as Record<string, unknown>)['wet_weight_kg']
+      : null;
+  const dryRaw =
+    raw && typeof raw === 'object'
+      ? (raw as Record<string, unknown>)['dry_weight_kg']
+      : null;
+  const wet =
+    typeof wetRaw === 'number'
+      ? wetRaw
+      : typeof wetRaw === 'string'
+      ? Number(wetRaw)
+      : fallbackWet ?? null;
+  const dry =
+    typeof dryRaw === 'number'
+      ? dryRaw
+      : typeof dryRaw === 'string'
+      ? Number(dryRaw)
+      : null;
+  return {
+    wet: wet != null && Number.isFinite(wet) ? String(wet) : fallbackWet != null ? String(fallbackWet) : '',
+    dry: dry != null && Number.isFinite(dry) ? String(dry) : '',
+  };
+};
+
 // Map the EXACT inputs each checkpoint code needs.
 // Anything not listed falls back to "notes only".
 const FIELDS_BY_CODE: Record<string, FieldFlags> = {
   // --- FSP-specific checkpoints ---
   'PREP-BEEF-RECEIVE': { temperature: true, notes: true },
   'MAR-FSP-SALT': { notes: true },
-  'MAR-FSP-TIME': { temperature: true, notes: true, marinationRun: true },
+  'MAR-FSP-TIME': { temperature: true, notes: true, marinationRun: true, wetWeight: true },
   'DRY-FSP-OVEN': { temperature: true, notes: true, dryingRun: true },
   'DRY-FSP-CORE': { notes: true, tripleTemps: true },
-  'DRY-FSP-AW-LAB': { notes: true, processConfirm: true },
+  'DRY-FSP-AW-LAB': { notes: true, processConfirm: true, dryWeight: true },
   'DRY-FSP-VALIDATION': { notes: true },
   'DRY-PREHEAT': { temperature: true, notes: true },
 
@@ -1257,8 +1348,8 @@ const FIELDS_BY_CODE: Record<string, FieldFlags> = {
   'DRY-TEMPERATURE': { temperature: true, notes: true, dryingRun: true },
 
   // Water Activity Test
-  'DRY-CCP-005': { aw: true, notes: true },
-  'DRY-AW': { aw: true, notes: true },
+  'DRY-CCP-005': { aw: true, notes: true, dryWeight: true },
+  'DRY-AW': { aw: true, notes: true, dryWeight: true },
 
   // Yield Calculation is usually computed later (final) - just note/mark
   'FIN-006': { notes: true },
@@ -1301,7 +1392,7 @@ function getFieldFlags(cp: Checkpoint): FieldFlags {
   return base;
 }
 
-function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
+function CheckpointCard({ checkpoint, check, wetWeightHint, onChange }: CheckpointCardProps) {
   const toast = useToast();
   const fields = getFieldFlags(checkpoint);
   const [expanded, setExpanded] = useState(() =>
@@ -1309,11 +1400,13 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
       fields.temperature ||
         fields.humidity ||
         fields.ph ||
-        fields.aw ||
-        fields.tripleTemps ||
-        fields.dryingRun ||
-        fields.marinationRun ||
-        fields.labAw,
+      fields.aw ||
+      fields.tripleTemps ||
+      fields.dryingRun ||
+      fields.marinationRun ||
+      fields.labAw ||
+      fields.wetWeight ||
+      fields.dryWeight,
     ),
   );
 
@@ -1346,6 +1439,12 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
   const [processTempMet, setProcessTempMet] = useState<boolean>(initialProcessConfirm.tempMet);
   const [processWeightMet, setProcessWeightMet] = useState<boolean>(initialProcessConfirm.weightMet);
   const [processRuntimeLogged, setProcessRuntimeLogged] = useState<boolean>(initialProcessConfirm.runtimeLogged);
+  const initialWeights = extractWeightLog(
+    (check?.metadata as Record<string, unknown> | null) ?? null,
+    wetWeightHint ?? null,
+  );
+  const [wetWeight, setWetWeight] = useState<string>(initialWeights.wet);
+  const [dryWeight, setDryWeight] = useState<string>(initialWeights.dry);
 
   const marinationDurationMinutes = useMemo(
     () => (fields.marinationRun ? computeDurationFromLocalInputs(marinationStart, marinationEnd) : null),
@@ -1355,6 +1454,15 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
     () => (fields.dryingRun ? computeDurationFromLocalInputs(dryingStart, dryingEnd) : null),
     [fields.dryingRun, dryingStart, dryingEnd],
   );
+  const weightLossPercent = useMemo(() => {
+    const wet = wetWeight.trim() !== '' ? Number(wetWeight) : null;
+    const dry = dryWeight.trim() !== '' ? Number(dryWeight) : null;
+    if (wet == null || dry == null || !Number.isFinite(wet) || !Number.isFinite(dry) || wet <= 0) {
+      return null;
+    }
+    const loss = ((wet - dry) / wet) * 100;
+    return Number.isFinite(loss) ? loss : null;
+  }, [wetWeight, dryWeight]);
 
   const status: QAStatus = check?.status ?? 'pending';
 
@@ -1414,6 +1522,17 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
       setProcessWeightMet(false);
       setProcessRuntimeLogged(false);
     }
+    const parsedWeights = extractWeightLog(
+      (check?.metadata as Record<string, unknown> | null) ?? null,
+      wetWeightHint ?? null,
+    );
+    if (fields.wetWeight || fields.dryWeight) {
+      setWetWeight(parsedWeights.wet);
+      setDryWeight(parsedWeights.dry);
+    } else {
+      setWetWeight(wetWeightHint != null ? String(wetWeightHint) : '');
+      setDryWeight('');
+    }
   }, [
     check?.temperature_c,
     check?.humidity_percent,
@@ -1427,6 +1546,9 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
     fields.marinationRun,
     fields.labAw,
     fields.processConfirm,
+    fields.wetWeight,
+    fields.dryWeight,
+    wetWeightHint,
   ]);
 
   const validateIfPassing = (nextStatus: QAStatus = status): string | null => {
@@ -1440,6 +1562,17 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
       if (fields.aw && aw === '') return 'Water activity (aw) is required for this checkpoint.';
       if (fields.aw && aw !== '' && Number.isNaN(Number(aw))) {
         return 'Water activity (aw) must be numeric.';
+      }
+      if (fields.wetWeight && wetWeight.trim() === '') return 'Total weight is required for this checkpoint.';
+      if (fields.wetWeight && wetWeight.trim() !== '' && Number.isNaN(Number(wetWeight))) {
+        return 'Total weight must be numeric.';
+      }
+      if (fields.dryWeight && dryWeight.trim() === '') return 'Dry weight is required for this checkpoint.';
+      if (fields.dryWeight && dryWeight.trim() !== '' && Number.isNaN(Number(dryWeight))) {
+        return 'Dry weight must be numeric.';
+      }
+      if (fields.dryWeight && wetWeight.trim() === '') {
+        return 'Wet weight from marination is required to calculate weight loss.';
       }
       if (fields.tripleTemps && coreReadings.some((r) => r.temp.trim() === '' || r.time.trim() === '')) {
         return 'Both internal temperature readings and their times are required.';
@@ -1469,7 +1602,15 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
   };
 
   const buildMetadataPayload = (): Record<string, unknown> | null => {
-    if (!fields.tripleTemps && !fields.dryingRun && !fields.marinationRun && !fields.labAw && !fields.processConfirm) {
+    if (
+      !fields.tripleTemps &&
+      !fields.dryingRun &&
+      !fields.marinationRun &&
+      !fields.labAw &&
+      !fields.processConfirm &&
+      !fields.wetWeight &&
+      !fields.dryWeight
+    ) {
       return null;
     }
     const base =
@@ -1567,6 +1708,29 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
         runtime_logged: processRuntimeLogged,
       };
       mutated = true;
+    }
+
+    if (fields.wetWeight || fields.dryWeight) {
+      const wetNumeric = wetWeight.trim() !== '' ? Number(wetWeight) : null;
+      const dryNumeric = dryWeight.trim() !== '' ? Number(dryWeight) : null;
+      const wetValid = wetNumeric != null && Number.isFinite(wetNumeric);
+      const dryValid = dryNumeric != null && Number.isFinite(dryNumeric);
+      const loss =
+        wetValid && dryValid && (wetNumeric as number) > 0
+          ? ((wetNumeric as number - (dryNumeric as number)) / (wetNumeric as number)) * 100
+          : null;
+      const hadWeight = Object.prototype.hasOwnProperty.call(base, 'weight_log');
+      if (wetValid || dryValid) {
+        base['weight_log'] = {
+          wet_weight_kg: wetValid ? (wetNumeric as number) : null,
+          dry_weight_kg: dryValid ? (dryNumeric as number) : null,
+          weight_loss_percent: loss,
+        };
+        mutated = true;
+      } else if (hadWeight) {
+        delete base['weight_log'];
+        mutated = true;
+      }
     }
 
     return mutated ? base : null;
@@ -1786,11 +1950,11 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
                   />
                 </div>
               )}
-              {fields.aw && (
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Water Activity (aw)</label>
-                  <input
-                    type="number"
+            {fields.aw && (
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Water Activity (aw)</label>
+                <input
+                  type="number"
                     step="0.01"
                     value={aw}
                     onChange={(e) => setAw(e.target.value)}
@@ -1799,6 +1963,68 @@ function CheckpointCard({ checkpoint, check, onChange }: CheckpointCardProps) {
                 </div>
               )}
             </div>
+
+            {(fields.wetWeight || fields.dryWeight) && (
+              <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-3">
+                <p className="text-sm font-medium text-gray-700">Weight tracking</p>
+                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {fields.wetWeight && (
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">Total weight (wet, kg)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={wetWeight}
+                        onChange={(e) => setWetWeight(e.target.value)}
+                        className="w-full rounded-lg border px-3 py-2"
+                        placeholder="e.g. 120.5"
+                      />
+                      {wetWeightHint != null && wetWeight === '' && (
+                        <p className="mt-1 text-xs text-gray-600">
+                          Using marination weight: {wetWeightHint.toFixed(2)} kg
+                        </p>
+                      )}
+                      <p className="mt-1 text-xs text-gray-600">
+                        Capture the total batch weight after marination. This will be reused for weight loss.
+                      </p>
+                    </div>
+                  )}
+                  {fields.dryWeight && (
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">Dry weight (kg)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={dryWeight}
+                        onChange={(e) => setDryWeight(e.target.value)}
+                        className="w-full rounded-lg border px-3 py-2"
+                        placeholder="e.g. 64.8"
+                      />
+                      <p className="mt-1 text-xs text-gray-600">
+                        Enter the post-drying weight used with water activity testing.
+                      </p>
+                    </div>
+                  )}
+                </div>
+                {!fields.wetWeight && wetWeight !== '' && (
+                  <p className="mt-2 text-xs text-gray-600">Wet weight recorded: {wetWeight} kg</p>
+                )}
+                {!fields.wetWeight && wetWeight === '' && wetWeightHint != null && (
+                  <p className="mt-2 text-xs text-gray-600">
+                    Using marination weight: {wetWeightHint.toFixed(2)} kg
+                  </p>
+                )}
+                {weightLossPercent != null ? (
+                  <p className="mt-2 text-xs font-semibold text-emerald-700">
+                    Weight loss: {weightLossPercent.toFixed(1)}% (wet {wetWeight || '-'} kg → dry {dryWeight || '-'} kg)
+                  </p>
+                ) : (
+                  fields.dryWeight && (
+                    <p className="mt-2 text-xs text-gray-600">Enter both wet and dry weights to calculate loss.</p>
+                  )
+                )}
+              </div>
+            )}
 
             {fields.tripleTemps && (
               <div className="rounded-2xl border border-blue-100 bg-blue-50/40 p-3">

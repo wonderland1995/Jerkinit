@@ -744,27 +744,58 @@ export default function BatchDetailPage() {
         return parts.length ? parts.join('; ') : '—';
       };
 
-      const formatOtherMeasurements = (checkpoint: QaCheckpointReport) => {
-        const metrics: string[] = [];
-        if (checkpoint.humidity_percent != null) {
-          metrics.push(`Humidity ${Number(checkpoint.humidity_percent).toFixed(1)} %`);
-        }
-        if (checkpoint.water_activity != null) {
-          metrics.push(`aw ${Number(checkpoint.water_activity).toFixed(3)}`);
-        }
-        if (checkpoint.ph_level != null) {
-          metrics.push(`pH ${Number(checkpoint.ph_level).toFixed(2)}`);
-        }
-
-        const meta = checkpoint.metadata ?? null;
-        if (meta && typeof meta === 'object') {
-          const metaRecord = meta as Record<string, unknown>;
-          if ('aw' in metaRecord && typeof metaRecord.aw === 'number') {
-            metrics.push(`aw ${Number(metaRecord.aw).toFixed(3)}`);
+        const formatOtherMeasurements = (checkpoint: QaCheckpointReport) => {
+          const metrics: string[] = [];
+          if (checkpoint.humidity_percent != null) {
+            metrics.push(`Humidity ${Number(checkpoint.humidity_percent).toFixed(1)} %`);
+          }
+          if (checkpoint.water_activity != null) {
+            metrics.push(`aw ${Number(checkpoint.water_activity).toFixed(3)}`);
+          }
+          if (checkpoint.ph_level != null) {
+            metrics.push(`pH ${Number(checkpoint.ph_level).toFixed(2)}`);
           }
 
-          const marMeta = metaRecord as MarinationTimesMeta;
-          const startLabelRaw = marMeta.startISO ? formatDateTime(marMeta.startISO) : '';
+          const meta = checkpoint.metadata ?? null;
+          if (meta && typeof meta === 'object') {
+            const metaRecord = meta as Record<string, unknown>;
+            if ('aw' in metaRecord && typeof metaRecord.aw === 'number') {
+              metrics.push(`aw ${Number(metaRecord.aw).toFixed(3)}`);
+            }
+            if ('weight_log' in metaRecord && typeof metaRecord.weight_log === 'object') {
+              const wl = metaRecord.weight_log as Record<string, unknown>;
+              const wet =
+                typeof wl.wet_weight_kg === 'number'
+                  ? wl.wet_weight_kg
+                  : typeof wl.wet_weight_kg === 'string'
+                  ? Number(wl.wet_weight_kg)
+                  : null;
+              const dry =
+                typeof wl.dry_weight_kg === 'number'
+                  ? wl.dry_weight_kg
+                  : typeof wl.dry_weight_kg === 'string'
+                  ? Number(wl.dry_weight_kg)
+                  : null;
+              const loss =
+                typeof wl.weight_loss_percent === 'number'
+                  ? wl.weight_loss_percent
+                  : typeof wl.weight_loss_percent === 'string'
+                  ? Number(wl.weight_loss_percent)
+                  : wet && dry && wet > 0
+                  ? ((wet - dry) / wet) * 100
+                  : null;
+              const weightPieces = [
+                wet != null && Number.isFinite(wet) ? `wet ${wet.toFixed(2)} kg` : null,
+                dry != null && Number.isFinite(dry) ? `dry ${dry.toFixed(2)} kg` : null,
+                loss != null && Number.isFinite(loss) ? `water loss ${loss.toFixed(1)}%` : null,
+              ].filter(Boolean);
+              if (weightPieces.length > 0) {
+                metrics.push(`Weight ${weightPieces.join(', ')}`);
+              }
+            }
+
+            const marMeta = metaRecord as MarinationTimesMeta;
+            const startLabelRaw = marMeta.startISO ? formatDateTime(marMeta.startISO) : '';
           const endLabelRaw = marMeta.endISO ? formatDateTime(marMeta.endISO) : '';
           const startLabel = startLabelRaw === '-' ? '' : startLabelRaw;
           const endLabel = endLabelRaw === '-' ? '' : endLabelRaw;

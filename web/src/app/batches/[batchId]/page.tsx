@@ -661,6 +661,80 @@ export default function BatchDetailPage() {
         return Number.isNaN(dt.getTime()) ? '-' : dt.toLocaleString();
       };
 
+      const parseNumeric = (value: unknown): number | null => {
+        if (typeof value === 'number' && Number.isFinite(value)) return value;
+        if (typeof value === 'string') {
+          const parsed = Number(value);
+          return Number.isFinite(parsed) ? parsed : null;
+        }
+        return null;
+      };
+
+      const weightSnapshot = qaCheckpoints.reduce<{
+        wetKg: number | null;
+        dryKg: number | null;
+        lossPercent: number | null;
+        checkpointLabel: string | null;
+        checkedAt: string | null;
+        score: number;
+        ts: number;
+      }>(
+        (best, checkpoint) => {
+          const metadata =
+            checkpoint.metadata && typeof checkpoint.metadata === 'object'
+              ? (checkpoint.metadata as Record<string, unknown>)
+              : null;
+          const rawWeightLog =
+            metadata && typeof metadata['weight_log'] === 'object'
+              ? (metadata['weight_log'] as Record<string, unknown>)
+              : null;
+          if (!rawWeightLog) return best;
+
+          const wet = parseNumeric(rawWeightLog['wet_weight_kg']);
+          const dry = parseNumeric(rawWeightLog['dry_weight_kg']);
+          const lossRaw = parseNumeric(rawWeightLog['weight_loss_percent']);
+          const loss =
+            lossRaw != null
+              ? lossRaw
+              : wet != null && dry != null && wet > 0
+              ? ((wet - dry) / wet) * 100
+              : null;
+          const score =
+            (wet != null ? 1 : 0) + (dry != null ? 2 : 0) + (loss != null ? 4 : 0);
+          if (score === 0) return best;
+
+          const ts =
+            checkpoint.last_checked_at && Number.isFinite(Date.parse(checkpoint.last_checked_at))
+              ? Date.parse(checkpoint.last_checked_at)
+              : Number.NEGATIVE_INFINITY;
+
+          if (score > best.score || (score === best.score && ts > best.ts)) {
+            const checkpointLabel = [checkpoint.code, checkpoint.name]
+              .filter(Boolean)
+              .join(' - ');
+            return {
+              wetKg: wet,
+              dryKg: dry,
+              lossPercent: loss,
+              checkpointLabel: checkpointLabel || checkpoint.code || checkpoint.name || null,
+              checkedAt: checkpoint.last_checked_at,
+              score,
+              ts,
+            };
+          }
+          return best;
+        },
+        {
+          wetKg: null,
+          dryKg: null,
+          lossPercent: null,
+          checkpointLabel: null,
+          checkedAt: null,
+          score: -1,
+          ts: Number.NEGATIVE_INFINITY,
+        },
+      );
+
       const beefQaByLot: Array<{
         lot_number: string;
         internal_code: string;
@@ -909,7 +983,48 @@ export default function BatchDetailPage() {
         cursorY += 5;
       });
 
-      cursorY += 4;
+      cursorY += 2;
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const boxWidth = pageWidth - marginLeft * 2;
+      const boxHeight = 24;
+      const lossLabel =
+        weightSnapshot.lossPercent != null && Number.isFinite(weightSnapshot.lossPercent)
+          ? `${weightSnapshot.lossPercent.toFixed(1)}% Weight Loss`
+          : 'Weight Loss Not Recorded';
+      const wetLabel =
+        weightSnapshot.wetKg != null && Number.isFinite(weightSnapshot.wetKg)
+          ? `${weightSnapshot.wetKg.toFixed(2)} kg`
+          : 'Not recorded';
+      const dryLabel =
+        weightSnapshot.dryKg != null && Number.isFinite(weightSnapshot.dryKg)
+          ? `${weightSnapshot.dryKg.toFixed(2)} kg`
+          : 'Not recorded';
+      const sourceParts = [
+        weightSnapshot.checkpointLabel,
+        weightSnapshot.checkedAt ? formatDateTime(weightSnapshot.checkedAt) : null,
+      ].filter(Boolean);
+
+      doc.setDrawColor(30, 64, 175);
+      doc.setFillColor(239, 246, 255);
+      doc.roundedRect(marginLeft, cursorY, boxWidth, boxHeight, 2, 2, 'FD');
+      doc.setTextColor(30, 64, 175);
+      doc.setFontSize(10);
+      doc.text('Weight Loss Summary', marginLeft + 3, cursorY + 5);
+      doc.setTextColor(15, 23, 42);
+      doc.setFontSize(16);
+      doc.text(lossLabel, marginLeft + 3, cursorY + 12);
+      doc.setFontSize(10);
+      doc.text(`Start (wet): ${wetLabel}`, marginLeft + 3, cursorY + 18);
+      doc.text(`Finish (dry): ${dryLabel}`, marginLeft + boxWidth / 2, cursorY + 18);
+      if (sourceParts.length > 0) {
+        doc.setFontSize(8);
+        doc.setTextColor(71, 85, 105);
+        doc.text(`Source: ${sourceParts.join(' @ ')}`, marginLeft + 3, cursorY + 22);
+      }
+
+      cursorY += boxHeight + 6;
+      doc.setTextColor(0, 0, 0);
       doc.setFontSize(12);
       doc.text('Ingredients', marginLeft, cursorY);
       cursorY += 2;

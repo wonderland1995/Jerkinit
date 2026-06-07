@@ -1536,60 +1536,81 @@ export default function BatchDetailPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {overrideDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
-            <h3 className="text-lg font-semibold text-gray-900">Override out-of-tolerance</h3>
-            <p className="mt-2 text-sm text-gray-600">
-              This will mark the ingredient as in tolerance by widening the tolerance limit. Add a short justification.
-            </p>
-            <div className="mt-4 space-y-2 text-sm text-gray-700">
-              <div className="flex justify-between">
-                <span>Actual amount</span>
-                <span className="font-semibold">{overrideDialog.actualVal}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Current deviation</span>
-                <span className="font-semibold">{overrideDialog.diffPct.toFixed(2)}%</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Proposed tolerance</span>
-                <span className="font-semibold">{(overrideDialog.diffPct + 0.1).toFixed(2)}%</span>
-              </div>
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/60 sm:p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setOverrideDialog(null);
+              setOverrideComment('');
+            }
+          }}
+        >
+          <div className="w-full rounded-t-3xl bg-white shadow-2xl sm:max-w-md sm:rounded-2xl">
+            {/* Mobile drag handle */}
+            <div className="flex justify-center pt-3 pb-1 sm:hidden">
+              <div className="h-1 w-10 rounded-full bg-gray-300" />
             </div>
-            <div className="mt-4">
-              <label className="mb-1 block text-sm font-medium text-gray-700">Comment</label>
-              <textarea
-                value={overrideComment}
-                onChange={(e) => setOverrideComment(e.target.value)}
-                className="w-full rounded-lg border px-3 py-2 text-sm"
-                rows={3}
-                placeholder="Why is this override acceptable?"
-              />
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-lg border px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                onClick={() => {
-                  setOverrideDialog(null);
-                  setOverrideComment('');
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                onClick={() => void confirmOverride()}
-              >
-                Confirm override
-              </button>
+
+            <div className="px-6 pt-4 pb-6 sm:p-6">
+              <h3 className="text-xl font-bold text-slate-900">Override out-of-tolerance</h3>
+              <p className="mt-2 text-sm text-slate-600">
+                This marks the ingredient as in tolerance by widening the tolerance limit. A justification is required.
+              </p>
+
+              <div className="mt-5 space-y-2 rounded-xl bg-slate-50 p-4 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Actual amount</span>
+                  <span className="font-bold text-slate-900 tabular-nums">{overrideDialog.actualVal}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Current deviation</span>
+                  <span className="font-bold text-rose-600 tabular-nums">{overrideDialog.diffPct.toFixed(2)}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Proposed tolerance</span>
+                  <span className="font-bold text-emerald-600 tabular-nums">{(overrideDialog.diffPct + 0.1).toFixed(2)}%</span>
+                </div>
+              </div>
+
+              <div className="mt-5">
+                <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 mb-1.5">
+                  Justification <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  value={overrideComment}
+                  onChange={(e) => setOverrideComment(e.target.value)}
+                  className="w-full rounded-xl border-2 border-slate-200 bg-white px-4 py-3 text-sm focus:border-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-100 resize-none"
+                  rows={3}
+                  placeholder="Why is this override acceptable?"
+                  autoFocus
+                />
+              </div>
+
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  className="w-full sm:w-auto rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 active:bg-slate-100"
+                  onClick={() => {
+                    setOverrideDialog(null);
+                    setOverrideComment('');
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="w-full sm:w-auto rounded-xl bg-emerald-600 px-6 py-3 text-sm font-bold text-white hover:bg-emerald-700 active:bg-emerald-800 shadow-md shadow-emerald-200"
+                  onClick={() => void confirmOverride()}
+                >
+                  Confirm override
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      <div className="max-w-6xl mx-auto px-6 py-6">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
         <Breadcrumbs
           items={[
             { label: 'Dashboard', href: '/' },
@@ -1598,31 +1619,22 @@ export default function BatchDetailPage() {
           ]}
         />
 
-        <div className="flex justify-between items-start mb-6">
-          <div>
-            <h1 className="text-3xl font-bold">{batchDisplayId}</h1>
-            <div className="mt-2 space-y-1 text-sm text-gray-600">
-              <p>
-                <span className="text-gray-500">Batch Number:</span>{' '}
-                <span className="font-mono text-gray-700">{batchDisplayId}</span>
+        {/* Hero header */}
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">Batch</p>
+            <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 font-mono break-all">{batchDisplayId}</h1>
+            {batch.recipe && (
+              <p className="mt-1 text-sm text-slate-500">
+                {batch.recipe.name} <span className="text-slate-400">· {batch.recipe.recipe_code}</span>
               </p>
-              <p>
-                <span className="text-gray-500">Production Date:</span>{' '}
-                {formatLocalDate(batch.production_date)}
-              </p>
-              {batch.recipe && (
-                <p>
-                  <span className="text-gray-500">Recipe:</span>{' '}
-                  {batch.recipe.name} ({batch.recipe.recipe_code})
-                </p>
-              )}
-            </div>
+            )}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="shrink-0">
             {(() => {
               const badge = qaBadge(qaSummary, batch.status);
               return (
-                <span className={`px-4 py-2 rounded-full text-sm font-medium ${badge.className}`}>
+                <span className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-bold ${badge.className}`}>
                   {badge.label}
                 </span>
               );
@@ -1639,42 +1651,48 @@ export default function BatchDetailPage() {
         )}
 
         {/* Batch + Stage Info */}
-        <div className="bg-white rounded-xl shadow p-6 mb-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="p-4 rounded-lg bg-gray-50">
-                <p className="text-xs text-gray-500">Batch Number</p>
-                <p className="font-mono font-semibold mt-1 break-all">{batchDisplayId}</p>
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 sm:p-6 mb-6">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+              <div className="p-4 rounded-xl bg-slate-50">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Production date</p>
+                <p className="text-base font-bold text-slate-900 mt-1">{formatLocalDate(batch.production_date)}</p>
               </div>
-            <div className="p-4 rounded-lg bg-gray-50">
-              <p className="text-xs text-gray-500">Production Date</p>
-              <p className="font-semibold mt-1">{formatLocalDate(batch.production_date)}</p>
+              <div className="p-4 rounded-xl bg-rose-50">
+                <p className="text-xs font-semibold uppercase tracking-wide text-rose-600">Beef weight</p>
+                <p className="text-base font-bold text-slate-900 mt-1 tabular-nums">{Number(batch.beef_weight_kg).toFixed(2)} kg</p>
+              </div>
+              <div className="p-4 rounded-xl bg-emerald-50 col-span-2 lg:col-span-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">Recipe scale</p>
+                <p className="text-base font-bold text-slate-900 mt-1 tabular-nums">{scale.toFixed(2)}×</p>
+              </div>
             </div>
-            <div className="p-4 rounded-lg bg-gray-50">
-              <p className="text-xs text-gray-500">Beef Input Weight</p>
-              <p className="font-semibold mt-1">{Number(batch.beef_weight_kg).toFixed(2)} kg</p>
-            </div>
-            <div className="p-4 rounded-lg bg-gray-50">
-              <p className="text-xs text-gray-500">Scale</p>
-              <p className="font-semibold mt-1">{scale.toFixed(2)}×</p>
-            </div>
-          </div>
 
           {qaSummary && (
-            <div className="mt-6">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="font-semibold">QA Progress</h3>
-                <span className="text-sm text-gray-600">
-                  {prettyStage(qaSummary.current_stage)} · {qaSummary.percent_complete.toFixed(0)}%
-                </span>
+            <div className="mt-6 border-t border-slate-100 pt-5">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div>
+                  <h3 className="text-sm font-bold uppercase tracking-wide text-slate-500">QA progress</h3>
+                  <p className="text-base font-semibold text-slate-900 mt-1">
+                    {prettyStage(qaSummary.current_stage)}
+                    <span className="ml-2 text-emerald-600 tabular-nums">{qaSummary.percent_complete.toFixed(0)}%</span>
+                  </p>
+                </div>
+                {qaSummary.current_checkpoint && qaSummary.current_stage !== 'final' && (
+                  <div className="text-xs text-slate-500 sm:text-right">
+                    Next: <span className="font-semibold text-slate-700">{qaSummary.current_checkpoint.code}</span> — {qaSummary.current_checkpoint.name}
+                  </div>
+                )}
               </div>
 
-              {qaSummary.current_checkpoint && qaSummary.current_stage !== 'final' && (
-                <div className="text-xs text-gray-500 text-right mb-2">
-                  Next: {qaSummary.current_checkpoint.code} — {qaSummary.current_checkpoint.name}
-                </div>
-              )}
+              {/* Progress bar */}
+              <div className="h-2 w-full rounded-full bg-slate-100 mb-3 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-500 transition-all"
+                  style={{ width: `${qaSummary.percent_complete}%` }}
+                />
+              </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
                 {stageOrder.map((s, i) => {
                   const doneUpTo =
                     stageOrder.indexOf(qaSummary.current_stage) > i ||
@@ -1682,20 +1700,20 @@ export default function BatchDetailPage() {
                   const isCurrent = qaSummary.current_stage === s && qaSummary.percent_complete < 100;
 
                   return (
-                    <div key={s} className="flex items-center gap-2">
+                    <div key={s} className="flex items-center gap-1.5">
                       <div
-                        className={`px-3 py-1 rounded-full text-xs ${
+                        className={`px-3 py-1 rounded-full text-xs font-semibold ${
                           isCurrent
-                            ? 'bg-indigo-100 text-indigo-700'
+                            ? 'bg-emerald-100 text-emerald-700 ring-2 ring-emerald-300'
                             : doneUpTo
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-gray-100 text-gray-600'
+                            ? 'bg-emerald-500 text-white'
+                            : 'bg-slate-100 text-slate-500'
                         }`}
                       >
                         {prettyStage(s)}
                       </div>
                       {i < stageOrder.length - 1 && (
-                        <div className="h-0.5 w-6 bg-gray-200" />
+                        <div className={`h-0.5 w-4 ${doneUpTo ? 'bg-emerald-300' : 'bg-slate-200'}`} />
                       )}
                     </div>
                   );
@@ -1775,23 +1793,27 @@ export default function BatchDetailPage() {
         </div>
 
         {/* Beef used (traceability link) */}
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold">Beef Used</h2>
-            <div className="text-sm text-gray-600">
-              Total recorded: <span className="font-medium">{beefTotalG.toFixed(0)} g</span>
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 sm:p-6 mb-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-5">
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">Beef allocation</h2>
+              <p className="text-sm text-slate-500">Link beef lots used in this batch for full traceability.</p>
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-full bg-rose-50 px-4 py-1.5 text-sm font-semibold text-rose-700 border border-rose-100">
+              Total: <span className="tabular-nums">{beefTotalG.toFixed(0)} g</span>
+              {beefTotalG >= 1000 && <span className="text-rose-500">({(beefTotalG / 1000).toFixed(2)} kg)</span>}
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Select beef lot</label>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-12">
+            <div className="md:col-span-6">
+              <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Beef lot</label>
               <input
                 list="beef-lot-options"
                 value={beefQuery}
                 onChange={(e) => void handleLotInputChange(e.target.value)}
                 placeholder="Start typing lot number..."
-                className="w-full border rounded px-3 py-2"
+                className="w-full rounded-xl border-2 border-slate-200 bg-white px-4 py-3 text-base focus:border-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-100"
               />
               <datalist id="beef-lot-options">
                 {beefLots.map((lot) => (
@@ -1805,40 +1827,39 @@ export default function BatchDetailPage() {
                 ))}
               </datalist>
               {selectedLot ? (
-                <div className="mt-2 text-xs text-gray-600">
-                  Balance: {formatQuantity(selectedLot.current_balance, selectedLot.unit)}
-                  {selectedLot.supplier_name ? ` - Supplier: ${selectedLot.supplier_name}` : ''}
-                  {selectedLot.received_date ? ` - Received: ${new Date(selectedLot.received_date).toLocaleDateString()}` : ''}
+                <div className="mt-2 rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2 text-xs text-emerald-800">
+                  <span className="font-semibold">Balance:</span> {formatQuantity(selectedLot.current_balance, selectedLot.unit)}
+                  {selectedLot.supplier_name && <> · <span className="font-semibold">Supplier:</span> {selectedLot.supplier_name}</>}
+                  {selectedLot.received_date && <> · <span className="font-semibold">Received:</span> {new Date(selectedLot.received_date).toLocaleDateString('en-AU')}</>}
                 </div>
               ) : (
-                <div className="mt-2 text-xs text-gray-500">
-                  Choose a lot from the list to continue.
-                </div>
+                <p className="mt-2 text-xs text-slate-500">Choose a lot from the list to continue.</p>
               )}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+            <div className="md:col-span-3">
+              <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Quantity</label>
               <input
                 type="number"
+                inputMode="decimal"
                 min={0}
                 step={1}
                 value={Number.isFinite(beefQty) ? beefQty : 0}
                 onChange={(e) => setBeefQty(Number(e.target.value))}
-                className="w-full border rounded px-3 py-2"
-                placeholder="e.g. 250"
+                className="w-full rounded-xl border-2 border-slate-200 bg-white px-4 py-3 text-xl font-bold tabular-nums focus:border-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-100"
+                placeholder="0"
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
+            <div className="md:col-span-3">
+              <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Unit</label>
               <select
                 value={beefUnit}
                 onChange={(e) => setBeefUnit(e.target.value === 'kg' ? 'kg' : 'g')}
-                className="w-full border rounded px-3 py-2"
+                className="w-full rounded-xl border-2 border-slate-200 bg-white px-4 py-3 text-base font-medium focus:border-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-100"
               >
-                <option value="g">g</option>
-                <option value="kg">kg</option>
+                <option value="g">grams (g)</option>
+                <option value="kg">kilograms (kg)</option>
               </select>
             </div>
           </div>
@@ -1848,16 +1869,16 @@ export default function BatchDetailPage() {
               type="button"
               onClick={addBeef}
               disabled={!selectedLotId || beefQty <= 0}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-bold text-white shadow-md shadow-emerald-200 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-40 disabled:shadow-none disabled:cursor-not-allowed"
             >
-              Add Beef Allocation
+              + Add beef allocation
             </button>
           </div>
 
-          <div className="mt-6 border-t pt-4">
-            <h3 className="text-lg font-semibold text-gray-800">Recorded lots</h3>
+          <div className="mt-6 border-t border-slate-100 pt-5">
+            <h3 className="text-sm font-bold uppercase tracking-wide text-slate-500">Recorded allocations</h3>
             {beefAllocationRows.length === 0 ? (
-              <p className="mt-2 text-sm text-gray-500">
+              <p className="mt-3 text-sm text-slate-500">
                 No beef allocations recorded yet. Add a lot above to see it listed here.
               </p>
             ) : (
@@ -1927,21 +1948,22 @@ export default function BatchDetailPage() {
                       {isEditing && (
                         <div className="mt-3 flex flex-wrap items-end gap-3">
                           <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
                               New amount
                             </label>
                             <input
                               type="number"
+                              inputMode="decimal"
                               min={0}
                               step={editingBeefUnit === 'kg' ? 0.001 : 1}
                               value={editingBeefQuantity}
                               onChange={(e) => setEditingBeefQuantity(e.target.value)}
-                              className="w-32 rounded border px-3 py-2 text-sm"
+                              className="w-32 rounded-xl border-2 border-slate-200 bg-white px-3 py-2.5 text-base font-bold tabular-nums focus:border-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-100"
                               disabled={isBusy}
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
                               Unit
                             </label>
                             <select
@@ -1949,7 +1971,7 @@ export default function BatchDetailPage() {
                               onChange={(e) =>
                                 setEditingBeefUnit(e.target.value === 'kg' ? 'kg' : 'g')
                               }
-                              className="rounded border px-3 py-2 text-sm"
+                              className="rounded-xl border-2 border-slate-200 bg-white px-3 py-2.5 text-base font-medium focus:border-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-100"
                               disabled={isBusy}
                             >
                               <option value="g">g</option>
@@ -1961,7 +1983,7 @@ export default function BatchDetailPage() {
                               type="button"
                               onClick={submitBeefAllocationEdit}
                               disabled={isBusy}
-                              className="inline-flex items-center gap-2 rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50"
                             >
                               {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                               Save
@@ -1970,7 +1992,7 @@ export default function BatchDetailPage() {
                               type="button"
                               onClick={cancelEditingBeefAllocation}
                               disabled={isBusy}
-                              className="rounded px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-50"
+                              className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50"
                             >
                               Cancel
                             </button>
@@ -1986,269 +2008,299 @@ export default function BatchDetailPage() {
         </div>
 
         {/* Recipe Targets & Actuals */}
-        <div className="bg-white rounded-xl shadow p-6">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-xl font-semibold">Recipe Targets & Actuals</h2>
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 sm:p-6">
+          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">Ingredients</h2>
+              <p className="text-sm text-slate-500">Record the actual weight measured for each ingredient.</p>
+            </div>
             {isLocked && (
-              <span className="text-sm text-gray-500">
-                {batch.status === 'completed'
-                  ? 'This batch is completed — editing disabled.'
-                  : 'This batch is released — editing disabled.'}
+              <span className="inline-flex w-fit items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                {batch.status === 'completed' ? 'Completed — editing disabled' : 'Released — editing disabled'}
               </span>
             )}
           </div>
 
           {rows.length === 0 ? (
-            <p className="text-gray-500">No recipe ingredients found.</p>
+            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center text-slate-500">
+              No recipe ingredients found.
+            </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead className="bg-gray-50 text-gray-600">
-                  <tr className="text-left">
-                    <th className="py-3 px-4 font-medium">Ingredient</th>
-                    <th className="py-3 px-4 font-medium">Target</th>
-                    <th className="py-3 px-4 font-medium w-64">Actual used</th>
-                    <th className="py-3 px-4 font-medium">Tol%</th>
-                    <th className="py-3 px-4 font-medium">Status</th>
-                    <th className="py-3 px-4"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {rows.map((r) => {
-                    const isCureRow = Boolean(r.is_cure);
-                    const cureRowMatch =
-                      isCureRow && cureSummary?.materialId === r.material_id;
-                    const cureDetails = cureRowMatch ? cureSummary : null;
-                    const targetUnitLabel = (cureDetails?.unit ?? r.unit) as Unit;
-                    const displayValue = actualInputs[r.material_id] ?? '';
-                    const numericDisplay = Number(displayValue);
-                    const disableInput = isLocked;
-                    const disableSave =
-                      isLocked ||
-                      saving[r.material_id] === true ||
-                      displayValue.trim() === '' ||
-                      Number.isNaN(numericDisplay) ||
-                      numericDisplay <= 0;
-                    const targetAmountDisplay = formatNumericInput(
-                      cureDetails ? cureDetails.requiredInUnit : r.target_amount,
-                      targetUnitLabel
-                    );
-                    const cureStatus = cureDetails?.status ?? null;
-                    const curePpmLabel =
-                      cureDetails?.ppm != null ? `${cureDetails.ppm.toFixed(0)} ppm` : 'PPM pending';
-                    const cureDeltaLabel =
-                      cureDetails?.deltaGrams != null ? formatDeltaGrams(cureDetails.deltaGrams) : null;
-                    const cureBaseMassLabel =
-                      cureDetails?.baseMassGrams != null && cureDetails.baseMassGrams > 0
-                        ? `${(cureDetails.baseMassGrams / 1000).toFixed(2)} kg base`
-                        : null;
-                    const recommendedDisplay = formatNumericInput(
-                      cureDetails ? cureDetails.requiredInUnit : r.target_amount,
-                      targetUnitLabel
-                    );
-                    return (
-                      <tr key={r.material_id} className="align-middle">
-                        <td className="py-3 px-4">
-                          <div className="font-medium">{r.material_name}</div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {rows.map((r) => {
+                const isCureRow = Boolean(r.is_cure);
+                const cureRowMatch =
+                  isCureRow && cureSummary?.materialId === r.material_id;
+                const cureDetails = cureRowMatch ? cureSummary : null;
+                const targetUnitLabel = (cureDetails?.unit ?? r.unit) as Unit;
+                const displayValue = actualInputs[r.material_id] ?? '';
+                const numericDisplay = Number(displayValue);
+                const disableInput = isLocked;
+                const disableSave =
+                  isLocked ||
+                  saving[r.material_id] === true ||
+                  displayValue.trim() === '' ||
+                  Number.isNaN(numericDisplay) ||
+                  numericDisplay <= 0;
+                const targetAmountDisplay = formatNumericInput(
+                  cureDetails ? cureDetails.requiredInUnit : r.target_amount,
+                  targetUnitLabel
+                );
+                const cureStatus = cureDetails?.status ?? null;
+                const curePpmLabel =
+                  cureDetails?.ppm != null ? `${cureDetails.ppm.toFixed(0)} ppm` : 'PPM pending';
+                const cureDeltaLabel =
+                  cureDetails?.deltaGrams != null ? formatDeltaGrams(cureDetails.deltaGrams) : null;
+                const cureBaseMassLabel =
+                  cureDetails?.baseMassGrams != null && cureDetails.baseMassGrams > 0
+                    ? `${(cureDetails.baseMassGrams / 1000).toFixed(2)} kg base`
+                    : null;
+                const recommendedDisplay = formatNumericInput(
+                  cureDetails ? cureDetails.requiredInUnit : r.target_amount,
+                  targetUnitLabel
+                );
+
+                // Border / accent based on status
+                const accentBorder = cureStatus
+                  ? cureStatus === 'OK'
+                    ? 'border-emerald-300 ring-1 ring-emerald-100'
+                    : cureStatus === 'LOW'
+                    ? 'border-amber-300 ring-1 ring-amber-100'
+                    : 'border-rose-300 ring-1 ring-rose-100'
+                  : r.actualVal == null || r.actualVal === 0
+                  ? 'border-slate-200'
+                  : r.inTol
+                  ? 'border-emerald-300 ring-1 ring-emerald-100'
+                  : 'border-rose-300 ring-1 ring-rose-100';
+
+                return (
+                  <div
+                    key={r.material_id}
+                    className={`rounded-2xl border bg-white p-5 transition ${accentBorder}`}
+                  >
+                    {/* Header */}
+                    <div className="flex items-start justify-between gap-3 mb-4">
+                      <div className="min-w-0">
+                        <h3 className="text-lg font-bold text-slate-900 leading-tight">{r.material_name}</h3>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
                           {r.is_critical && (
-                            <div className="text-[11px] text-red-600 mt-0.5">Critical</div>
+                            <span className="inline-flex items-center rounded-full bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700 border border-rose-200">
+                              Critical
+                            </span>
                           )}
                           {isCureRow && r.cure_type && (
-                            <div className="text-[11px] text-purple-700 mt-0.5">
+                            <span className="inline-flex items-center rounded-full bg-purple-50 px-2 py-0.5 text-xs font-semibold text-purple-700 border border-purple-200">
                               Cure: {CURE_BY_ID[r.cure_type]?.label ?? r.cure_type.toUpperCase()}
-                            </div>
+                            </span>
                           )}
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className="inline-flex items-center gap-2">
-                            <span className="font-semibold">{targetAmountDisplay}</span>
-                            <span className="text-gray-600">{targetUnitLabel}</span>
+                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                            ±{r.tol}%
                           </span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex flex-col gap-1">
-                            <div className="flex gap-2 items-center">
-                              <input
-                                type="number"
-                                min={0}
-                                step="0.01"
-                                value={displayValue}
-                                onChange={(e) =>
-                                  setActualInputs((prev) => ({
-                                    ...prev,
-                                    [r.material_id]: e.target.value,
-                                  }))
-                                }
-                                placeholder="0.00"
-                                className="w-36 border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 disabled:bg-gray-100"
-                                disabled={disableInput}
-                              />
-                              <span className="text-gray-600">{targetUnitLabel}</span>
-                            </div>
-                            {cureRowMatch && cureDetails && (
-                              <div className="text-xs text-gray-500">
-                                Recommended: {recommendedDisplay} {targetUnitLabel}
-                                {cureDetails.requiredGrams > 0 && cureDetails.baseMassGrams > 0
-                                  ? ` (${cureDetails.requiredGrams.toFixed(1)} g on ${(cureDetails.baseMassGrams / 1000).toFixed(2)} kg)`
-                                  : ''}
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">{r.tol}</td>
-                        <td className="py-3 px-4">
-                          {cureStatus ? (
-                            <span
-                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ${
-                                CURE_STATUS_BADGES[cureStatus]?.className ??
-                                'bg-gray-100 text-gray-700'
-                              }`}
-                            >
-                              {CURE_STATUS_BADGES[cureStatus]?.label ?? cureStatus}
-                            </span>
-                          ) : r.actualVal == null || r.actualVal === 0 ? (
-                            <span className="text-gray-400">—</span>
-                          ) : r.inTol ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-0.5">
-                              <Check className="w-3 h-3" />
-                              OK
-                            </span>
-                          ) : (
-                            <div className="space-y-2">
-                              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 px-2 py-0.5">
-                                Out
-                              </span>
-                              {r.actualVal != null && r.actualVal > 0 && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    void overrideOutOfTolerance(
-                                      r.material_id,
-                                      targetUnitLabel,
-                                      r.actualVal,
-                                      r.diffPct
-                                    )
-                                  }
-                                  disabled={saving[r.material_id]}
-                                  className="text-xs font-medium text-blue-700 hover:text-blue-900 disabled:opacity-50"
-                                >
-                                  Override to in
-                                </button>
-                              )}
-                            </div>
-                          )}
-                          {cureRowMatch && cureDetails && (
-                            <div className="text-xs text-gray-500 mt-1">
-                              {curePpmLabel}
-                              {cureDeltaLabel ? ` · ${cureDeltaLabel}` : ''}
-                              {cureBaseMassLabel ? ` · ${cureBaseMassLabel}` : ''}
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-3 px-4">
-                          <button
-                            type="button"
-                            onClick={() => saveActual(r.material_id, targetUnitLabel)}
-                            disabled={disableSave}
-                            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg ${
-                              saving[r.material_id]
-                                ? 'bg-indigo-300 text-white'
-                                : 'bg-indigo-600 text-white hover:bg-indigo-700'
-                            } disabled:opacity-50`}
-                            title="Save actual amount"
+                        </div>
+                      </div>
+
+                      {/* Status pill */}
+                      <div className="shrink-0">
+                        {cureStatus ? (
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold ${
+                              CURE_STATUS_BADGES[cureStatus]?.className ??
+                              'bg-gray-100 text-gray-700'
+                            }`}
                           >
-                            {saving[r.material_id] ? (
-                              <>
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                Saving…
-                              </>
-                            ) : savedFlash[r.material_id] ? (
-                              <>
-                                <Check className="w-4 h-4" />
-                                Saved
-                              </>
-                            ) : (
-                              'Save'
-                            )}
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                            {CURE_STATUS_BADGES[cureStatus]?.label ?? cureStatus}
+                          </span>
+                        ) : r.actualVal == null || r.actualVal === 0 ? (
+                          <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">
+                            Pending
+                          </span>
+                        ) : r.inTol ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">
+                            <Check className="w-3.5 h-3.5" />
+                            In tolerance
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full bg-rose-100 px-3 py-1 text-xs font-bold text-rose-700">
+                            Out of tolerance
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Target display */}
+                    <div className="mb-3 flex items-baseline justify-between rounded-xl bg-slate-50 px-4 py-3">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Target</span>
+                      <span className="text-lg font-bold text-slate-900 tabular-nums">
+                        {targetAmountDisplay} <span className="text-sm font-medium text-slate-500">{targetUnitLabel}</span>
+                      </span>
+                    </div>
+
+                    {/* Input */}
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
+                      Actual used
+                    </label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          min={0}
+                          step="0.01"
+                          value={displayValue}
+                          onChange={(e) =>
+                            setActualInputs((prev) => ({
+                              ...prev,
+                              [r.material_id]: e.target.value,
+                            }))
+                          }
+                          placeholder="0.00"
+                          className="w-full rounded-xl border-2 border-slate-200 bg-white px-4 py-3 text-xl font-bold text-slate-900 tabular-nums placeholder:text-slate-300 focus:border-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-100 disabled:bg-slate-100 disabled:cursor-not-allowed"
+                          disabled={disableInput}
+                        />
+                        <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm font-medium text-slate-400">
+                          {targetUnitLabel}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => saveActual(r.material_id, targetUnitLabel)}
+                        disabled={disableSave}
+                        className={`inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold text-white transition shadow-md shadow-emerald-200 ${
+                          savedFlash[r.material_id]
+                            ? 'bg-emerald-500'
+                            : saving[r.material_id]
+                            ? 'bg-emerald-400'
+                            : 'bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800'
+                        } disabled:opacity-40 disabled:shadow-none disabled:cursor-not-allowed`}
+                      >
+                        {saving[r.material_id] ? (
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                        ) : savedFlash[r.material_id] ? (
+                          <>
+                            <Check className="w-5 h-5" />
+                            Saved
+                          </>
+                        ) : (
+                          'Save'
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Cure recommendation */}
+                    {cureRowMatch && cureDetails && (
+                      <p className="mt-2 text-xs text-purple-700">
+                        Recommended: <span className="font-semibold">{recommendedDisplay} {targetUnitLabel}</span>
+                        {cureDetails.requiredGrams > 0 && cureDetails.baseMassGrams > 0
+                          ? ` (${cureDetails.requiredGrams.toFixed(1)} g on ${(cureDetails.baseMassGrams / 1000).toFixed(2)} kg base)`
+                          : ''}
+                      </p>
+                    )}
+
+                    {/* Cure details */}
+                    {cureRowMatch && cureDetails && (
+                      <div className="mt-3 rounded-lg bg-purple-50 border border-purple-100 px-3 py-2 text-xs text-purple-800 flex flex-wrap gap-x-3 gap-y-1">
+                        <span className="font-semibold">{curePpmLabel}</span>
+                        {cureDeltaLabel && <span>· {cureDeltaLabel}</span>}
+                        {cureBaseMassLabel && <span>· {cureBaseMassLabel}</span>}
+                      </div>
+                    )}
+
+                    {/* Override action when out of tolerance */}
+                    {!cureStatus && r.actualVal != null && r.actualVal > 0 && r.inTol === false && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void overrideOutOfTolerance(
+                            r.material_id,
+                            targetUnitLabel,
+                            r.actualVal,
+                            r.diffPct
+                          )
+                        }
+                        disabled={saving[r.material_id]}
+                        className="mt-3 w-full rounded-xl border-2 border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100 active:bg-rose-200 disabled:opacity-50"
+                      >
+                        Override to in tolerance
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
 
         {/* Actions */}
-        <div className="mt-6 flex flex-wrap gap-3">
-          <button
-            onClick={() => (window.location.href = `/qa/${batchId}`)}
-            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
-          >
-            QA Management
-          </button>
-
-          <button
-            onClick={() => (window.location.href = `/recipe/print/${batchId}`)}
-            className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700"
-          >
-            Print Batch Record
-          </button>
-
-          <button
-            onClick={() => void handleExportPdf()}
-            disabled={exporting}
-            className="inline-flex items-center gap-2 bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-60"
-          >
-            {exporting ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Exporting...
-              </>
-            ) : (
-              'Export to PDF'
+        <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+            {!isLocked && (
+              <button
+                onClick={completeBatch}
+                className={`order-first w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-white shadow-md transition ${
+                  allCriticalOk
+                    ? 'bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 shadow-emerald-200'
+                    : 'bg-amber-500 hover:bg-amber-600 active:bg-amber-700 shadow-amber-200'
+                }`}
+                title={
+                  allCriticalOk
+                    ? 'Complete batch'
+                    : 'Some critical ingredients are missing or out of tolerance'
+                }
+              >
+                <Check className="w-4 h-4" />
+                {allCriticalOk ? 'Complete batch' : 'Complete (with warnings)'}
+              </button>
             )}
-          </button>
 
-          {!isLocked ? (
             <button
-              onClick={completeBatch}
-              className={`px-6 py-2 rounded-lg text-white ${
-                allCriticalOk
-                  ? 'bg-emerald-600 hover:bg-emerald-700'
-                  : 'bg-amber-600 hover:bg-amber-700'
-              }`}
-              title={
-                allCriticalOk
-                  ? 'Complete batch'
-                  : 'Some critical ingredients are missing or out of tolerance'
-              }
+              onClick={() => router.push(`/qa/${batchId}` as `/qa/${string}`)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 active:bg-slate-100"
             >
-              Complete Batch
+              QA management
             </button>
-          ) : null}
 
-          {batch.release_status && batch.release_status !== 'recalled' && (
             <button
-              onClick={() => {
-                setShowRecallModal(true);
-                setRecallError(null);
-              }}
-              className="inline-flex items-center gap-2 rounded-lg border border-purple-200 px-4 py-2 text-sm font-medium text-purple-700 hover:bg-purple-50"
+              onClick={() => void handleExportPdf()}
+              disabled={exporting}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 active:bg-slate-100 disabled:opacity-60"
             >
-              Recall Batch
+              {exporting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Exporting…
+                </>
+              ) : (
+                'Export PDF'
+              )}
             </button>
-          )}
 
-          <button
-            onClick={() => setShowDeleteModal(true)}
-            className="ml-auto flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-          >
-            <Trash2 className="w-4 h-4" />
-            Delete
-          </button>
+            <button
+              onClick={() => router.push(`/recipe/print/${batchId}` as `/recipe/print/${string}`)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 active:bg-slate-100"
+            >
+              Print record
+            </button>
+
+            {batch.release_status && batch.release_status !== 'recalled' && (
+              <button
+                onClick={() => {
+                  setShowRecallModal(true);
+                  setRecallError(null);
+                }}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-purple-200 bg-purple-50 px-5 py-3 text-sm font-semibold text-purple-700 hover:bg-purple-100 active:bg-purple-200"
+              >
+                Recall batch
+              </button>
+            )}
+
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="sm:ml-auto inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-5 py-3 text-sm font-semibold text-rose-700 hover:bg-rose-100 active:bg-rose-200"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete
+            </button>
+          </div>
         </div>
       </div>
 

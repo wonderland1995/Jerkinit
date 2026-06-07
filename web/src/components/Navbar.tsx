@@ -6,11 +6,11 @@ import { usePathname } from 'next/navigation';
 import type { Route } from 'next';
 import { useState } from 'react';
 import { signOut, useSession } from 'next-auth/react';
+import { Package } from 'lucide-react';
 
 type NavItem = {
   name: string;
   path: Route;
-  variant?: 'default' | 'action';
 };
 
 export default function Navbar() {
@@ -28,32 +28,26 @@ export default function Navbar() {
     { name: 'Inventory', path: '/inventory' },
     { name: 'QA', path: '/qa' },
     { name: 'Reports', path: '/reports' },
-    { name: 'Receive Beef', path: '/inventory/beef/receive', variant: 'action' },
   ] as const;
 
-  const mainItems = navItems.filter((n) => n.variant !== 'action');
-  const actionItems = navItems.filter((n) => n.variant === 'action');
-
   const linkBase =
-    'inline-flex items-center border-b-2 text-xs font-medium transition px-1 pt-1';
-  const linkActive = 'border-blue-500 text-gray-900';
-  const linkIdle = 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700';
+    'inline-flex items-center border-b-2 text-sm font-medium transition px-1 pt-1 h-14';
+  const linkActive = 'border-emerald-500 text-gray-900';
+  const linkIdle = 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-800';
 
   return (
     <nav className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-40">
       <div className="mx-auto max-w-7xl px-3 sm:px-4 lg:px-6">
-        <div className="flex h-12 items-center justify-between">
+        <div className="flex h-14 items-center justify-between">
           {/* Left: brand */}
-          <div className="flex items-center gap-2">
-            <Link href="/" className="text-sm sm:text-base font-semibold text-gray-900">
-              Jerkin It Production
+          <div className="flex items-center gap-6">
+            <Link href="/" className="text-base font-bold text-gray-900 tracking-tight">
+              Jerkin It
             </Link>
-          </div>
 
-          {/* Desktop nav */}
-          <div className="hidden md:flex items-center gap-6">
-            <div className="flex items-center gap-4">
-              {mainItems.map((item) => {
+            {/* Desktop nav */}
+            <div className="hidden md:flex items-center gap-1">
+              {navItems.map((item) => {
                 const active = isActive(item.path);
                 return (
                   <Link
@@ -67,27 +61,24 @@ export default function Navbar() {
                 );
               })}
             </div>
+          </div>
 
-            {/* Desktop CTA(s) */}
-            {actionItems.map((item) => (
-              <Link
-                key={item.path}
-                href={item.path}
-                className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 transition"
-              >
-                {item.name}
-              </Link>
-            ))}
+          {/* Right: CTA + user */}
+          <div className="hidden md:flex items-center gap-3">
+            <Link
+              href="/recipe/new"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-emerald-700 transition"
+            >
+              <Package className="h-4 w-4" />
+              New Batch
+            </Link>
 
-            <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
-              <div className="text-right">
-                <p className="text-[10px] uppercase tracking-wide text-gray-400">Signed in as</p>
-                <p className="text-sm font-semibold text-gray-900">{userDisplay}</p>
-              </div>
+            <div className="flex items-center gap-3 pl-3 border-l border-gray-200">
+              <span className="text-sm font-medium text-gray-700">{userDisplay}</span>
               <button
                 type="button"
                 onClick={() => signOut({ callbackUrl: '/login' })}
-                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                className="rounded-md border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50 transition"
               >
                 Sign out
               </button>
@@ -101,9 +92,8 @@ export default function Navbar() {
               aria-label="Open menu"
               aria-expanded={open}
               onClick={() => setOpen((v) => !v)}
-              className="inline-flex items-center rounded-md p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="inline-flex items-center rounded-md p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
-              {/* Icon */}
               <svg
                 className="h-5 w-5"
                 viewBox="0 0 24 24"
@@ -125,8 +115,8 @@ export default function Navbar() {
       {/* Mobile dropdown */}
       {open && (
         <div className="md:hidden border-t border-gray-200 bg-white">
-          <div className="space-y-1 p-2">
-            {mainItems.map((item) => {
+          <div className="space-y-1 p-3">
+            {navItems.map((item) => {
               const active = isActive(item.path);
               return (
                 <Link
@@ -134,9 +124,9 @@ export default function Navbar() {
                   href={item.path}
                   onClick={() => setOpen(false)}
                   aria-current={active ? 'page' : undefined}
-                  className={`block rounded-md px-3 py-2 text-sm font-medium ${
+                  className={`block rounded-lg px-3 py-2.5 text-sm font-medium ${
                     active
-                      ? 'bg-blue-50 text-blue-700'
+                      ? 'bg-emerald-50 text-emerald-700'
                       : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
                   }`}
                 >
@@ -145,27 +135,28 @@ export default function Navbar() {
               );
             })}
 
-            {actionItems.map((item) => (
-              <Link
-                key={item.path}
-                href={item.path}
-                onClick={() => setOpen(false)}
-                className="mt-1 block rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white text-center hover:bg-emerald-700"
-              >
-                {item.name}
-              </Link>
-            ))}
-
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                signOut({ callbackUrl: '/login' });
-              }}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            <Link
+              href="/recipe/new"
+              onClick={() => setOpen(false)}
+              className="mt-2 flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
             >
-              Sign out
-            </button>
+              <Package className="h-4 w-4" />
+              New Batch
+            </Link>
+
+            <div className="mt-2 flex items-center justify-between border-t border-gray-100 pt-3">
+              <span className="text-sm text-gray-600">{userDisplay}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  signOut({ callbackUrl: '/login' });
+                }}
+                className="rounded-md border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+              >
+                Sign out
+              </button>
+            </div>
           </div>
         </div>
       )}

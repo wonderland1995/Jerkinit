@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import type { MaterialInventorySummary } from '@/types/inventory';
 import { formatQuantity } from '@/lib/utils';
@@ -332,14 +333,12 @@ export default function InventoryPage() {
 
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-3xl font-bold">Ingredient Inventory</h1>
-        <button
-          onClick={() => {
-            window.location.href = '/inventory/receive';
-          }}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+        <Link
+          href="/inventory/receive"
+          className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 transition"
         >
-          + Receive Material
-        </button>
+          + Receive material
+        </Link>
       </div>
 
       {!loadingSummary && (
@@ -447,7 +446,10 @@ export default function InventoryPage() {
       )}
 
       {loadingSummary ? (
-        <p>Loading inventory...</p>
+        <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+          <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-emerald-500" />
+          <span className="text-sm text-slate-600">Loading inventory...</span>
+        </div>
       ) : (
         <>
           {hasInventory ? (
@@ -565,7 +567,10 @@ export default function InventoryPage() {
           </div>
         )}
         {loadingBeefLots ? (
-          <p>Loading beef lots...</p>
+          <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+            <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-emerald-500" />
+            <span className="text-sm text-slate-600">Loading beef lots...</span>
+          </div>
         ) : (
           <div className="bg-white rounded-lg shadow overflow-hidden">
             {beefLotsError ? (

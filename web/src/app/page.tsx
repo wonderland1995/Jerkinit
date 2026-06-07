@@ -224,9 +224,9 @@ export default function HomePage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading dashboard...</p>
+        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-6 py-3 shadow-lg">
+          <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-emerald-500" />
+          <span className="text-sm font-semibold text-emerald-700">Loading dashboard</span>
         </div>
       </div>
     );
@@ -370,7 +370,6 @@ export default function HomePage() {
             value={stats?.total_batches || 0}
             icon={Package}
             color="blue"
-            trend="+12%"
           />
           <StatCard
             title="In Progress"
@@ -618,15 +617,29 @@ export default function HomePage() {
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">QA Issues</h3>
-                <p className="text-sm text-gray-500">Track open investigations</p>
+                <h3 className="text-lg font-semibold text-gray-900">Quick links</h3>
+                <p className="text-sm text-gray-500">Jump to key areas</p>
               </div>
               <ClipboardCheck className="h-6 w-6 text-gray-400" />
             </div>
-            <p className="text-sm text-gray-600">
-              No escalations logged. As recalls or CAPA actions are completed, summaries can be posted
-              here for quick visibility.
-            </p>
+            <div className="space-y-2">
+              <Link href="/qa/compliance" className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-medium text-gray-800 hover:bg-gray-100 transition">
+                <span>Compliance hub</span>
+                <ArrowUpRight className="h-4 w-4 text-gray-400" />
+              </Link>
+              <Link href="/qa/audit" className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-medium text-gray-800 hover:bg-gray-100 transition">
+                <span>Audit mode</span>
+                <ArrowUpRight className="h-4 w-4 text-gray-400" />
+              </Link>
+              <Link href="/batches" className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-medium text-gray-800 hover:bg-gray-100 transition">
+                <span>Release batches</span>
+                <ArrowUpRight className="h-4 w-4 text-gray-400" />
+              </Link>
+              <Link href="/reports" className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-medium text-gray-800 hover:bg-gray-100 transition">
+                <span>Export reports</span>
+                <ArrowUpRight className="h-4 w-4 text-gray-400" />
+              </Link>
+            </div>
           </div>
         </div>
 
@@ -637,11 +650,11 @@ export default function HomePage() {
               <h3 className="text-lg font-semibold text-gray-900">Recent Batches</h3>
               <p className="text-sm text-gray-500">Latest production runs</p>
             </div>
-            <Link 
+            <Link
               href="/batches"
-              className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+              className="text-emerald-600 hover:text-emerald-700 text-sm font-medium"
             >
-              View All →
+              View all →
             </Link>
           </div>
           <div className="overflow-x-auto">
@@ -708,7 +721,7 @@ export default function HomePage() {
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
                       <Link
                         href={`/qa/${batch.id}` as Route}
-                        className="text-blue-600 hover:text-blue-700 font-medium mr-3"
+                        className="text-emerald-600 hover:text-emerald-700 font-medium mr-3"
                       >
                         QA
                       </Link>
@@ -742,11 +755,10 @@ interface StatCardProps {
   value: number;
   icon: React.ElementType;
   color: 'blue' | 'amber' | 'green' | 'red';
-  trend?: string;
   alert?: boolean;
 }
 
-function StatCard({ title, value, icon: Icon, color, trend, alert }: StatCardProps) {
+function StatCard({ title, value, icon: Icon, color, alert }: StatCardProps) {
   const colorClasses = {
     blue: 'from-sky-500/20 via-sky-500/10 to-sky-500/5 text-sky-700',
     amber: 'from-amber-500/20 via-amber-500/10 to-amber-500/5 text-amber-700',
@@ -756,15 +768,10 @@ function StatCard({ title, value, icon: Icon, color, trend, alert }: StatCardPro
 
   return (
     <div className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-md shadow-slate-200/80 ${alert ? 'ring-2 ring-rose-200' : ''}`}>
-      <div className="flex items-start justify-between mb-3">
-        <div className={`p-3 rounded-xl bg-gradient-to-br ${colorClasses[color]}`}>
+      <div className="mb-3">
+        <div className={`inline-flex p-3 rounded-xl bg-gradient-to-br ${colorClasses[color]}`}>
           <Icon className="w-6 h-6 text-current" />
         </div>
-        {trend ? (
-          <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">
-            {trend}
-          </span>
-        ) : null}
       </div>
       <h3 className="text-sm font-medium text-slate-600 mb-1">{title}</h3>
       <p className="text-3xl font-bold text-slate-900">{value}</p>

@@ -136,9 +136,9 @@ export default function QAPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading QA data...</p>
+        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-6 py-3 shadow-lg">
+          <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-emerald-500" />
+          <span className="text-sm font-semibold text-emerald-700">Loading QA data</span>
         </div>
       </div>
     );
@@ -150,32 +150,26 @@ export default function QAPage() {
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-6 py-8">
           <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center">
-              <ClipboardCheck className="w-7 h-7 text-white" />
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center">
+                <ClipboardCheck className="w-7 h-7 text-white" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">QA Management</h1>
+                <p className="text-gray-500 mt-1">FSANZ compliant quality assurance tracking</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">QA Management</h1>
-              <p className="text-gray-600 mt-1">FSANZ compliant quality assurance tracking</p>
+            <div className="flex items-center gap-3">
+              <Link
+                href="/qa/audit"
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
+              >
+                Audit mode
+              </Link>
             </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/qa/audit"
-              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
-            >
-              Audit mode
-            </Link>
-            <Link
-              href="/"
-              className="text-blue-600 hover:text-blue-700 font-medium"
-            >
-              Back to Dashboard
-            </Link>
           </div>
         </div>
       </div>
-    </div>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Stats Cards */}
@@ -184,7 +178,7 @@ export default function QAPage() {
             icon={ClipboardCheck}
             label="Total Batches"
             value={stats.total_batches}
-            color="blue"
+            color="green"
           />
           <StatCard
             icon={Clock}
@@ -213,7 +207,7 @@ export default function QAPage() {
                 <Droplet className="h-6 w-6 text-blue-600" />
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Water activity verification</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">Water activity verification</p>
                 <h2 className="text-lg font-semibold text-gray-900">Proof of drying method</h2>
                 <p className="text-sm text-gray-600">
                   Review the documented time, temperature, and weight-loss data that delivered the 0.793 aw reading and 55% target.
@@ -222,7 +216,7 @@ export default function QAPage() {
             </div>
             <Link
               href="/qa/water-activity-proof"
-              className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-6 py-2 text-sm font-semibold text-white shadow hover:bg-blue-700"
+              className="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-6 py-2 text-sm font-semibold text-white shadow hover:bg-emerald-700"
             >
               View proof of method
             </Link>
@@ -233,7 +227,7 @@ export default function QAPage() {
         <div className="bg-white border border-blue-100 rounded-2xl shadow-sm p-6 mb-8">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">General compliance</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">General compliance</p>
               <h2 className="text-xl font-semibold text-gray-900 mt-1">Listeria monitoring & microbiological verification</h2>
               <p className="text-sm text-gray-600">
                 Weekly food-contact swabs, fortnightly non-contact swabs, and micro tests every 10 batches.
@@ -241,7 +235,7 @@ export default function QAPage() {
             </div>
             <Link
               href="/qa/compliance"
-              className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
             >
               Open compliance hub
             </Link>
@@ -308,7 +302,7 @@ export default function QAPage() {
                   placeholder="Search by batch ID or product name..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400"
                 />
               </div>
             </div>
@@ -322,7 +316,7 @@ export default function QAPage() {
                 <select
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none"
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 appearance-none"
                 >
                   <option value="all">All Batches</option>
                   <option value="in_progress">In Progress</option>
@@ -340,9 +334,9 @@ export default function QAPage() {
             <p className="text-gray-500 text-lg mb-4">No batches found</p>
             <Link
               href="/recipe/new"
-              className="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition"
+              className="inline-block bg-emerald-600 text-white px-6 py-3 rounded-lg hover:bg-emerald-700 transition"
             >
-              Create First Batch
+              Create first batch
             </Link>
           </div>
         ) : (
@@ -366,9 +360,9 @@ interface StatCardProps {
 
 function StatCard({ icon: Icon, label, value, color }: StatCardProps) {
   const colorClasses = {
-    blue: 'from-blue-500 to-blue-600',
+    blue: 'from-sky-500 to-sky-600',
     amber: 'from-amber-500 to-amber-600',
-    green: 'from-green-500 to-green-600',
+    green: 'from-emerald-500 to-teal-600',
     red: 'from-red-500 to-red-600',
   };
 
@@ -477,7 +471,7 @@ function BatchCard({ batch }: BatchCardProps) {
       href={`/qa/${batch.id}` as Route}
       className="block group"
     >
-      <div className="bg-white rounded-2xl border-2 border-gray-200 shadow-sm hover:shadow-lg hover:border-blue-300 transition-all p-6">
+      <div className="bg-white rounded-2xl border-2 border-gray-200 shadow-sm hover:shadow-lg hover:border-emerald-300 transition-all p-6">
         {/* Status Badge */}
         <div className="flex items-center justify-between mb-4">
           <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border ${badgeClass}`}>
@@ -488,7 +482,7 @@ function BatchCard({ batch }: BatchCardProps) {
         </div>
 
         {/* Batch ID */}
-        <h3 className="font-mono text-lg font-bold text-gray-900 mb-2 group-hover:text-blue-600 transition">
+        <h3 className="font-mono text-lg font-bold text-gray-900 mb-2 group-hover:text-emerald-600 transition">
           {batch.batch_id}
         </h3>
 
@@ -518,7 +512,7 @@ function BatchCard({ batch }: BatchCardProps) {
         </div>
 
         {/* Hover Arrow */}
-        <div className="mt-4 flex items-center justify-end text-blue-600 opacity-0 group-hover:opacity-100 transition">
+        <div className="mt-4 flex items-center justify-end text-emerald-600 opacity-0 group-hover:opacity-100 transition">
           <span className="text-sm font-medium mr-1">Open QA Checks</span>
           <TrendingUp className="w-4 h-4" />
         </div>

@@ -324,10 +324,10 @@ export default function BatchHistoryPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-200">
-      <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-6 py-3 shadow-lg shadow-slate-200/70">
-        <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-emerald-500" />
-        <span className="text-sm font-semibold tracking-wide text-emerald-700">Loading batches</span>
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-6 py-3 shadow-lg shadow-slate-200/70">
+          <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-emerald-500" />
+          <span className="text-sm font-semibold tracking-wide text-emerald-700">Loading batches</span>
         </div>
       </div>
     );

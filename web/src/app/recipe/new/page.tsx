@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Search, ArrowLeft } from 'lucide-react';
+import { Loader2, Search, ArrowLeft, Package } from 'lucide-react';
 import { useToast } from '@/components/ToastProvider';
 
 interface RecipeRecord {
@@ -144,9 +144,11 @@ export default function CreateBatchPage() {
   const renderContent = () => {
     if (loading) {
       return (
-        <div className="flex items-center justify-center py-16 text-gray-500">
-          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-          Loading recipes…
+        <div className="flex items-center justify-center py-16">
+          <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-6 py-3 shadow-sm">
+            <Loader2 className="h-4 w-4 animate-spin text-emerald-500" />
+            <span className="text-sm font-medium text-slate-600">Loading recipes…</span>
+          </div>
         </div>
       );
     }
@@ -154,13 +156,15 @@ export default function CreateBatchPage() {
     if (filteredRecipes.length === 0) {
       return (
         <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-12 text-center text-gray-500">
-          No recipes found. Try adjusting your search or create a recipe first.
+          <Package className="mx-auto mb-3 h-10 w-10 text-gray-300" />
+          <p className="font-medium text-gray-700">No recipes found</p>
+          <p className="mt-1 text-sm">Try adjusting your search or create a recipe first.</p>
         </div>
       );
     }
 
     return (
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {filteredRecipes.map((recipe) => {
           const productName = recipe.product?.name ?? 'Unlinked product';
           const productCode = recipe.product?.code ?? '—';
@@ -169,13 +173,13 @@ export default function CreateBatchPage() {
               key={recipe.id}
               type="button"
               onClick={() => openModalForRecipe(recipe)}
-              className="flex flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md"
+              className="flex flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md active:translate-y-0 active:shadow-sm"
             >
-              <div className="text-xs font-semibold uppercase text-indigo-600">
+              <div className="text-xs font-semibold uppercase text-emerald-600">
                 {productName}
               </div>
               <h3 className="mt-1 text-lg font-semibold text-slate-900">{recipe.name}</h3>
-              <p className="text-sm text-slate-500">Recipe code: {recipe.recipe_code}</p>
+              <p className="text-sm text-slate-500">Code: {recipe.recipe_code}</p>
 
               <dl className="mt-4 grid grid-cols-2 gap-3 text-sm text-slate-600">
                 <div>
@@ -194,13 +198,15 @@ export default function CreateBatchPage() {
                 </div>
               </dl>
 
-              <p className="mt-3 line-clamp-3 text-sm text-slate-500">
-                {recipe.description ?? 'No description provided.'}
-              </p>
+              {recipe.description && (
+                <p className="mt-3 line-clamp-2 text-sm text-slate-500">
+                  {recipe.description}
+                </p>
+              )}
 
-              <div className="mt-4 flex items-center justify-between text-xs text-slate-400">
-                <span>Product code: {productCode}</span>
-                <span>{new Date(recipe.created_at).toLocaleDateString()}</span>
+              <div className="mt-4 flex items-center justify-between text-xs text-slate-400 border-t border-slate-100 pt-3">
+                <span>Product: {productCode}</span>
+                <span>{new Date(recipe.created_at).toLocaleDateString('en-AU')}</span>
               </div>
             </button>
           );
@@ -210,108 +216,123 @@ export default function CreateBatchPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      <header className="border-b bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="inline-flex items-center gap-1 text-sm text-indigo-600 hover:text-indigo-700"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </button>
-          <div className="text-right">
-            <h1 className="text-2xl font-semibold text-slate-900">Create a Batch</h1>
-            <p className="text-sm text-slate-500">Select a recipe then enter batch details.</p>
+    <div className="min-h-screen bg-gray-50 pb-24">
+      {/* Header */}
+      <header className="border-b bg-white sticky top-14 z-30">
+        <div className="mx-auto max-w-6xl px-4 sm:px-5 py-4">
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 active:bg-gray-100 transition"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </button>
+            <div>
+              <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">Create a batch</h1>
+              <p className="text-sm text-slate-500 hidden sm:block">Select a recipe, then enter the beef weight.</p>
+            </div>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-5 py-8 space-y-6">
-        <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">Choose a recipe</h2>
-            <p className="text-sm text-slate-500">
-              Recipes are already linked to products, so just select the one you want to run.
-            </p>
-          </div>
-          <div className="relative w-full md:w-80">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              placeholder="Search by recipe or product"
-            />
+      <main className="mx-auto max-w-6xl px-4 sm:px-5 py-6 space-y-6">
+        {/* Search bar */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-slate-800">Choose a recipe</p>
+              <p className="text-xs text-slate-500 mt-0.5">Tap a card to enter batch details.</p>
+            </div>
+            <div className="relative w-full sm:w-72">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                placeholder="Search recipes or products"
+              />
+            </div>
           </div>
         </div>
 
         {renderContent()}
       </main>
 
+      {/* Modal — slides up full-width on mobile, centered dialog on desktop */}
       {modalOpen && selectedRecipe ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4 py-6">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
-            <div className="mb-4">
-              <p className="text-xs uppercase text-indigo-600">
-                {selectedRecipe.product?.name ?? 'Unlinked product'}
-              </p>
-              <h3 className="mt-1 text-2xl font-semibold text-slate-900">{selectedRecipe.name}</h3>
-              <p className="text-sm text-slate-500">
-                Recipe code: {selectedRecipe.recipe_code}
-              </p>
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/60"
+          onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}
+        >
+          <div className="w-full rounded-t-3xl bg-white shadow-2xl sm:max-w-lg sm:rounded-2xl sm:mx-4">
+            {/* Mobile drag handle */}
+            <div className="flex justify-center pt-3 pb-1 sm:hidden">
+              <div className="h-1 w-10 rounded-full bg-gray-300" />
             </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="flex items-center justify-between text-sm font-medium text-slate-700">
-                  Beef weight (kg)
-                  <span className="text-xs font-normal text-slate-400">
-                    Base {(selectedRecipe.base_beef_weight / 1000).toFixed(2)} kg
-                  </span>
-                </label>
-                <input
-                  type="number"
-                  min={0.1}
-                  step={0.1}
-                  value={batchWeight}
-                  onChange={(e) => setBatchWeight(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                />
+            <div className="px-6 pt-4 pb-6 sm:p-6">
+              <div className="mb-5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">
+                  {selectedRecipe.product?.name ?? 'Unlinked product'}
+                </p>
+                <h3 className="mt-1 text-xl font-bold text-slate-900">{selectedRecipe.name}</h3>
+                <p className="text-sm text-slate-500">Recipe code: {selectedRecipe.recipe_code}</p>
               </div>
 
-              <div>
-                <label className="text-sm font-medium text-slate-700">Notes</label>
-                <textarea
-                  rows={3}
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  placeholder="Optional batch notes…"
-                />
-              </div>
-            </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="flex items-center justify-between text-sm font-semibold text-slate-700 mb-1.5">
+                    Beef weight (kg)
+                    <span className="text-xs font-normal text-slate-400">
+                      Base: {(selectedRecipe.base_beef_weight / 1000).toFixed(2)} kg
+                    </span>
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min={0.1}
+                    step={0.1}
+                    value={batchWeight}
+                    onChange={(e) => setBatchWeight(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-base font-semibold focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                    autoFocus
+                  />
+                </div>
 
-            <div className="mt-6 flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={closeModal}
-                className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-                disabled={creating}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleCreateBatch}
-                disabled={creating}
-                className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
-              >
-                {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                Create batch
-              </button>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">Notes <span className="font-normal text-slate-400">(optional)</span></label>
+                  <textarea
+                    rows={3}
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200 resize-none"
+                    placeholder="Batch notes, shift info, etc."
+                  />
+                </div>
+              </div>
+
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  disabled={creating}
+                  className="w-full sm:w-auto rounded-xl border border-gray-200 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-gray-50 active:bg-gray-100 disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreateBatch}
+                  disabled={creating}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-bold text-white hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-60 shadow-md shadow-emerald-200"
+                >
+                  {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Package className="h-4 w-4" />}
+                  {creating ? 'Creating batch…' : 'Create batch'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

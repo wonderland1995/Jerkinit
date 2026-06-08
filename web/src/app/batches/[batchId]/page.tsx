@@ -2274,13 +2274,6 @@ export default function BatchDetailPage() {
               )}
             </button>
 
-            <button
-              onClick={() => router.push(`/recipe/print/${batchId}` as `/recipe/print/${string}`)}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 active:bg-slate-100"
-            >
-              Print record
-            </button>
-
             {batch.release_status && batch.release_status !== 'recalled' && (
               <button
                 onClick={() => {

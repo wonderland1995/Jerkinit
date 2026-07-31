@@ -1,8 +1,8 @@
 // src/config/qa.ts
 export type CoreTempLimit = { tempC: number; minutes: number };
 
-// If you have validation for 62/10, set { tempC: 62, minutes: 10 }.
+// Adams Poultry Master Manual jerky procedure: internal ≥65°C for ≥10 minutes.
 export const CORE_TEMP_LIMIT: CoreTempLimit = {
-  tempC: 70,
-  minutes: 2,
+  tempC: 65,
+  minutes: 10,
 };

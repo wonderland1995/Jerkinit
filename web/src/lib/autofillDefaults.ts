@@ -1,5 +1,6 @@
 /**
- * NSW Food Safety–aligned pass-range generators for QA autofill.
+ * Adams Poultry Master Manual (07-11-23) jerky FSP–aligned pass-range generators.
+ * Critical limits from Step 3A/3B CCPs and Form 10a (drying temp and time).
  * Values are randomised within compliant ranges so forms can be demo-filled
  * and still edited before submit.
  */
@@ -31,21 +32,28 @@ export type AutofillInput = {
   taskCode?: string | null;
 };
 
-/** Structured readings for reuse outside the compliance log form */
+/**
+ * Structured readings for reuse outside the compliance log form.
+ * Ranges follow Adams Poultry Master Manual (07-11-23) jerky FSP / Form 10a.
+ */
 export type AutofillSectionFields = {
-  // Marination
+  // Marination — ≤5°C, 12–24 h; nitrite ≤125 ppm
   marinade_temp_c?: number;
   marinade_ph?: number;
   time_in_marinade_hrs?: number;
+  nitrite_ppm?: number;
   batch_id?: string;
-  // Drying
+  // Drying — oven CCP 65–68°C, 8–10 h; product ≥65°C / 10 min; Aw < 0.85
   drying_temp_c?: number;
+  product_temp_1_c?: number;
+  product_temp_2_c?: number;
   drying_time_hrs?: number;
   drying_start?: string;
   drying_end?: string;
   oven_id?: string;
+  dryer_humidity_pct?: number;
   water_activity?: number;
-  // Finished product
+  // Finished product — 50 g packs; Aw < 0.85; cool <25°C within 2 h
   weight_g?: number;
   finished_ph?: number;
   colour_appearance?: 'Pass' | 'Fail';
@@ -60,7 +68,7 @@ export type AutofillSectionFields = {
   batches_covered?: number;
   batch_start?: string;
   batch_end?: string;
-  // Temperature monitoring
+  // Temperature monitoring — chilled ≤5°C; frozen ≤−18°C
   equipment_id?: string;
   fridge_freezer_temp_c?: number;
   corrective_action?: string;
@@ -188,16 +196,17 @@ function surfaceFromCode(taskCode?: string | null): AutofillSectionFields['surfa
 
 function buildMarination(input: AutofillInput): AutofillResult {
   const operator = resolveOperator(input.operatorName);
-  const marinadeTemp = randFloat(2, 5, 1); // chilled marinade
-  const ph = randFloat(4.8, 5.5, 2);
+  // Master Manual CCP: marinade temp 5°C or less; 12–24 h; nitrite ≤125 ppm
+  const marinadeTemp = randFloat(1, 5, 1);
   const hours = randFloat(12, 24, 1);
+  const nitritePpm = randInt(100, 125);
   const batch = batchId();
   const marinatedOn = input.extraDates?.marinated_on || input.completedAt;
 
   const fields: AutofillSectionFields = {
     marinade_temp_c: marinadeTemp,
-    marinade_ph: ph,
     time_in_marinade_hrs: hours,
+    nitrite_ppm: nitritePpm,
     batch_id: batch,
   };
 
@@ -205,12 +214,12 @@ function buildMarination(input: AutofillInput): AutofillResult {
     completed_at: input.completedAt,
     completed_by: operator,
     scope: `Batch ${batch} — marination tub`,
-    result: `Pass — marinade ${marinadeTemp}°C, pH ${ph}, ${hours} h in marinade`,
+    result: `Pass — marinade ${marinadeTemp}°C (≤5°C), ${hours} h, nitrite ${nitritePpm} ppm`,
     notes: [
       `Operator: ${operator}`,
       `Marinated on: ${formatLocalDateLabel(marinatedOn)}`,
       `Batch ID: ${batch}`,
-      `Within NSW Food Safety chilled marinade / acidification criteria.`,
+      `Adams FSP Step 3A: marinade ≤5°C for 12–24 h; nitrite ≤125 ppm.`,
     ].join('\n'),
     batches_covered: '',
     batch_start: '',
@@ -221,20 +230,28 @@ function buildMarination(input: AutofillInput): AutofillResult {
 
 function buildDrying(input: AutofillInput): AutofillResult {
   const operator = resolveOperator(input.operatorName);
-  const dryingTemp = randFloat(70, 80, 1); // min 70°C core
-  const dryingHrs = randFloat(4, 8, 1);
-  const aw = randFloat(0.75, 0.85, 3); // target ≤ 0.85
+  // Form 10a / Step 3B CCP: oven 65–68°C, drying 8–10 h
+  // Procedure: preheat 90°C then hold 68°C; product ≥65°C for ≥10 min; Aw < 0.85
+  const ovenTemp = randFloat(65, 68, 1);
+  const productTemp1 = randFloat(65, 68, 1);
+  const productTemp2 = randFloat(65, 68, 1);
+  const dryingHrs = randFloat(8, 10, 1);
+  const aw = randFloat(0.75, 0.84, 3);
+  const humidity = randInt(20, 45);
   const oven = `OVN-${randInt(1, 4)}`;
   const end = input.extraDates?.dried_on || input.completedAt;
   const start = shiftLocalDatetime(end, -dryingHrs);
   const batch = batchId();
 
   const fields: AutofillSectionFields = {
-    drying_temp_c: dryingTemp,
+    drying_temp_c: ovenTemp,
+    product_temp_1_c: productTemp1,
+    product_temp_2_c: productTemp2,
     drying_time_hrs: dryingHrs,
     drying_start: start,
     drying_end: end,
     oven_id: oven,
+    dryer_humidity_pct: humidity,
     water_activity: aw,
     batch_id: batch,
   };
@@ -243,12 +260,13 @@ function buildDrying(input: AutofillInput): AutofillResult {
     completed_at: input.completedAt,
     completed_by: operator,
     scope: `Oven ${oven} — batch ${batch}`,
-    result: `Pass — core ${dryingTemp}°C, ${dryingHrs} h, Aw ${aw}`,
+    result: `Pass — oven ${ovenTemp}°C, product ${productTemp1}/${productTemp2}°C, ${dryingHrs} h, Aw ${aw}`,
     notes: [
       `Operator: ${operator}`,
       `Dried on: ${formatLocalDateLabel(end)}`,
       `Start: ${formatLocalDateLabel(start)} → End: ${formatLocalDateLabel(end)}`,
-      `Core temp ≥70°C; Aw ≤0.85 (NSW Food Safety drying criteria).`,
+      `Form 10a: 1st product temp ${productTemp1}°C, 2nd ${productTemp2}°C; dryer humidity ${humidity}%`,
+      `Adams FSP Step 3B: oven CCP 65–68°C, dry 8–10 h, product ≥65°C/10 min, Aw < 0.85.`,
     ].join('\n'),
     batches_covered: '',
     batch_start: '',
@@ -259,15 +277,14 @@ function buildDrying(input: AutofillInput): AutofillResult {
 
 function buildFinishedProduct(input: AutofillInput): AutofillResult {
   const operator = resolveOperator(input.operatorName);
-  const weight = randFloat(80, 250, 1);
-  const aw = randFloat(0.75, 0.85, 3);
-  const ph = randFloat(4.8, 5.5, 2);
+  // Master Manual: 50 g packs; Aw < 0.85; cool <25°C within 2 h; O2 absorber + seal check
+  const weight = 50;
+  const aw = randFloat(0.75, 0.84, 3);
   const batch = batchId();
 
   const fields: AutofillSectionFields = {
     weight_g: weight,
     water_activity: aw,
-    finished_ph: ph,
     colour_appearance: 'Pass',
     packaging_integrity: 'Pass',
     batch_id: batch,
@@ -277,12 +294,13 @@ function buildFinishedProduct(input: AutofillInput): AutofillResult {
     completed_at: input.completedAt,
     completed_by: operator,
     scope: `Finished product — batch ${batch}`,
-    result: `Pass — ${weight} g, Aw ${aw}, pH ${ph}, colour Pass, pack integrity Pass`,
+    result: `Pass — ${weight} g pack, Aw ${aw}, colour Pass, pack integrity Pass`,
     notes: [
       `Operator: ${operator}`,
+      `Net weight: ${weight} g (standard pack)`,
       `Colour/appearance: Pass`,
-      `Packaging integrity: Pass`,
-      `Aw ≤0.85 and pH within product specification.`,
+      `Packaging integrity: Pass (heat seal + oxygen absorber)`,
+      `Adams FSP: Aw < 0.85; cooled to <25°C within 2 h before packing.`,
     ].join('\n'),
     batches_covered: '',
     batch_start: '',
@@ -376,8 +394,8 @@ function buildTemperatureMonitoring(input: AutofillInput): AutofillResult {
   const operator = resolveOperator(input.operatorName);
   const equipment = pick(['FR-01 Cold room', 'FR-02 Fridge', 'FZ-01 Freezer', 'FZ-02 Blast freezer']);
   const isFreezer = equipment.toLowerCase().includes('freezer');
-  // Fridge 0–5°C; freezer ≤ −18°C — stay in range so no corrective action needed
-  const temp = isFreezer ? randFloat(-22, -18, 1) : randFloat(0, 4.5, 1);
+  // Master Manual: chilled ≤5°C; frozen ≤−18°C
+  const temp = isFreezer ? randFloat(-22, -18, 1) : randFloat(0, 5, 1);
 
   const fields: AutofillSectionFields = {
     equipment_id: equipment,

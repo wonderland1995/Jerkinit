@@ -614,6 +614,16 @@ export function mostRecentFridayDate(from = new Date()): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
+/**
+ * Production Friday for a batch from its created_at (local calendar).
+ * Fri → that day; Sat/Sun → that weekend's Friday; Mon–Thu → previous Friday.
+ */
+export function fridayDateFromCreatedAt(createdAt: string | Date): string {
+  const raw = typeof createdAt === 'string' ? new Date(createdAt) : createdAt;
+  if (Number.isNaN(raw.getTime())) return mostRecentFridayDate();
+  return mostRecentFridayDate(raw);
+}
+
 export type JerkyProductionSchedule = {
   fridayDate: string;
   marinate_start: string;

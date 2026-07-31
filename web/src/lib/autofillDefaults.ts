@@ -584,3 +584,324 @@ export function addMonths(isoOrDate: string | Date, months: number): Date {
   next.setMonth(next.getMonth() + months);
   return next;
 }
+
+/** Persist wall-clock datetime-local as `YYYY-MM-DDTHH:mm:00` (matches batch QA page). */
+function toStoredIso(local: string | undefined | null): string | null {
+  if (!local) return null;
+  return local.length >= 16 ? `${local.slice(0, 16)}:00` : `${local}:00`;
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+/** Format a calendar date + clock as datetime-local (no timezone shift). */
+export function wallClockLocal(dateYmd: string, hour: number, minute: number): string {
+  return `${dateYmd}T${pad2(hour)}:${pad2(minute)}`;
+}
+
+export function addCalendarDays(dateYmd: string, days: number): string {
+  const [y, m, d] = dateYmd.split('-').map(Number);
+  const dt = new Date(y, m - 1, d + days);
+  return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`;
+}
+
+/** Most recent Friday on or before `from` (local calendar). */
+export function mostRecentFridayDate(from = new Date()): string {
+  const d = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  const daysSinceFriday = (d.getDay() + 2) % 7; // Fri=0 … Thu=6
+  d.setDate(d.getDate() - daysSinceFriday);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+export type JerkyProductionSchedule = {
+  fridayDate: string;
+  marinate_start: string;
+  marinate_end: string;
+  drying_start: string;
+  drying_end: string;
+  marinade_hours: number;
+  drying_hours: number;
+};
+
+/**
+ * Adams production weekend:
+ * Fri ~18:00–19:00 marinate → Sat ~18:00–20:00 load dryer (>20 h) → Sun ~08:00–13:00 unload.
+ */
+export function generateJerkyWeekendSchedule(fridayDate: string): JerkyProductionSchedule {
+  const friday = /^\d{4}-\d{2}-\d{2}$/.test(fridayDate) ? fridayDate : mostRecentFridayDate();
+  const saturday = addCalendarDays(friday, 1);
+  const sunday = addCalendarDays(friday, 2);
+
+  // Fri 18:00–19:00
+  const marinate_start = wallClockLocal(friday, 18, randInt(0, 59));
+
+  // Sat 18:00–20:00, but keep marination > 20 h from Friday start
+  const startMs = Date.parse(`${marinate_start}:00`);
+  let satOffsetMin = randInt(0, 120);
+  let drying_start = wallClockLocal(
+    saturday,
+    18 + Math.floor(satOffsetMin / 60),
+    satOffsetMin % 60,
+  );
+  let endMs = Date.parse(`${drying_start}:00`);
+  const minMarinateMs = 20 * 60 * 60 * 1000 + 10 * 60 * 1000;
+  if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs - startMs < minMarinateMs) {
+    // Push load time later on Saturday (toward 20:00)
+    drying_start = wallClockLocal(saturday, 20, randInt(0, 0));
+    endMs = Date.parse(`${drying_start}:00`);
+  }
+  if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs - startMs < minMarinateMs) {
+    drying_start = wallClockLocal(saturday, 20, 0);
+  }
+
+  const marinate_end = drying_start;
+
+  // Sun 08:00–13:00
+  const sunOffsetMin = randInt(0, 5 * 60);
+  const drying_end = wallClockLocal(
+    sunday,
+    8 + Math.floor(sunOffsetMin / 60),
+    sunOffsetMin % 60,
+  );
+
+  const marinade_hours =
+    Math.round(((Date.parse(`${marinate_end}:00`) - Date.parse(`${marinate_start}:00`)) / 36e5) * 10) /
+    10;
+  const drying_hours =
+    Math.round(((Date.parse(`${drying_end}:00`) - Date.parse(`${drying_start}:00`)) / 36e5) * 10) / 10;
+
+  return {
+    fridayDate: friday,
+    marinate_start,
+    marinate_end,
+    drying_start,
+    drying_end,
+    marinade_hours: Number.isFinite(marinade_hours) ? marinade_hours : 20,
+    drying_hours: Number.isFinite(drying_hours) ? drying_hours : 14,
+  };
+}
+
+export type RecipeIngredientWeight = {
+  actual_amount?: number | null;
+  target_amount?: number | null;
+  unit?: string | null;
+};
+
+function amountToKg(amount: number, unit: string): number | null {
+  const u = unit.trim().toLowerCase();
+  if (u === 'kg') return amount;
+  if (u === 'g') return amount / 1000;
+  // Liquids contribute to wet mass (~1 g/ml)
+  if (u === 'l') return amount;
+  if (u === 'ml') return amount / 1000;
+  return null;
+}
+
+/** Wet weight = beef kg + summed recipe ingredient fills (actual preferred, else target). */
+export function sumRecipeWetWeightKg(
+  beefWeightKg: number | null | undefined,
+  ingredients: RecipeIngredientWeight[] | null | undefined,
+): number {
+  let total = typeof beefWeightKg === 'number' && Number.isFinite(beefWeightKg) ? beefWeightKg : 0;
+  for (const ing of ingredients ?? []) {
+    const actual = ing.actual_amount != null ? Number(ing.actual_amount) : NaN;
+    const target = ing.target_amount != null ? Number(ing.target_amount) : NaN;
+    const raw = Number.isFinite(actual) && actual > 0 ? actual : target;
+    if (!Number.isFinite(raw) || raw <= 0) continue;
+    const kg = amountToKg(raw, String(ing.unit ?? 'g'));
+    if (kg != null && Number.isFinite(kg)) total += kg;
+  }
+  return Math.round(total * 1000) / 1000;
+}
+
+export type BatchQaCheckpointPayload = {
+  status: 'passed';
+  checked_by: string;
+  /** Backdated timestamp for API `checked_at` */
+  checked_at?: string | null;
+  temperature_c?: number | null;
+  humidity_percent?: number | null;
+  ph_level?: number | null;
+  water_activity?: number | null;
+  notes?: string | null;
+  corrective_action?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
+export type BatchQaAutofillResult = {
+  completed_at: string;
+  completed_by: string;
+  schedule: JerkyProductionSchedule;
+  wet_weight_kg: number;
+  dry_weight_kg: number;
+  weight_loss_percent: number;
+  /** Payloads keyed by checkpoint code (e.g. MAR-FSP-TIME) */
+  byCode: Record<string, BatchQaCheckpointPayload>;
+};
+
+export type BatchQaAutofillInput = {
+  operatorName: string;
+  /** Production Friday as YYYY-MM-DD */
+  fridayDate: string;
+  /** Sum of beef + recipe fills (kg) */
+  wetWeightKg: number;
+  /** Optional dry override; otherwise derived from ≥54% loss */
+  dryWeightKg?: number;
+};
+
+/**
+ * Build pass-range payloads for every jerky batch QA checkpoint in one go.
+ * Uses Fri→Sat→Sun schedule and recipe wet weight; dry weight / loss calculated at unload.
+ */
+export function generateBatchQaAutofill(input: BatchQaAutofillInput): BatchQaAutofillResult {
+  const operator = resolveOperator(input.operatorName);
+  const schedule = generateJerkyWeekendSchedule(input.fridayDate);
+  const wetKg =
+    typeof input.wetWeightKg === 'number' && input.wetWeightKg > 0
+      ? Math.round(input.wetWeightKg * 1000) / 1000
+      : 17;
+
+  const lossPct =
+    input.dryWeightKg != null && input.dryWeightKg > 0 && wetKg > 0
+      ? Math.round(((wetKg - input.dryWeightKg) / wetKg) * 1000) / 10
+      : randFloat(54, 58, 1);
+  const dryKg =
+    input.dryWeightKg != null && input.dryWeightKg > 0
+      ? Math.round(input.dryWeightKg * 1000) / 1000
+      : Math.round(wetKg * (1 - lossPct / 100) * 1000) / 1000;
+  const weightLossPercent =
+    wetKg > 0 ? Math.round(((wetKg - dryKg) / wetKg) * 1000) / 10 : lossPct;
+
+  const marinadeTemp = randFloat(1, 5, 1);
+  const nitritePpm = randInt(100, 125);
+  const ovenTemp = randFloat(65, 68, 1);
+  const productTemp1 = randFloat(65, 68, 1);
+  const productTemp2 = randFloat(65, 68, 1);
+  const aw = randFloat(0.75, 0.84, 3);
+  const preheatTemp = randFloat(88, 90, 1);
+  const mixTemp = randFloat(2, 8, 1);
+
+  const marinadeMinutes = Math.round(schedule.marinade_hours * 60);
+  const dryingMinutes = Math.round(schedule.drying_hours * 60);
+
+  const checkedMix = toStoredIso(schedule.marinate_start);
+  const checkedMarinate = toStoredIso(schedule.marinate_end);
+  const checkedPreheat = toStoredIso(schedule.drying_start);
+  const checkedUnload = toStoredIso(schedule.drying_end);
+
+  const byCode: Record<string, BatchQaCheckpointPayload> = {
+    'DRY-PREHEAT': {
+      status: 'passed',
+      checked_by: operator,
+      checked_at: checkedPreheat,
+      temperature_c: preheatTemp,
+      notes: `Autofill — dehydrator preheat ${preheatTemp}°C before load (Adams FSP initial ~90°C).`,
+    },
+    'MIX-INGR': {
+      status: 'passed',
+      checked_by: operator,
+      checked_at: checkedMix,
+      notes: `Autofill — ingredients verified; nitrite ${nitritePpm} ppm (≤125). Wet mix mass ${wetKg} kg.`,
+    },
+    'MAR-FSP-SALT': {
+      status: 'passed',
+      checked_by: operator,
+      checked_at: checkedMix,
+      notes: `Autofill — salt/cure addition confirmed; nitrite ${nitritePpm} ppm (≤125 ppm).`,
+    },
+    'MAR-FSP-TIME': {
+      status: 'passed',
+      checked_by: operator,
+      checked_at: checkedMarinate,
+      temperature_c: marinadeTemp,
+      notes: `Autofill — marinade ${marinadeTemp}°C for ${schedule.marinade_hours} h (>20 h); wet weight ${wetKg} kg from recipe fill.`,
+      metadata: {
+        marination_run: {
+          start_iso: toStoredIso(schedule.marinate_start),
+          end_iso: toStoredIso(schedule.marinate_end),
+          duration_minutes: marinadeMinutes,
+          marinade_temp_c: marinadeTemp,
+        },
+        weight_log: {
+          wet_weight_kg: wetKg,
+          dry_weight_kg: null,
+          weight_loss_percent: null,
+        },
+      },
+    },
+    'DRY-FSP-OVEN': {
+      status: 'passed',
+      checked_by: operator,
+      checked_at: checkedUnload,
+      temperature_c: ovenTemp,
+      notes: `Autofill — oven hold ${ovenTemp}°C (CCP 65–68°C); run ${schedule.drying_hours} h Sat eve → Sun unload.`,
+      metadata: {
+        drying_run: {
+          oven_temp_c: ovenTemp,
+          start_iso: toStoredIso(schedule.drying_start),
+          end_iso: toStoredIso(schedule.drying_end),
+          duration_minutes: dryingMinutes,
+          temp_adjusted: false,
+          temp_adjust_note: null,
+        },
+      },
+    },
+    'DRY-FSP-CORE': {
+      status: 'passed',
+      checked_by: operator,
+      checked_at: checkedUnload,
+      temperature_c: Math.max(productTemp1, productTemp2),
+      notes: `Autofill — product internal temps ${productTemp1}°C / ${productTemp2}°C (≥65°C for ≥10 min).`,
+      metadata: {
+        readings: [
+          { label: 'Piece 1', tempC: productTemp1, time_iso: toStoredIso(schedule.drying_end) },
+          { label: 'Piece 2', tempC: productTemp2, time_iso: toStoredIso(schedule.drying_end) },
+        ],
+      },
+    },
+    'DRY-FSP-AW-LAB': {
+      status: 'passed',
+      checked_by: operator,
+      checked_at: checkedUnload,
+      water_activity: aw,
+      notes: `Autofill — process confirmed; wet ${wetKg} kg → dry ${dryKg} kg (${weightLossPercent}% loss); process Aw ${aw} (< 0.85). External lab send remains separate.`,
+      metadata: {
+        process_check: {
+          temp_met: true,
+          weight_met: weightLossPercent >= 54,
+          runtime_logged: true,
+        },
+        weight_log: {
+          wet_weight_kg: wetKg,
+          dry_weight_kg: dryKg,
+          weight_loss_percent: weightLossPercent,
+        },
+      },
+    },
+    'MIX-TEMP': {
+      status: 'passed',
+      checked_by: operator,
+      checked_at: checkedMix,
+      temperature_c: mixTemp,
+      notes: `Autofill — mix temp ${mixTemp}°C.`,
+    },
+    'MIX-CORE': {
+      status: 'passed',
+      checked_by: operator,
+      checked_at: checkedMix,
+      temperature_c: mixTemp,
+      notes: `Autofill — mix core temp ${mixTemp}°C.`,
+    },
+  };
+
+  return {
+    completed_at: schedule.drying_end,
+    completed_by: operator,
+    schedule,
+    wet_weight_kg: wetKg,
+    dry_weight_kg: dryKg,
+    weight_loss_percent: weightLossPercent,
+    byCode,
+  };
+}

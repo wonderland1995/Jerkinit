@@ -11,9 +11,8 @@ import type { QADocument, QADocumentType } from '@/types/qa';
 import AutofillModal from '@/components/AutofillModal';
 import LabSubmissionPanel from '@/components/LabSubmissionPanel';
 import {
-  localDatetimeInputValue,
-  resolveAutofillSectionFromCheckpoint,
-  type AutofillResult,
+  sumRecipeWetWeightKg,
+  type BatchQaAutofillResult,
 } from '@/lib/autofillDefaults';
 
 // ---------- Types that match your DB ----------
@@ -57,10 +56,19 @@ interface ProductLite {
   name: string;
 }
 
+interface BatchIngredientLite {
+  ingredient_name?: string;
+  target_amount?: number | null;
+  actual_amount?: number | null;
+  unit?: string | null;
+}
+
 interface BatchDetails {
   id: string;
   batch_id: string; // your public 'batch code'
   status: 'in_progress' | 'completed' | 'cancelled' | string;
+  beef_weight_kg?: number | null;
+  ingredients?: BatchIngredientLite[] | null;
   product?: ProductLite;
 }
 
@@ -106,6 +114,8 @@ export default function BatchQAPage() {
   const documentInputRef = useRef<HTMLInputElement | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+  const [batchAutofillOpen, setBatchAutofillOpen] = useState(false);
+  const [batchAutofilling, setBatchAutofilling] = useState(false);
   const excludedCheckpointCodes = useMemo(() => new Set(['PREP-BEEF-RECEIVE', 'PREP-CCP-001']), []);
   const allowedCheckpointCodes = useMemo(
     () =>
@@ -304,6 +314,42 @@ export default function BatchQAPage() {
     [documents],
   );
 
+  const recipeWetWeightKg = useMemo(
+    () => sumRecipeWetWeightKg(batch?.beef_weight_kg, batch?.ingredients ?? []),
+    [batch?.beef_weight_kg, batch?.ingredients],
+  );
+
+  const labPendingStatus = useMemo(() => {
+    if (!awLabCheckpoint) {
+      return { sent: false, pending: false, sampleId: null as string | null, sentAt: null as string | null };
+    }
+    const check = qaChecks[awLabCheckpoint.id];
+    const meta =
+      check?.metadata && typeof check.metadata === 'object'
+        ? (check.metadata as Record<string, unknown>)
+        : null;
+    const lab =
+      meta && typeof meta['lab_aw'] === 'object' && meta['lab_aw'] !== null
+        ? (meta['lab_aw'] as Record<string, unknown>)
+        : null;
+    const sentIso = typeof lab?.['sent_iso'] === 'string' ? lab['sent_iso'] : null;
+    const resultIso = typeof lab?.['result_iso'] === 'string' ? lab['result_iso'] : null;
+    const resultAw = lab?.['result_aw'];
+    const hasResultValue =
+      resultIso != null ||
+      (typeof resultAw === 'number' && Number.isFinite(resultAw)) ||
+      (typeof resultAw === 'string' && resultAw.trim() !== '');
+    const hasLabDoc = labDocuments.length > 0;
+    const sent = Boolean(sentIso);
+    const pending = sent && !hasResultValue && !hasLabDoc;
+    return {
+      sent,
+      pending,
+      sampleId: typeof lab?.['sample_id'] === 'string' ? lab['sample_id'] : null,
+      sentAt: sentIso,
+    };
+  }, [awLabCheckpoint, qaChecks, labDocuments]);
+
   // Determine current/next checkpoint within the active stage
   const currentCheckpoint = useMemo(() => {
     const ordered = [...stageCheckpoints].sort((a, b) => a.display_order - b.display_order);
@@ -329,6 +375,59 @@ export default function BatchQAPage() {
       ),
     );
     await fetchData();
+  };
+
+  const handleBatchAutofill = async (result: BatchQaAutofillResult) => {
+    if (checkpoints.length === 0) {
+      toast.error('No checkpoints loaded for this batch.');
+      return;
+    }
+
+    setBatchAutofilling(true);
+    try {
+      const targets = checkpoints.filter((cp) => {
+        const flags = FIELDS_BY_CODE[cp.code];
+        return !flags?.managedExternally;
+      });
+
+      const responses = await Promise.all(
+        targets.map(async (cp) => {
+          const payload = result.byCode[cp.code] ?? {
+            status: 'passed' as const,
+            checked_by: result.completed_by,
+            notes: `Autofill — ${cp.name} marked passed by ${result.completed_by}.`,
+          };
+
+          const res = await fetch('/api/qa/checkpoint', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              batch_id: batchId,
+              checkpoint_id: cp.id,
+              ...payload,
+              checked_by: result.completed_by,
+            }),
+          });
+
+          if (!res.ok) {
+            const body = (await res.json().catch(() => ({}))) as { error?: string };
+            throw new Error(body.error ?? `Failed to autofill ${cp.code}`);
+          }
+          return cp.code;
+        }),
+      );
+
+      await fetchData();
+      toast.success(
+        `Autofilled ${responses.length} checkpoints (${result.schedule.marinade_hours} h marinade, ${result.wet_weight_kg} kg wet → ${result.dry_weight_kg} kg dry).`,
+      );
+    } catch (error) {
+      console.error('Batch autofill failed', error);
+      toast.error(error instanceof Error ? error.message : 'Batch autofill failed.');
+      await fetchData();
+    } finally {
+      setBatchAutofilling(false);
+    }
   };
 
   const handleDocumentFileChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -612,23 +711,85 @@ export default function BatchQAPage() {
         throw new Error('PDF export module failed to load');
       }
 
-      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-      const marginLeft = 14;
-      let cursorY = 18;
+      // A4: 210 × 297 mm — print-friendly margins and type
+      const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const marginLeft = 16;
+      const marginRight = 16;
+      const marginTop = 16;
+      const marginBottom = 18;
+      const contentWidth = pageWidth - marginLeft - marginRight;
+      let cursorY = marginTop;
 
-      doc.setFontSize(16);
+      const ensureSpace = (neededMm: number) => {
+        if (cursorY + neededMm <= pageHeight - marginBottom) return;
+        doc.addPage();
+        cursorY = marginTop;
+      };
+
+      const drawFooter = () => {
+        const pageCount = doc.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i += 1) {
+          doc.setPage(i);
+          doc.setFontSize(8);
+          doc.setTextColor(100, 116, 139);
+          doc.text(
+            `QA Test Sheet · ${batch?.batch_id ?? batchId} · Page ${i} of ${pageCount}`,
+            marginLeft,
+            pageHeight - 10,
+          );
+          doc.text('Adams Poultry — jerky production', pageWidth - marginRight, pageHeight - 10, {
+            align: 'right',
+          });
+          doc.setTextColor(0, 0, 0);
+        }
+      };
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.setTextColor(15, 23, 42);
       doc.text('QA Test Sheet', marginLeft, cursorY);
       cursorY += 7;
 
-      doc.setFontSize(11);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(51, 65, 85);
       doc.text(`Batch: ${batch?.batch_id ?? batchId}`, marginLeft, cursorY);
       cursorY += 5;
-      doc.text(`Product: ${batch?.product?.name ?? '-'}`, marginLeft, cursorY);
+      doc.text(`Product: ${batch?.product?.name ?? '—'}`, marginLeft, cursorY);
       cursorY += 5;
       doc.text(`Status: ${currentStageLabel}`, marginLeft, cursorY);
       cursorY += 5;
       doc.text(`Generated: ${formatDateTime(new Date().toISOString())}`, marginLeft, cursorY);
-      cursorY += 4;
+      cursorY += 6;
+      doc.setTextColor(0, 0, 0);
+
+      if (labPendingStatus.pending) {
+        ensureSpace(28);
+        doc.setDrawColor(217, 119, 6);
+        doc.setFillColor(255, 251, 235);
+        doc.roundedRect(marginLeft, cursorY, contentWidth, 24, 2, 2, 'FD');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.setTextColor(146, 64, 14);
+        doc.text('SENT TO LAB — REPORT PENDING', marginLeft + 4, cursorY + 8);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(120, 53, 15);
+        const labLines = [
+          'This batch has been submitted to an external laboratory. Certificate / result not yet uploaded.',
+          labPendingStatus.sampleId ? `Sample ID: ${labPendingStatus.sampleId}` : null,
+          labPendingStatus.sentAt ? `Sent: ${formatDateTime(labPendingStatus.sentAt)}` : null,
+        ].filter(Boolean) as string[];
+        let ly = cursorY + 13;
+        for (const line of labLines) {
+          doc.text(line, marginLeft + 4, ly);
+          ly += 4;
+        }
+        doc.setTextColor(0, 0, 0);
+        cursorY += 28;
+      }
 
       const weightSnapshot = checkpoints.reduce<{
         wetKg: number | null;
@@ -658,8 +819,8 @@ export default function BatchQAPage() {
             lossRaw != null
               ? lossRaw
               : wet != null && dry != null && wet > 0
-              ? ((wet - dry) / wet) * 100
-              : null;
+                ? ((wet - dry) / wet) * 100
+                : null;
           const score =
             (wet != null ? 1 : 0) + (dry != null ? 2 : 0) + (loss != null ? 4 : 0);
           if (score === 0) return best;
@@ -693,13 +854,12 @@ export default function BatchQAPage() {
         },
       );
 
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const boxWidth = pageWidth - marginLeft * 2;
-      const boxHeight = 24;
+      ensureSpace(30);
+      const boxHeight = 26;
       const lossLabel =
         weightSnapshot.lossPercent != null && Number.isFinite(weightSnapshot.lossPercent)
-          ? `${weightSnapshot.lossPercent.toFixed(1)}% Weight Loss`
-          : 'Weight Loss Not Recorded';
+          ? `${weightSnapshot.lossPercent.toFixed(1)}% weight loss`
+          : 'Weight loss not recorded';
       const wetLabel =
         weightSnapshot.wetKg != null && Number.isFinite(weightSnapshot.wetKg)
           ? `${weightSnapshot.wetKg.toFixed(2)} kg`
@@ -715,27 +875,31 @@ export default function BatchQAPage() {
 
       doc.setDrawColor(30, 64, 175);
       doc.setFillColor(239, 246, 255);
-      doc.roundedRect(marginLeft, cursorY, boxWidth, boxHeight, 2, 2, 'FD');
+      doc.roundedRect(marginLeft, cursorY, contentWidth, boxHeight, 2, 2, 'FD');
       doc.setTextColor(30, 64, 175);
-      doc.setFontSize(10);
-      doc.text('Weight Loss Summary', marginLeft + 3, cursorY + 5);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.text('Weight loss summary', marginLeft + 3, cursorY + 5);
       doc.setTextColor(15, 23, 42);
-      doc.setFontSize(16);
+      doc.setFontSize(14);
       doc.text(lossLabel, marginLeft + 3, cursorY + 12);
-      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
       doc.text(`Start (wet): ${wetLabel}`, marginLeft + 3, cursorY + 18);
-      doc.text(`Finish (dry): ${dryLabel}`, marginLeft + boxWidth / 2, cursorY + 18);
+      doc.text(`Finish (dry): ${dryLabel}`, marginLeft + contentWidth / 2, cursorY + 18);
       if (sourceParts.length > 0) {
-        doc.setFontSize(8);
+        doc.setFontSize(7);
         doc.setTextColor(71, 85, 105);
-        doc.text(`Source: ${sourceParts.join(' @ ')}`, marginLeft + 3, cursorY + 22);
+        doc.text(`Source: ${sourceParts.join(' @ ')}`, marginLeft + 3, cursorY + 23);
       }
       doc.setTextColor(0, 0, 0);
-      cursorY += boxHeight + 7;
+      cursorY += boxHeight + 8;
 
-      doc.setFontSize(12);
-      doc.text('Checkpoint Summary', marginLeft, cursorY);
-      cursorY += 4;
+      ensureSpace(16);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('Checkpoint summary', marginLeft, cursorY);
+      cursorY += 3;
 
       const qaRows = checkpoints.map((cp) => {
         const check = qaChecks[cp.id];
@@ -746,31 +910,49 @@ export default function BatchQAPage() {
           (check?.status ?? 'pending').toUpperCase(),
           summarizeTemperatures(check),
           summarizeOtherReadings(check),
-          check?.checked_at ? formatDateTime(check.checked_at) : '-',
+          check?.checked_at ? formatDateTime(check.checked_at) : '—',
         ];
       });
 
       autoTable(doc, {
         startY: cursorY,
-        head: [['Code', 'Checkpoint', 'Stage', 'Status', 'Temperatures', 'Other Readings', 'Checked At']],
+        margin: { left: marginLeft, right: marginRight, bottom: marginBottom },
+        head: [['Code', 'Checkpoint', 'Stage', 'Status', 'Temps', 'Other', 'Checked']],
         body: qaRows,
-        styles: { fontSize: 9, cellPadding: 2 },
-        headStyles: { fillColor: [30, 64, 175], textColor: 255 },
+        styles: { fontSize: 8, cellPadding: 1.6, overflow: 'linebreak', valign: 'top' },
+        headStyles: {
+          fillColor: [30, 64, 175],
+          textColor: 255,
+          fontStyle: 'bold',
+          fontSize: 8,
+        },
+        columnStyles: {
+          0: { cellWidth: 22 },
+          1: { cellWidth: 38 },
+          2: { cellWidth: 18 },
+          3: { cellWidth: 18 },
+          4: { cellWidth: 28 },
+          5: { cellWidth: 32 },
+          6: { cellWidth: 22 },
+        },
+        theme: 'grid',
       });
 
       const lastTable = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable;
       cursorY = (lastTable?.finalY ?? cursorY) + 8;
 
-      // Beef receiving QA (from lot intake)
       let beefAllocations: Array<Record<string, unknown>> = [];
       if (beefRes.ok) {
         const beefJson = (await beefRes.json()) as { allocations?: Array<Record<string, unknown>> };
         beefAllocations = Array.isArray(beefJson.allocations) ? beefJson.allocations : [];
       }
 
-      doc.setFontSize(12);
-      doc.text('Beef Receiving QA', marginLeft, cursorY);
-      cursorY += 4;
+      ensureSpace(16);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(0, 0, 0);
+      doc.text('Beef receiving QA', marginLeft, cursorY);
+      cursorY += 3;
 
       const beefQaRows = beefAllocations
         .map((alloc) => {
@@ -785,70 +967,84 @@ export default function BatchQAPage() {
                   unknown
                 >)
               : {};
-          const temp = typeof coa['receiving_temp_c'] === 'number' ? `${coa['receiving_temp_c']} °C` : '-';
+          const temp = typeof coa['receiving_temp_c'] === 'number' ? `${coa['receiving_temp_c']} °C` : '—';
           const packaging =
-            coa['packaging_intact'] === false ? 'Fail' : coa['packaging_intact'] === true ? 'OK' : '-';
-          const odour = coa['odour_ok'] === false ? 'Fail' : coa['odour_ok'] === true ? 'OK' : '-';
-          const visual = coa['visual_ok'] === false ? 'Fail' : coa['visual_ok'] === true ? 'OK' : '-';
+            coa['packaging_intact'] === false ? 'Fail' : coa['packaging_intact'] === true ? 'OK' : '—';
+          const odour = coa['odour_ok'] === false ? 'Fail' : coa['odour_ok'] === true ? 'OK' : '—';
+          const visual = coa['visual_ok'] === false ? 'Fail' : coa['visual_ok'] === true ? 'OK' : '—';
           const result =
             (lot as { passed_receiving_qa?: unknown }).passed_receiving_qa === false
               ? 'Fail'
               : (lot as { passed_receiving_qa?: unknown }).passed_receiving_qa === true
-              ? 'Pass'
-              : '-';
+                ? 'Pass'
+                : '—';
           const checkedAt =
             typeof coa['check_time'] === 'string' ? formatDateTime(coa['check_time']) : '';
           const lotNumber =
             typeof (lot as { lot_number?: unknown }).lot_number === 'string'
               ? (lot as { lot_number: string }).lot_number
-              : '-';
+              : '—';
           const internalCode =
             typeof (lot as { internal_lot_code?: unknown }).internal_lot_code === 'string'
               ? (lot as { internal_lot_code: string }).internal_lot_code
-              : '-';
-          return [lotNumber, internalCode, temp, packaging, odour, visual, result, checkedAt || '-'];
+              : '—';
+          return [lotNumber, internalCode, temp, packaging, odour, visual, result, checkedAt || '—'];
         })
         .filter((row): row is string[] => Array.isArray(row));
 
       if (beefQaRows.length > 0) {
         autoTable(doc, {
           startY: cursorY,
-          head: [['Lot #', 'Internal Code', 'Receiving Temp', 'Packaging', 'Odour', 'Visual', 'Result', 'Checked At']],
+          margin: { left: marginLeft, right: marginRight, bottom: marginBottom },
+          head: [['Lot #', 'Internal', 'Recv temp', 'Pack', 'Odour', 'Visual', 'Result', 'Checked']],
           body: beefQaRows,
-          styles: { fontSize: 9, cellPadding: 2 },
-          headStyles: { fillColor: [120, 53, 15], textColor: 255 },
+          styles: { fontSize: 8, cellPadding: 1.6, overflow: 'linebreak' },
+          headStyles: { fillColor: [120, 53, 15], textColor: 255, fontSize: 8 },
+          theme: 'grid',
         });
         const beefTable = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable;
         cursorY = (beefTable?.finalY ?? cursorY) + 8;
       } else {
-        doc.setFontSize(10);
-        doc.text('No beef receiving QA recorded from lots.', marginLeft, cursorY);
-        cursorY += 8;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(71, 85, 105);
+        doc.text('No beef receiving QA recorded from lots.', marginLeft, cursorY + 4);
+        doc.setTextColor(0, 0, 0);
+        cursorY += 10;
       }
 
-      doc.setFontSize(12);
-      doc.text('Supporting Documents', marginLeft, cursorY);
-      cursorY += 4;
+      ensureSpace(16);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('Supporting documents', marginLeft, cursorY);
+      cursorY += 3;
 
       if (documents.length > 0) {
         const docRows = documents.map((docItem) => [
           docItem.file_name ?? 'Attachment',
           docItem.document_type?.name ?? docItem.document_type?.code ?? 'Attachment',
           formatDateTime(docItem.uploaded_at),
-          docItem.notes ?? '-',
+          docItem.notes ?? '—',
         ]);
 
         autoTable(doc, {
           startY: cursorY,
+          margin: { left: marginLeft, right: marginRight, bottom: marginBottom },
           head: [['File', 'Type', 'Uploaded', 'Notes']],
           body: docRows,
-          styles: { fontSize: 9, cellPadding: 2 },
-          headStyles: { fillColor: [22, 101, 52], textColor: 255 },
+          styles: { fontSize: 8, cellPadding: 1.6, overflow: 'linebreak' },
+          headStyles: { fillColor: [22, 101, 52], textColor: 255, fontSize: 8 },
+          theme: 'grid',
         });
       } else {
-        doc.setFontSize(10);
-        doc.text('No supporting documents uploaded.', marginLeft, cursorY);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(71, 85, 105);
+        doc.text('No supporting documents uploaded.', marginLeft, cursorY + 4);
+        doc.setTextColor(0, 0, 0);
       }
+
+      drawFooter();
 
       const safeName = (batch?.batch_id ?? batchId).replace(/[^A-Za-z0-9-_]/g, '_');
       doc.save(`${safeName}_qa.pdf`);
@@ -955,6 +1151,15 @@ export default function BatchQAPage() {
             </div>
 
             <div className="flex flex-wrap gap-2 sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setBatchAutofillOpen(true)}
+                disabled={batchAutofilling || checkpoints.length === 0}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50 sm:w-auto"
+              >
+                <Sparkles className="h-4 w-4" />
+                {batchAutofilling ? 'Autofilling...' : 'Autofill whole batch'}
+              </button>
               <button
                 onClick={passAllRequired}
                 className="w-full rounded-lg border px-3 py-2 text-sm hover:bg-gray-50 sm:w-auto"
@@ -1188,6 +1393,17 @@ export default function BatchQAPage() {
           )}
         </div>
       </section>
+
+      <AutofillModal
+        mode="batch"
+        isOpen={batchAutofillOpen}
+        onClose={() => setBatchAutofillOpen(false)}
+        sectionLabel={batch?.batch_id ? `Batch ${batch.batch_id}` : 'This batch'}
+        defaultWetWeightKg={recipeWetWeightKg > 0 ? recipeWetWeightKg : null}
+        onConfirm={(result) => {
+          void handleBatchAutofill(result);
+        }}
+      />
     </div>
   );
 }
@@ -1541,8 +1757,6 @@ function getFieldFlags(cp: Checkpoint): FieldFlags {
 function CheckpointCard({ checkpoint, check, wetWeightHint, onChange }: CheckpointCardProps) {
   const toast = useToast();
   const fields = getFieldFlags(checkpoint);
-  const autofillSection = resolveAutofillSectionFromCheckpoint(checkpoint.code, checkpoint.stage);
-  const [autofillOpen, setAutofillOpen] = useState(false);
   const [expanded, setExpanded] = useState(() =>
     Boolean(
       fields.temperature ||
@@ -1965,59 +2179,6 @@ function CheckpointCard({ checkpoint, check, wetWeightHint, onChange }: Checkpoi
 
   const quickSkip = () => onChange('skipped', buildPayload('skipped'));
 
-  const applyAutofill = (result: AutofillResult) => {
-    const f = result.fields;
-    setNotes(result.notes);
-
-    if (fields.marinationRun) {
-      if (f.marinade_temp_c != null) setTemperature(String(f.marinade_temp_c));
-      if (f.marination_start) setMarinationStart(f.marination_start);
-      if (f.marination_end) setMarinationEnd(f.marination_end);
-    } else if (checkpoint.code === 'DRY-PREHEAT' && f.preheat_temp_c != null) {
-      setTemperature(String(f.preheat_temp_c));
-    } else if (fields.temperature && f.drying_temp_c != null) {
-      setTemperature(String(f.drying_temp_c));
-    } else if (fields.temperature && f.fridge_freezer_temp_c != null) {
-      setTemperature(String(f.fridge_freezer_temp_c));
-    }
-
-    if (fields.dryingRun) {
-      if (f.drying_temp_c != null) setOvenTemp(String(f.drying_temp_c));
-      if (f.drying_start) setDryingStart(f.drying_start);
-      if (f.drying_end) setDryingEnd(f.drying_end);
-    }
-
-    if (fields.tripleTemps) {
-      const t1 = f.product_temp_1_c != null ? String(f.product_temp_1_c) : '';
-      const t2 = f.product_temp_2_c != null ? String(f.product_temp_2_c) : '';
-      const when = f.drying_end || result.completed_at || localDatetimeInputValue();
-      setCoreReadings([
-        { temp: t1, time: when },
-        { temp: t2, time: when },
-      ]);
-    }
-
-    if (fields.wetWeight && f.wet_weight_kg != null) setWetWeight(String(f.wet_weight_kg));
-    if (fields.dryWeight && f.dry_weight_kg != null) setDryWeight(String(f.dry_weight_kg));
-    if (fields.aw && f.water_activity != null) setAw(String(f.water_activity));
-
-    if (fields.processConfirm) {
-      setProcessTempMet(true);
-      setProcessWeightMet(true);
-      setProcessRuntimeLogged(true);
-    }
-
-    if (fields.labAw && f.water_activity != null) {
-      setLabResultAw(String(f.water_activity));
-      setLabResultAt(result.completed_at || localDatetimeInputValue());
-      setLabSampleId(f.lab_reference || `${checkpoint.code}-AUTO`);
-      setLabName('In-process autofill (replace with lab cert)');
-    }
-
-    setExpanded(true);
-    toast.success('Checkpoint autofilled — review values, then Pass or Save.');
-  };
-
   return (
     <div
       className={`rounded-xl border-2 bg-white transition ${
@@ -2076,14 +2237,6 @@ function CheckpointCard({ checkpoint, check, wetWeightHint, onChange }: Checkpoi
 
           {!fields.managedExternally && (
             <div className="flex flex-wrap items-center gap-2 justify-end sm:justify-end lg:justify-start">
-              <button
-                type="button"
-                onClick={() => setAutofillOpen(true)}
-                className="flex-1 min-w-[90px] sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                Autofill
-              </button>
               <button
                 onClick={quickPass}
                 className={`flex-1 min-w-[90px] sm:flex-none rounded-lg px-3 py-2 text-sm font-medium transition ${
@@ -2507,16 +2660,6 @@ function CheckpointCard({ checkpoint, check, wetWeightHint, onChange }: Checkpoi
           </div>
         )}
       </div>
-
-      <AutofillModal
-        isOpen={autofillOpen}
-        onClose={() => setAutofillOpen(false)}
-        section={autofillSection}
-        sectionLabel={`${checkpoint.code} — ${checkpoint.name}`}
-        taskCode={checkpoint.code}
-        defaultCompletedAt={localDatetimeInputValue()}
-        onConfirm={applyAutofill}
-      />
     </div>
   );
 }

@@ -58,6 +58,12 @@ export type AutofillSectionFields = {
   finished_ph?: number;
   colour_appearance?: 'Pass' | 'Fail';
   packaging_integrity?: 'Pass' | 'Fail';
+  // Weights (batch QA)
+  wet_weight_kg?: number;
+  dry_weight_kg?: number;
+  preheat_temp_c?: number;
+  marination_start?: string;
+  marination_end?: string;
   // Environmental
   swab_location?: string;
   surface_type?: 'food_contact' | 'non_food_contact';
@@ -200,14 +206,20 @@ function buildMarination(input: AutofillInput): AutofillResult {
   const marinadeTemp = randFloat(1, 5, 1);
   const hours = randFloat(12, 24, 1);
   const nitritePpm = randInt(100, 125);
+  const wetKg = randFloat(80, 150, 2);
   const batch = batchId();
   const marinatedOn = input.extraDates?.marinated_on || input.completedAt;
+  const marinationEnd = marinatedOn;
+  const marinationStart = shiftLocalDatetime(marinationEnd, -hours);
 
   const fields: AutofillSectionFields = {
     marinade_temp_c: marinadeTemp,
     time_in_marinade_hrs: hours,
     nitrite_ppm: nitritePpm,
     batch_id: batch,
+    wet_weight_kg: wetKg,
+    marination_start: marinationStart,
+    marination_end: marinationEnd,
   };
 
   return {
@@ -219,6 +231,7 @@ function buildMarination(input: AutofillInput): AutofillResult {
       `Operator: ${operator}`,
       `Marinated on: ${formatLocalDateLabel(marinatedOn)}`,
       `Batch ID: ${batch}`,
+      `Wet weight: ${wetKg} kg`,
       `Adams FSP Step 3A: marinade ≤5°C for 12–24 h; nitrite ≤125 ppm.`,
     ].join('\n'),
     batches_covered: '',
@@ -238,6 +251,9 @@ function buildDrying(input: AutofillInput): AutofillResult {
   const dryingHrs = randFloat(8, 10, 1);
   const aw = randFloat(0.75, 0.84, 3);
   const humidity = randInt(20, 45);
+  const wetKg = randFloat(80, 150, 2);
+  const lossPct = randFloat(54, 58, 1);
+  const dryKg = Math.round(wetKg * (1 - lossPct / 100) * 100) / 100;
   const oven = `OVN-${randInt(1, 4)}`;
   const end = input.extraDates?.dried_on || input.completedAt;
   const start = shiftLocalDatetime(end, -dryingHrs);
@@ -254,6 +270,9 @@ function buildDrying(input: AutofillInput): AutofillResult {
     dryer_humidity_pct: humidity,
     water_activity: aw,
     batch_id: batch,
+    wet_weight_kg: wetKg,
+    dry_weight_kg: dryKg,
+    preheat_temp_c: randFloat(88, 90, 1),
   };
 
   return {
@@ -266,6 +285,7 @@ function buildDrying(input: AutofillInput): AutofillResult {
       `Dried on: ${formatLocalDateLabel(end)}`,
       `Start: ${formatLocalDateLabel(start)} → End: ${formatLocalDateLabel(end)}`,
       `Form 10a: 1st product temp ${productTemp1}°C, 2nd ${productTemp2}°C; dryer humidity ${humidity}%`,
+      `Weight: wet ${wetKg} kg → dry ${dryKg} kg (${lossPct}% loss)`,
       `Adams FSP Step 3B: oven CCP 65–68°C, dry 8–10 h, product ≥65°C/10 min, Aw < 0.85.`,
     ].join('\n'),
     batches_covered: '',
@@ -524,14 +544,43 @@ export function resolveAutofillSection(
   if (code.startsWith('DRY-') || cat.includes('dry') || cat.includes('dehydr')) {
     return 'drying';
   }
-  if (code.startsWith('FIN-') || cat.includes('finished')) {
+  if (code.startsWith('FIN-') || code.startsWith('PKG-') || cat.includes('finished') || cat.includes('pack')) {
     return 'finished_product';
   }
 
   return 'environmental_monitoring';
 }
 
+/** Map batch QA checkpoint code / stage to an autofill section */
+export function resolveAutofillSectionFromCheckpoint(
+  checkpointCode?: string | null,
+  stage?: string | null,
+): AutofillSection {
+  const code = (checkpointCode ?? '').toUpperCase();
+  const stageKey = (stage ?? '').toLowerCase();
+
+  if (code.startsWith('MAR-') || stageKey === 'marination') return 'marination';
+  if (code.startsWith('DRY-') || stageKey === 'drying') return 'drying';
+  if (code.startsWith('PKG-') || code.startsWith('FIN-') || stageKey === 'packaging' || stageKey === 'final') {
+    return 'finished_product';
+  }
+  if (code.startsWith('MIX-') || stageKey === 'mixing') return 'marination';
+  if (stageKey === 'preparation') return 'temperature_monitoring';
+
+  return resolveAutofillSection(code, stage);
+}
+
 export function localDatetimeInputValue(date = new Date()): string {
   const d = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return d.toISOString().slice(0, 16);
+}
+
+/** Quarterly lab cadence used on the QA hub */
+export const LAB_CADENCE_MONTHS = 3;
+
+export function addMonths(isoOrDate: string | Date, months: number): Date {
+  const base = typeof isoOrDate === 'string' ? new Date(isoOrDate) : new Date(isoOrDate.getTime());
+  const next = new Date(base.getTime());
+  next.setMonth(next.getMonth() + months);
+  return next;
 }

@@ -5,9 +5,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, FormEvent, ChangeEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useToast } from '@/components/ToastProvider';
-import { Download, FileDown, FileText, Loader2, Camera, Trash2 } from 'lucide-react';
+import { Download, FileDown, FileText, Loader2, Camera, Trash2, Sparkles } from 'lucide-react';
 import { formatDateTime } from '@/lib/utils';
 import type { QADocument, QADocumentType } from '@/types/qa';
+import AutofillModal from '@/components/AutofillModal';
+import LabSubmissionPanel from '@/components/LabSubmissionPanel';
+import {
+  localDatetimeInputValue,
+  resolveAutofillSectionFromCheckpoint,
+  type AutofillResult,
+} from '@/lib/autofillDefaults';
 
 // ---------- Types that match your DB ----------
 type Stage =
@@ -282,6 +289,20 @@ export default function BatchQAPage() {
         : null;
     return Number.isFinite(wet) ? (wet as number) : null;
   }, [checkpoints, qaChecks]);
+
+  const awLabCheckpoint = useMemo(
+    () => checkpoints.find((c) => c.code === 'DRY-FSP-AW-LAB') ?? null,
+    [checkpoints],
+  );
+
+  const labDocuments = useMemo(
+    () =>
+      documents.filter((doc) => {
+        const code = doc.document_type?.code ?? '';
+        return code === 'LAB-AW-RESULT' || code.toUpperCase().includes('LAB');
+      }),
+    [documents],
+  );
 
   // Determine current/next checkpoint within the active stage
   const currentCheckpoint = useMemo(() => {
@@ -957,6 +978,19 @@ export default function BatchQAPage() {
           </div>
         </div>
 
+        <div className="mt-4">
+          <LabSubmissionPanel
+            batchId={batchId}
+            batchCode={batch?.batch_id ?? batchId}
+            checkpointId={awLabCheckpoint?.id ?? null}
+            check={awLabCheckpoint ? qaChecks[awLabCheckpoint.id] : undefined}
+            labDocuments={labDocuments}
+            onRefresh={async () => {
+              await Promise.all([fetchData(), fetchDocuments()]);
+            }}
+          />
+        </div>
+
         <div className="mt-6 grid gap-4 lg:grid-cols-[2fr,1fr]">
           <div className="rounded-xl border bg-white p-4">
             <div className="mb-3 flex items-center justify-between">
@@ -1427,7 +1461,7 @@ const FIELDS_BY_CODE: Record<string, FieldFlags> = {
   'MAR-FSP-TIME': { temperature: true, notes: true, marinationRun: true, wetWeight: true },
   'DRY-FSP-OVEN': { temperature: true, notes: true, dryingRun: true },
   'DRY-FSP-CORE': { notes: true, tripleTemps: true },
-  'DRY-FSP-AW-LAB': { notes: true, processConfirm: true, dryWeight: true },
+  'DRY-FSP-AW-LAB': { notes: true, processConfirm: true, dryWeight: true, labAw: true },
   'DRY-FSP-VALIDATION': { notes: true },
   'DRY-PREHEAT': { temperature: true, notes: true },
 
@@ -1507,6 +1541,8 @@ function getFieldFlags(cp: Checkpoint): FieldFlags {
 function CheckpointCard({ checkpoint, check, wetWeightHint, onChange }: CheckpointCardProps) {
   const toast = useToast();
   const fields = getFieldFlags(checkpoint);
+  const autofillSection = resolveAutofillSectionFromCheckpoint(checkpoint.code, checkpoint.stage);
+  const [autofillOpen, setAutofillOpen] = useState(false);
   const [expanded, setExpanded] = useState(() =>
     Boolean(
       fields.temperature ||
@@ -1929,6 +1965,59 @@ function CheckpointCard({ checkpoint, check, wetWeightHint, onChange }: Checkpoi
 
   const quickSkip = () => onChange('skipped', buildPayload('skipped'));
 
+  const applyAutofill = (result: AutofillResult) => {
+    const f = result.fields;
+    setNotes(result.notes);
+
+    if (fields.marinationRun) {
+      if (f.marinade_temp_c != null) setTemperature(String(f.marinade_temp_c));
+      if (f.marination_start) setMarinationStart(f.marination_start);
+      if (f.marination_end) setMarinationEnd(f.marination_end);
+    } else if (checkpoint.code === 'DRY-PREHEAT' && f.preheat_temp_c != null) {
+      setTemperature(String(f.preheat_temp_c));
+    } else if (fields.temperature && f.drying_temp_c != null) {
+      setTemperature(String(f.drying_temp_c));
+    } else if (fields.temperature && f.fridge_freezer_temp_c != null) {
+      setTemperature(String(f.fridge_freezer_temp_c));
+    }
+
+    if (fields.dryingRun) {
+      if (f.drying_temp_c != null) setOvenTemp(String(f.drying_temp_c));
+      if (f.drying_start) setDryingStart(f.drying_start);
+      if (f.drying_end) setDryingEnd(f.drying_end);
+    }
+
+    if (fields.tripleTemps) {
+      const t1 = f.product_temp_1_c != null ? String(f.product_temp_1_c) : '';
+      const t2 = f.product_temp_2_c != null ? String(f.product_temp_2_c) : '';
+      const when = f.drying_end || result.completed_at || localDatetimeInputValue();
+      setCoreReadings([
+        { temp: t1, time: when },
+        { temp: t2, time: when },
+      ]);
+    }
+
+    if (fields.wetWeight && f.wet_weight_kg != null) setWetWeight(String(f.wet_weight_kg));
+    if (fields.dryWeight && f.dry_weight_kg != null) setDryWeight(String(f.dry_weight_kg));
+    if (fields.aw && f.water_activity != null) setAw(String(f.water_activity));
+
+    if (fields.processConfirm) {
+      setProcessTempMet(true);
+      setProcessWeightMet(true);
+      setProcessRuntimeLogged(true);
+    }
+
+    if (fields.labAw && f.water_activity != null) {
+      setLabResultAw(String(f.water_activity));
+      setLabResultAt(result.completed_at || localDatetimeInputValue());
+      setLabSampleId(f.lab_reference || `${checkpoint.code}-AUTO`);
+      setLabName('In-process autofill (replace with lab cert)');
+    }
+
+    setExpanded(true);
+    toast.success('Checkpoint autofilled — review values, then Pass or Save.');
+  };
+
   return (
     <div
       className={`rounded-xl border-2 bg-white transition ${
@@ -1987,6 +2076,14 @@ function CheckpointCard({ checkpoint, check, wetWeightHint, onChange }: Checkpoi
 
           {!fields.managedExternally && (
             <div className="flex flex-wrap items-center gap-2 justify-end sm:justify-end lg:justify-start">
+              <button
+                type="button"
+                onClick={() => setAutofillOpen(true)}
+                className="flex-1 min-w-[90px] sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                Autofill
+              </button>
               <button
                 onClick={quickPass}
                 className={`flex-1 min-w-[90px] sm:flex-none rounded-lg px-3 py-2 text-sm font-medium transition ${
@@ -2285,7 +2382,7 @@ function CheckpointCard({ checkpoint, check, wetWeightHint, onChange }: Checkpoi
                       onChange={(e) => setProcessTempMet(e.target.checked)}
                       className="h-4 w-4 rounded border-gray-300"
                     />
-                    Internal temp target met (≥72°C, two points)
+                    Internal temp target met (≥65°C for ≥10 min, two points)
                   </label>
                   <label className="flex items-center gap-2">
                     <input
@@ -2410,6 +2507,16 @@ function CheckpointCard({ checkpoint, check, wetWeightHint, onChange }: Checkpoi
           </div>
         )}
       </div>
+
+      <AutofillModal
+        isOpen={autofillOpen}
+        onClose={() => setAutofillOpen(false)}
+        section={autofillSection}
+        sectionLabel={`${checkpoint.code} — ${checkpoint.name}`}
+        taskCode={checkpoint.code}
+        defaultCompletedAt={localDatetimeInputValue()}
+        onConfirm={applyAutofill}
+      />
     </div>
   );
 }

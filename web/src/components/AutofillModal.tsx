@@ -64,6 +64,8 @@ export default function AutofillModal(props: AutofillModalProps) {
     sectionLabel,
   } = props;
   const mode = props.mode ?? 'section';
+  const section = mode === 'section' ? props.section : null;
+  const defaultWetWeightKg = mode === 'batch' ? props.defaultWetWeightKg : null;
 
   const [completedAt, setCompletedAt] = useState(() => defaultCompletedAt ?? localDatetimeInputValue());
   const [operatorName, setOperatorName] = useState(defaultOperator);
@@ -74,12 +76,10 @@ export default function AutofillModal(props: AutofillModalProps) {
 
   const title =
     sectionLabel ??
-    (mode === 'batch' ? 'Entire batch QA' : AUTOFILL_SECTION_LABELS[props.section]);
+    (mode === 'batch' ? 'Entire batch QA' : section ? AUTOFILL_SECTION_LABELS[section] : 'Form');
 
   const schedulePreview = useMemo(
     () => (mode === 'batch' && fridayDate ? generateJerkyWeekendSchedule(fridayDate) : null),
-    // regenerate only when friday changes / open — confirm generates a fresh schedule
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [mode, fridayDate, isOpen],
   );
 
@@ -93,13 +93,13 @@ export default function AutofillModal(props: AutofillModalProps) {
   const initialExtraDates = useMemo(() => {
     const seed = defaultCompletedAt ?? localDatetimeInputValue();
     const next: AutofillExtraDates = {};
-    if (mode === 'section') {
-      for (const field of AUTOFILL_EXTRA_DATE_FIELDS[props.section]) {
+    if (mode === 'section' && section) {
+      for (const field of AUTOFILL_EXTRA_DATE_FIELDS[section]) {
         next[field.key] = seed;
       }
     }
     return next;
-  }, [mode, mode === 'section' ? props.section : null, defaultCompletedAt]);
+  }, [mode, section, defaultCompletedAt]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -108,12 +108,12 @@ export default function AutofillModal(props: AutofillModalProps) {
     setExtraDates(initialExtraDates);
     setFridayDate(mostRecentFridayDate());
     const wet =
-      mode === 'batch' && props.defaultWetWeightKg != null && props.defaultWetWeightKg > 0
-        ? String(Math.round(props.defaultWetWeightKg * 1000) / 1000)
+      mode === 'batch' && defaultWetWeightKg != null && defaultWetWeightKg > 0
+        ? String(Math.round(defaultWetWeightKg * 1000) / 1000)
         : '';
     setWetWeightKg(wet);
     setError(null);
-  }, [isOpen, defaultCompletedAt, defaultOperator, initialExtraDates, mode, mode === 'batch' ? props.defaultWetWeightKg : null]);
+  }, [isOpen, defaultCompletedAt, defaultOperator, initialExtraDates, mode, defaultWetWeightKg]);
 
   if (!isOpen) return null;
 

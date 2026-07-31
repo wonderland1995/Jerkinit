@@ -638,7 +638,7 @@ export function generateJerkyWeekendSchedule(fridayDate: string): JerkyProductio
 
   // Sat 18:00–20:00, but keep marination > 20 h from Friday start
   const startMs = Date.parse(`${marinate_start}:00`);
-  let satOffsetMin = randInt(0, 120);
+  const satOffsetMin = randInt(0, 120);
   let drying_start = wallClockLocal(
     saturday,
     18 + Math.floor(satOffsetMin / 60),

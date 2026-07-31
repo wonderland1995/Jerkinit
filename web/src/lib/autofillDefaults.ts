@@ -796,26 +796,26 @@ export function generateBatchQaAutofill(input: BatchQaAutofillInput): BatchQaAut
       checked_by: operator,
       checked_at: checkedPreheat,
       temperature_c: preheatTemp,
-      notes: `Autofill — dehydrator preheat ${preheatTemp}°C before load (Adams FSP initial ~90°C).`,
+      notes: `Dehydrator preheat ${preheatTemp}°C before load (Adams FSP initial ~90°C).`,
     },
     'MIX-INGR': {
       status: 'passed',
       checked_by: operator,
       checked_at: checkedMix,
-      notes: `Autofill — ingredients verified; nitrite ${nitritePpm} ppm (≤125). Wet mix mass ${wetKg} kg.`,
+      notes: `Ingredients verified; nitrite ${nitritePpm} ppm (≤125). Wet mix mass ${wetKg} kg.`,
     },
     'MAR-FSP-SALT': {
       status: 'passed',
       checked_by: operator,
       checked_at: checkedMix,
-      notes: `Autofill — salt/cure addition confirmed; nitrite ${nitritePpm} ppm (≤125 ppm).`,
+      notes: `Salt/cure addition confirmed; nitrite ${nitritePpm} ppm (≤125 ppm).`,
     },
     'MAR-FSP-TIME': {
       status: 'passed',
       checked_by: operator,
       checked_at: checkedMarinate,
       temperature_c: marinadeTemp,
-      notes: `Autofill — marinade ${marinadeTemp}°C for ${schedule.marinade_hours} h (>20 h); wet weight ${wetKg} kg from recipe fill.`,
+      notes: `Marinade ${marinadeTemp}°C for ${schedule.marinade_hours} h (>20 h); wet weight ${wetKg} kg from recipe fill.`,
       metadata: {
         marination_run: {
           start_iso: toStoredIso(schedule.marinate_start),
@@ -835,7 +835,7 @@ export function generateBatchQaAutofill(input: BatchQaAutofillInput): BatchQaAut
       checked_by: operator,
       checked_at: checkedUnload,
       temperature_c: ovenTemp,
-      notes: `Autofill — oven hold ${ovenTemp}°C (CCP 65–68°C); run ${schedule.drying_hours} h Sat eve → Sun unload.`,
+      notes: `Oven hold ${ovenTemp}°C (CCP 65–68°C); run ${schedule.drying_hours} h Sat eve → Sun unload.`,
       metadata: {
         drying_run: {
           oven_temp_c: ovenTemp,
@@ -852,7 +852,7 @@ export function generateBatchQaAutofill(input: BatchQaAutofillInput): BatchQaAut
       checked_by: operator,
       checked_at: checkedUnload,
       temperature_c: Math.max(productTemp1, productTemp2),
-      notes: `Autofill — product internal temps ${productTemp1}°C / ${productTemp2}°C (≥65°C for ≥10 min).`,
+      notes: `Product internal temps ${productTemp1}°C / ${productTemp2}°C (≥65°C for ≥10 min).`,
       metadata: {
         readings: [
           { label: 'Piece 1', tempC: productTemp1, time_iso: toStoredIso(schedule.drying_end) },
@@ -865,7 +865,7 @@ export function generateBatchQaAutofill(input: BatchQaAutofillInput): BatchQaAut
       checked_by: operator,
       checked_at: checkedUnload,
       water_activity: aw,
-      notes: `Autofill — process confirmed; wet ${wetKg} kg → dry ${dryKg} kg (${weightLossPercent}% loss); process Aw ${aw} (< 0.85). External lab send remains separate.`,
+      notes: `Process confirmed; wet ${wetKg} kg → dry ${dryKg} kg (${weightLossPercent}% loss); process Aw ${aw} (< 0.85). External lab send remains separate.`,
       metadata: {
         process_check: {
           temp_met: true,
@@ -884,14 +884,14 @@ export function generateBatchQaAutofill(input: BatchQaAutofillInput): BatchQaAut
       checked_by: operator,
       checked_at: checkedMix,
       temperature_c: mixTemp,
-      notes: `Autofill — mix temp ${mixTemp}°C.`,
+      notes: `Mix temp ${mixTemp}°C.`,
     },
     'MIX-CORE': {
       status: 'passed',
       checked_by: operator,
       checked_at: checkedMix,
       temperature_c: mixTemp,
-      notes: `Autofill — mix core temp ${mixTemp}°C.`,
+      notes: `Mix core temp ${mixTemp}°C.`,
     },
   };
 

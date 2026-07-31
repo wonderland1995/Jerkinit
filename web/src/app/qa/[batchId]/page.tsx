@@ -395,7 +395,7 @@ export default function BatchQAPage() {
           const payload = result.byCode[cp.code] ?? {
             status: 'passed' as const,
             checked_by: result.completed_by,
-            notes: `Autofill — ${cp.name} marked passed by ${result.completed_by}.`,
+            notes: `${cp.name} marked passed by ${result.completed_by}.`,
           };
 
           const res = await fetch('/api/qa/checkpoint', {

@@ -9,11 +9,18 @@ import {
   FileUp,
   History,
   ShieldCheck,
+  Sparkles,
   Upload,
 } from 'lucide-react';
 import type { ComplianceLog, ComplianceTaskWithStatus } from '@/types/compliance';
 import { formatDate, formatDateTime } from '@/lib/utils';
+import {
+  localDatetimeInputValue,
+  resolveAutofillSection,
+  type AutofillResult,
+} from '@/lib/autofillDefaults';
 import { useToast } from '@/components/ToastProvider';
+import AutofillModal from '@/components/AutofillModal';
 
 type LogFormState = {
   completed_at: string;
@@ -37,13 +44,8 @@ const statusStyles: Record<
   batch_due: { label: 'Due (batches)', className: 'bg-orange-100 text-orange-700' },
 };
 
-const localDateInputValue = (date = new Date()) => {
-  const d = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return d.toISOString().slice(0, 16);
-};
-
 const defaultFormState = (): LogFormState => ({
-  completed_at: localDateInputValue(),
+  completed_at: localDatetimeInputValue(),
   completed_by: '',
   scope: '',
   result: '',
@@ -51,6 +53,17 @@ const defaultFormState = (): LogFormState => ({
   batches_covered: '',
   batch_start: '',
   batch_end: '',
+});
+
+const applyAutofillToForm = (result: AutofillResult): LogFormState => ({
+  completed_at: result.completed_at,
+  completed_by: result.completed_by,
+  scope: result.scope,
+  result: result.result,
+  notes: result.notes,
+  batches_covered: result.batches_covered,
+  batch_start: result.batch_start,
+  batch_end: result.batch_end,
 });
 
 export default function GeneralCompliancePage() {
@@ -63,6 +76,7 @@ export default function GeneralCompliancePage() {
   const [form, setForm] = useState<LogFormState>(() => defaultFormState());
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const [autofillOpen, setAutofillOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const selectedTask = useMemo(
@@ -94,6 +108,11 @@ export default function GeneralCompliancePage() {
       ? (metadataRecord['result_label'] as string)
       : null) ||
     'Result / outcome';
+
+  const autofillSection = useMemo(
+    () => resolveAutofillSection(selectedTask?.code, selectedTask?.category),
+    [selectedTask?.code, selectedTask?.category],
+  );
 
   const fetchTasks = useCallback(async () => {
     setLoadingTasks(true);
@@ -329,9 +348,19 @@ export default function GeneralCompliancePage() {
               <p className="text-gray-500">Select a task to log activity and see history.</p>
             ) : (
               <form className="space-y-4" onSubmit={handleSubmit}>
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-gray-500">Logging for</p>
-                  <h2 className="text-xl font-semibold text-gray-900">{selectedTask.name}</h2>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-gray-500">Logging for</p>
+                    <h2 className="text-xl font-semibold text-gray-900">{selectedTask.name}</h2>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAutofillOpen(true)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    Autofill
+                  </button>
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -557,6 +586,22 @@ export default function GeneralCompliancePage() {
           </div>
         </section>
       </main>
+
+      {selectedTask && (
+        <AutofillModal
+          isOpen={autofillOpen}
+          onClose={() => setAutofillOpen(false)}
+          section={autofillSection}
+          sectionLabel={selectedTask.name}
+          taskCode={selectedTask.code}
+          defaultOperator={form.completed_by}
+          defaultCompletedAt={form.completed_at || localDatetimeInputValue()}
+          onConfirm={(result) => {
+            setForm(applyAutofillToForm(result));
+            toast.success('Form autofilled with pass-range values. Review before uploading.');
+          }}
+        />
+      )}
     </div>
   );
 }

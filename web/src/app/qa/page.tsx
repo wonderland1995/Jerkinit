@@ -12,10 +12,12 @@ import {
   CheckCircle2,
   Clock,
   Droplet,
+  FlaskConical,
 } from 'lucide-react';
 import type { Route } from 'next';
 import type { ComplianceTaskWithStatus } from '@/types/compliance';
-import { formatDate } from '@/lib/utils';
+import { formatDate, formatDateTime } from '@/lib/utils';
+import { addMonths, LAB_CADENCE_MONTHS } from '@/lib/autofillDefaults';
 
 interface Batch {
   id: string;
@@ -33,6 +35,26 @@ interface QAStats {
   completed_qa: number;
   failed_checks: number;
 }
+
+type LabAwCheck = {
+  id: string;
+  batch_id: string;
+  batch_code: string | null;
+  status: string | null;
+  sent_at: string | null;
+  result_at: string | null;
+  water_activity: number | null;
+  sample_id: string | null;
+};
+
+type LabSummary = {
+  lastEventAt: string | null;
+  lastBatchCode: string | null;
+  lastBatchId: string | null;
+  lastAw: number | null;
+  nextDueAt: string | null;
+  awaitingResult: boolean;
+};
 
 type Stage = 'preparation' | 'mixing' | 'marination' | 'drying' | 'packaging' | 'final';
 
@@ -78,6 +100,8 @@ export default function QAPage() {
   const [filterStatus, setFilterStatus] = useState<'all' | 'in_progress' | 'completed'>('all');
   const [complianceTasks, setComplianceTasks] = useState<ComplianceTaskWithStatus[]>([]);
   const [complianceLoading, setComplianceLoading] = useState(true);
+  const [labSummary, setLabSummary] = useState<LabSummary | null>(null);
+  const [labLoading, setLabLoading] = useState(true);
 
   useEffect(() => {
     fetchBatches();
@@ -102,6 +126,59 @@ export default function QAPage() {
       }
     };
     loadCompliance();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadLab = async () => {
+      try {
+        setLabLoading(true);
+        const res = await fetch('/api/qa/audit/aw', { cache: 'no-store' });
+        if (!res.ok) throw new Error('Failed to load lab summary');
+        const data = (await res.json()) as { awChecks?: LabAwCheck[] };
+        const checks = Array.isArray(data.awChecks) ? data.awChecks : [];
+        const dated = checks
+          .map((c) => {
+            const eventAt = c.result_at || c.sent_at;
+            return eventAt ? { ...c, eventAt } : null;
+          })
+          .filter((c): c is LabAwCheck & { eventAt: string } => Boolean(c))
+          .sort((a, b) => Date.parse(b.eventAt) - Date.parse(a.eventAt));
+
+        const latest = dated[0] ?? null;
+        if (!cancelled) {
+          if (!latest) {
+            setLabSummary({
+              lastEventAt: null,
+              lastBatchCode: null,
+              lastBatchId: null,
+              lastAw: null,
+              nextDueAt: null,
+              awaitingResult: false,
+            });
+          } else {
+            const nextDue = addMonths(latest.eventAt, LAB_CADENCE_MONTHS);
+            setLabSummary({
+              lastEventAt: latest.eventAt,
+              lastBatchCode: latest.batch_code,
+              lastBatchId: latest.batch_id,
+              lastAw: latest.water_activity,
+              nextDueAt: nextDue.toISOString(),
+              awaitingResult: Boolean(latest.sent_at) && !latest.result_at && latest.water_activity == null,
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load lab cadence summary', error);
+        if (!cancelled) setLabSummary(null);
+      } finally {
+        if (!cancelled) setLabLoading(false);
+      }
+    };
+    loadLab();
     return () => {
       cancelled = true;
     };
@@ -219,6 +296,67 @@ export default function QAPage() {
               className="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-6 py-2 text-sm font-semibold text-white shadow hover:bg-emerald-700"
             >
               View proof of method
+            </Link>
+          </div>
+        </div>
+
+        <div className="mb-8 rounded-2xl border border-indigo-100 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="rounded-2xl bg-indigo-50 p-3 text-indigo-700">
+                <FlaskConical className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">External lab cadence</p>
+                <h2 className="text-lg font-semibold text-gray-900">Send a batch to the lab every {LAB_CADENCE_MONTHS} months</h2>
+                <p className="text-sm text-gray-600">
+                  Open a jerky batch QA page to mark it sent, then upload the lab certificate when it returns.
+                </p>
+                {labLoading ? (
+                  <p className="mt-3 text-sm text-gray-500">Loading lab status...</p>
+                ) : labSummary?.lastEventAt ? (
+                  <div className="mt-3 grid gap-2 text-sm text-gray-700 sm:grid-cols-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Last lab activity</p>
+                      <p className="font-medium">{formatDateTime(labSummary.lastEventAt)}</p>
+                      <p className="text-xs text-gray-500">
+                        Batch {labSummary.lastBatchCode ?? '—'}
+                        {labSummary.lastAw != null ? ` · Aw ${labSummary.lastAw}` : ''}
+                        {labSummary.awaitingResult ? ' · awaiting result' : ''}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Next due</p>
+                      <p className="font-medium">
+                        {labSummary.nextDueAt ? formatDate(labSummary.nextDueAt, true) : '—'}
+                      </p>
+                      {labSummary.nextDueAt && Date.parse(labSummary.nextDueAt) < Date.now() && (
+                        <p className="text-xs font-semibold text-amber-700">Overdue</p>
+                      )}
+                    </div>
+                    <div className="flex items-end">
+                      {labSummary.lastBatchId && (
+                        <Link
+                          href={`/qa/${labSummary.lastBatchId}` as Route}
+                          className="text-sm font-semibold text-indigo-700 hover:text-indigo-800"
+                        >
+                          Open last lab batch →
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-3 text-sm text-gray-500">
+                    No lab submissions yet. Open any in-progress batch and use Send to lab.
+                  </p>
+                )}
+              </div>
+            </div>
+            <Link
+              href="/qa/audit"
+              className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-6 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-700"
+            >
+              View lab audit
             </Link>
           </div>
         </div>

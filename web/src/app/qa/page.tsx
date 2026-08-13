@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   ClipboardCheck,
@@ -13,11 +13,20 @@ import {
   Clock,
   Droplet,
   FlaskConical,
+  Sparkles,
+  X,
 } from 'lucide-react';
 import type { Route } from 'next';
 import type { ComplianceTaskWithStatus } from '@/types/compliance';
 import { formatDate, formatDateTime } from '@/lib/utils';
-import { addMonths, LAB_CADENCE_MONTHS } from '@/lib/autofillDefaults';
+import { useToast } from '@/components/ToastProvider';
+import {
+  addMonths,
+  fridayDateFromCreatedAt,
+  generateBatchQaAutofill,
+  LAB_CADENCE_MONTHS,
+  sumRecipeWetWeightKg,
+} from '@/lib/autofillDefaults';
 
 interface Batch {
   id: string;
@@ -28,6 +37,16 @@ interface Batch {
     name: string;
   };
 }
+
+const BULK_QA_CODES = new Set([
+  'DRY-PREHEAT',
+  'MIX-INGR',
+  'MAR-FSP-SALT',
+  'MAR-FSP-TIME',
+  'DRY-FSP-OVEN',
+  'DRY-FSP-CORE',
+  'DRY-FSP-AW-LAB',
+]);
 
 interface QAStats {
   total_batches: number;
@@ -94,6 +113,7 @@ interface BatchQaProgress {
 }
 
 export default function QAPage() {
+  const toast = useToast();
   const [batches, setBatches] = useState<Batch[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -102,6 +122,11 @@ export default function QAPage() {
   const [complianceLoading, setComplianceLoading] = useState(true);
   const [labSummary, setLabSummary] = useState<LabSummary | null>(null);
   const [labLoading, setLabLoading] = useState(true);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkOperator, setBulkOperator] = useState('');
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState('');
 
   useEffect(() => {
     fetchBatches();
@@ -202,6 +227,139 @@ export default function QAPage() {
     const matchesFilter = filterStatus === 'all' || batch.status === filterStatus;
     return matchesSearch && matchesFilter;
   });
+
+  const selectedBatches = useMemo(
+    () => filteredBatches.filter((b) => selectedIds.has(b.id)),
+    [filteredBatches, selectedIds],
+  );
+
+  const allFilteredSelected =
+    filteredBatches.length > 0 && filteredBatches.every((b) => selectedIds.has(b.id));
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllFiltered = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) {
+        for (const b of filteredBatches) next.delete(b.id);
+      } else {
+        for (const b of filteredBatches) next.add(b.id);
+      }
+      return next;
+    });
+  };
+
+  const runBulkComplete = async () => {
+    if (selectedBatches.length === 0) {
+      toast.error('Select at least one batch.');
+      return;
+    }
+    if (!bulkOperator.trim()) {
+      toast.error('Operator name is required.');
+      return;
+    }
+
+    setBulkRunning(true);
+    setBulkProgress('Loading checkpoints...');
+    try {
+      const cpRes = await fetch('/api/qa/checkpoints', { cache: 'no-store' });
+      if (!cpRes.ok) throw new Error('Failed to load QA checkpoints');
+      const cpJson = (await cpRes.json()) as {
+        checkpoints?: Array<{ id: string; code: string; name: string; active?: boolean }>;
+      };
+      const checkpoints = (cpJson.checkpoints ?? []).filter(
+        (c) => c.active !== false && BULK_QA_CODES.has(c.code),
+      );
+      if (checkpoints.length === 0) throw new Error('No active jerky QA checkpoints found.');
+
+      let ok = 0;
+      const failures: string[] = [];
+
+      for (let i = 0; i < selectedBatches.length; i++) {
+        const batch = selectedBatches[i];
+        setBulkProgress(`Completing ${batch.batch_id} (${i + 1}/${selectedBatches.length})...`);
+        try {
+          const batchRes = await fetch(`/api/batches/${batch.id}`, { cache: 'no-store' });
+          if (!batchRes.ok) throw new Error('Failed to load batch details');
+          const batchJson = (await batchRes.json()) as {
+            batch?: {
+              beef_weight_kg?: number | null;
+              ingredients?: Array<{
+                actual_amount?: number | null;
+                target_amount?: number | null;
+                unit?: string | null;
+              }>;
+            } | null;
+          };
+          const detail = batchJson.batch;
+          const wetKg = sumRecipeWetWeightKg(detail?.beef_weight_kg, detail?.ingredients ?? []);
+          const fridayDate = fridayDateFromCreatedAt(batch.created_at);
+          const result = generateBatchQaAutofill({
+            operatorName: bulkOperator.trim(),
+            fridayDate,
+            wetWeightKg: wetKg > 0 ? wetKg : 17,
+          });
+
+          await Promise.all(
+            checkpoints.map(async (cp) => {
+              const payload = result.byCode[cp.code] ?? {
+                status: 'passed' as const,
+                checked_by: result.completed_by,
+                checked_at: result.completed_at.length >= 16 ? `${result.completed_at.slice(0, 16)}:00` : null,
+                notes: `${cp.name} marked passed by ${result.completed_by}.`,
+              };
+              const res = await fetch('/api/qa/checkpoint', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  batch_id: batch.id,
+                  checkpoint_id: cp.id,
+                  ...payload,
+                  checked_by: result.completed_by,
+                }),
+              });
+              if (!res.ok) {
+                const body = (await res.json().catch(() => ({}))) as { error?: string };
+                throw new Error(body.error ?? `Failed on ${cp.code}`);
+              }
+            }),
+          );
+          ok += 1;
+        } catch (err) {
+          console.error('Bulk QA failed for', batch.batch_id, err);
+          failures.push(batch.batch_id);
+        }
+      }
+
+      if (ok > 0) {
+        toast.success(
+          `Completed QA for ${ok} batch${ok === 1 ? '' : 'es'} using each created-date weekend schedule.`,
+        );
+      }
+      if (failures.length > 0) {
+        toast.error(`Failed: ${failures.join(', ')}`);
+      }
+
+      setSelectedIds(new Set());
+      setBulkOpen(false);
+      setBulkOperator('');
+      setLoading(true);
+      await fetchBatches();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Bulk QA complete failed.');
+    } finally {
+      setBulkRunning(false);
+      setBulkProgress('');
+    }
+  };
 
   const stats: QAStats = {
     total_batches: batches.length,
@@ -463,6 +621,22 @@ export default function QAPage() {
               </div>
             </div>
           </div>
+
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4">
+            <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={allFilteredSelected}
+                onChange={toggleSelectAllFiltered}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600"
+              />
+              Select all shown ({filteredBatches.length})
+            </label>
+            <p className="text-xs text-gray-500">
+              Bulk complete uses each batch&apos;s <span className="font-medium">created</span> date to
+              set Fri→Sun production times.
+            </p>
+          </div>
         </div>
 
         {/* Batches Grid */}
@@ -478,13 +652,126 @@ export default function QAPage() {
             </Link>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-24">
             {filteredBatches.map((batch) => (
-              <BatchCard key={batch.id} batch={batch} />
+              <BatchCard
+                key={batch.id}
+                batch={batch}
+                selected={selectedIds.has(batch.id)}
+                onToggleSelect={() => toggleSelect(batch.id)}
+              />
             ))}
           </div>
         )}
       </div>
+
+      {selectedIds.size > 0 && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-blue-100 bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-medium text-gray-800">
+              {selectedIds.size} batch{selectedIds.size === 1 ? '' : 'es'} selected
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedIds(new Set())}
+                className="rounded-lg border px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={() => setBulkOpen(true)}
+                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                <Sparkles className="h-4 w-4" />
+                Complete QA for selected
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bulkOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => !bulkRunning && setBulkOpen(false)}
+          />
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+              <button
+                type="button"
+                disabled={bulkRunning}
+                onClick={() => setBulkOpen(false)}
+                className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
+                <Sparkles className="h-6 w-6 text-blue-600" />
+              </div>
+              <h3 className="text-center text-xl font-semibold text-gray-900">
+                Complete QA for {selectedBatches.length} batch
+                {selectedBatches.length === 1 ? '' : 'es'}
+              </h3>
+              <p className="mt-2 text-center text-sm text-gray-600">
+                Each batch is filled using its <span className="font-medium">created</span> date as the
+                production Friday (Fri marinate → Sat dry → Sun unload).
+              </p>
+
+              <div className="mt-4 max-h-48 space-y-2 overflow-y-auto rounded-xl border border-gray-100 bg-gray-50 p-3 text-sm">
+                {selectedBatches.map((b) => (
+                  <div key={b.id} className="flex items-center justify-between gap-2">
+                    <span className="font-mono font-semibold text-gray-900">{b.batch_id}</span>
+                    <span className="text-xs text-gray-500">
+                      Created {new Date(b.created_at).toLocaleDateString('en-AU')} → Fri{' '}
+                      {fridayDateFromCreatedAt(b.created_at)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4">
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Operator name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={bulkOperator}
+                  onChange={(e) => setBulkOperator(e.target.value)}
+                  disabled={bulkRunning}
+                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                  placeholder="Operator name"
+                />
+              </div>
+
+              {bulkProgress && (
+                <p className="mt-3 text-sm text-blue-700">{bulkProgress}</p>
+              )}
+
+              <div className="mt-5 flex gap-3">
+                <button
+                  type="button"
+                  disabled={bulkRunning}
+                  onClick={() => setBulkOpen(false)}
+                  className="flex-1 rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkRunning}
+                  onClick={() => void runBulkComplete()}
+                  className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                >
+                  {bulkRunning ? 'Working...' : 'Complete selected'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -519,9 +806,11 @@ function StatCard({ icon: Icon, label, value, color }: StatCardProps) {
 
 interface BatchCardProps {
   batch: Batch;
+  selected: boolean;
+  onToggleSelect: () => void;
 }
 
-function BatchCard({ batch }: BatchCardProps) {
+function BatchCard({ batch, selected, onToggleSelect }: BatchCardProps) {
   const [qaProgress, setQaProgress] = useState<{
     label: string;
     className: string;
@@ -603,14 +892,33 @@ function BatchCard({ batch }: BatchCardProps) {
     : getStatusIcon(batch.status);
   const badgeLabel = qaProgress ? (qaProgress.completed ? 'QA COMPLETE' : qaProgress.checkpoint ?? qaProgress.label) : batch.status.replace('_', ' ').toUpperCase();
   const percentLabel = qaProgress ? `${Math.round(qaProgress.percent)}%` : '--';
+  const productionFriday = fridayDateFromCreatedAt(batch.created_at);
 
   return (
-    <Link
-      href={`/qa/${batch.id}` as Route}
-      className="block group"
+    <div
+      className={`relative rounded-2xl border-2 bg-white p-6 shadow-sm transition-all hover:shadow-lg ${
+        selected ? 'border-blue-500 ring-2 ring-blue-100' : 'border-gray-200 hover:border-emerald-300'
+      }`}
     >
-      <div className="bg-white rounded-2xl border-2 border-gray-200 shadow-sm hover:shadow-lg hover:border-emerald-300 transition-all p-6">
-        {/* Status Badge */}
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <label
+          className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            className="h-4 w-4 rounded border-gray-300 text-blue-600"
+          />
+          Select
+        </label>
+        <span className="text-[11px] text-gray-500">
+          Prod Fri {productionFriday}
+        </span>
+      </div>
+
+      <Link href={`/qa/${batch.id}` as Route} className="block group">
         <div className="flex items-center justify-between mb-4">
           <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border ${badgeClass}`}>
             {badgeIcon}
@@ -619,12 +927,10 @@ function BatchCard({ batch }: BatchCardProps) {
           <Calendar className="w-4 h-4 text-gray-400" />
         </div>
 
-        {/* Batch ID */}
         <h3 className="font-mono text-lg font-bold text-gray-900 mb-2 group-hover:text-emerald-600 transition">
           {batch.batch_id}
         </h3>
 
-        {/* Product Name */}
         <p className="text-sm text-gray-600">
           {batch.product?.name || 'Unknown Product'}
         </p>
@@ -641,7 +947,6 @@ function BatchCard({ batch }: BatchCardProps) {
           )}
         </div>
 
-        {/* Date */}
         <div className="flex items-center justify-between text-xs text-gray-500 pt-4 border-t border-gray-100">
           <span>Created</span>
           <span className="font-medium">
@@ -649,12 +954,11 @@ function BatchCard({ batch }: BatchCardProps) {
           </span>
         </div>
 
-        {/* Hover Arrow */}
         <div className="mt-4 flex items-center justify-end text-emerald-600 opacity-0 group-hover:opacity-100 transition">
           <span className="text-sm font-medium mr-1">Open QA Checks</span>
           <TrendingUp className="w-4 h-4" />
         </div>
-      </div>
-    </Link>
+      </Link>
+    </div>
   );
 }

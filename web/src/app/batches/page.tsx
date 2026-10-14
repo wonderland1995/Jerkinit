@@ -56,6 +56,9 @@ interface QaStageSummary {
 
 export default function BatchHistoryPage() {
   const router = useRouter();
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [exportProgress, setExportProgress] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [batches, setBatches] = useState<BatchSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'in_progress' | 'completed' | 'released'>('all');
@@ -222,6 +225,53 @@ export default function BatchHistoryPage() {
       return true;
     });
   }, [batches, filter, searchTerm, getDerivedStatus]);
+
+  const selectedBatches = batches.filter(batch => selectedIds.has(batch.id));
+  const allVisibleSelected = filteredBatches.length > 0 && filteredBatches.every(batch => selectedIds.has(batch.id));
+
+  function toggleSelection(id: string) {
+    setSelectedIds(previous => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleBulkExport() {
+    if (exportProgress || selectedBatches.length === 0) return;
+    setExportError(null);
+    setExportProgress('Preparing PDFs...');
+    let currentBatch = '';
+    try {
+      const [{ default: JSZip }, { loadBatchPdf }] = await Promise.all([
+        import('jszip'), import('@/lib/batchPdf'),
+      ]);
+      const zip = new JSZip();
+      for (const [index, batch] of selectedBatches.entries()) {
+        currentBatch = batch.batch_id;
+        setExportProgress(`Creating PDF ${index + 1} of ${selectedBatches.length}...`);
+        const { doc, filename } = await loadBatchPdf(batch.id);
+        // The index prevents duplicate batch labels from overwriting a report.
+        zip.file(`${index + 1}-${filename}`, doc.output('arraybuffer'));
+      }
+      currentBatch = '';
+      setExportProgress('Creating ZIP...');
+      const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `qa-reports-${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      setExportError(`ZIP download failed${currentBatch ? ` for ${currentBatch}` : ''}. ${error instanceof Error ? error.message : 'Please try again.'} No partial ZIP was downloaded.`);
+    } finally {
+      setExportProgress(null);
+    }
+  }
 
   function getComplianceColor(percent: number | null) {
     if (percent === null) return 'text-slate-400';
@@ -412,6 +462,35 @@ export default function BatchHistoryPage() {
           <StatCard label="Released" value={released} accent="text-emerald-200" />
         </div>
 
+        <div className="mb-6 flex flex-wrap items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4">
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={allVisibleSelected}
+              disabled={!!exportProgress || filteredBatches.length === 0}
+              onChange={() => setSelectedIds(previous => {
+                const next = new Set(previous);
+                filteredBatches.forEach(batch => {
+                  if (allVisibleSelected) next.delete(batch.id);
+                  else next.add(batch.id);
+                });
+                return next;
+              })}
+            />
+            Select all shown
+          </label>
+          <span className="text-sm text-slate-600">{selectedBatches.length} selected across all filters</span>
+          <button type="button" onClick={() => setSelectedIds(new Set())} disabled={!!exportProgress || selectedBatches.length === 0} className="text-sm text-slate-600 underline disabled:opacity-50">
+            Clear selection
+          </button>
+          <button type="button" onClick={() => void handleBulkExport()} disabled={!!exportProgress || selectedBatches.length === 0} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+            {exportProgress ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+            Download selected QA PDFs (ZIP)
+          </button>
+          <span role="status" className="text-sm text-slate-600">{exportProgress}</span>
+          {exportError && <p role="alert" className="w-full text-sm text-rose-700">{exportError}</p>}
+        </div>
+
         {filteredBatches.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center text-slate-500">
             No batches found.
@@ -456,6 +535,10 @@ export default function BatchHistoryPage() {
                   <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white via-transparent to-emerald-50 opacity-0 transition group-hover:opacity-100" />
                   <div className="relative flex flex-wrap items-start justify-between gap-3">
                     <div className="space-y-1">
+                      <label className="flex items-center gap-2 text-sm text-slate-700">
+                        <input type="checkbox" checked={selectedIds.has(batch.id)} disabled={!!exportProgress} onChange={() => toggleSelection(batch.id)} aria-label={`Select batch ${batch.batch_id} for PDF export`} />
+                        Select for export
+                      </label>
                       <p className="flex items-center gap-2 font-mono text-xs uppercase tracking-wide text-emerald-700">
                         {batch.batch_id}
                         {batch.release_status ? <ReleaseStatusBadge status={batch.release_status} /> : null}
